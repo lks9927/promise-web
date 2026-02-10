@@ -731,7 +731,7 @@ function CouponPanel({ coupons, onUpdate }) {
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100 mb-8 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                     <h4 className="font-bold text-indigo-900 flex items-center gap-2">
-                        <DollarSign className="w-5 h-5" /> 쿠폰 발행
+                        <DollarSign className="w-5 h-5" /> 쿠폰 발행 (v2.0)
                     </h4>
                     <div className="flex bg-white rounded-lg p-1 border border-indigo-100">
                         <button
