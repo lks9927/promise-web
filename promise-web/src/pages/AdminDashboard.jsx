@@ -658,56 +658,140 @@ function CouponPanel({ coupons, onUpdate }) {
     const [amount, setAmount] = useState('200000');
     const [phone, setPhone] = useState('');
     const [generatedCoupon, setGeneratedCoupon] = useState(null);
+    // New: Bulk Issuance State
+    const [mode, setMode] = useState('single'); // 'single', 'bulk'
+    const [quantity, setQuantity] = useState(1);
+    const [memo, setMemo] = useState('');
+    const [generatedBatch, setGeneratedBatch] = useState(null); // { count: 10, amount: 200000, csvUrl: ... }
 
     const handleIssue = async (e) => {
         e.preventDefault();
-        if (!confirm(`${phone}님께 ${Number(amount).toLocaleString()}원 쿠폰을 발행하시겠습니까?`)) return;
 
-        // Generate simple 8-char code
-        const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+        if (mode === 'single') {
+            if (!confirm(`${phone}님께 ${Number(amount).toLocaleString()}원 쿠폰을 발행하시겠습니까?`)) return;
+            const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+            try {
+                const { error } = await supabase.from('coupons').insert([{
+                    code: code,
+                    amount: parseInt(amount),
+                    status: 'issued',
+                    issued_to: phone,
+                    batch_name: '개별발행'
+                }]);
+                if (error) throw error;
+                setGeneratedCoupon({ code, amount, phone });
+                onUpdate();
+                setPhone('');
+            } catch (error) {
+                console.error(error);
+                alert('쿠폰 발행 중 오류가 발생했습니다.');
+            }
+        } else {
+            // Bulk Issue
+            if (!confirm(`${Number(amount).toLocaleString()}원 쿠폰 ${quantity}장을 대량 발행하시겠습니까?`)) return;
 
-        try {
-            const { error } = await supabase.from('coupons').insert([{
-                code: code,
-                amount: parseInt(amount),
-                status: 'issued',
-                issued_to: phone
-            }]);
+            const newCoupons = [];
+            const batchName = memo || `대량발행_${new Date().toLocaleDateString()}`;
 
-            if (error) throw error;
+            for (let i = 0; i < quantity; i++) {
+                newCoupons.push({
+                    code: Math.random().toString(36).substring(2, 10).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase(), // Longer code for security in bulk
+                    amount: parseInt(amount),
+                    status: 'issued',
+                    issued_to: null, // Anonymous
+                    batch_name: batchName
+                });
+            }
 
-            setGeneratedCoupon({ code, amount, phone });
-            onUpdate();
-            setPhone('');
-        } catch (error) {
-            console.error(error);
-            alert('쿠폰 발행 중 오류가 발생했습니다.');
+            try {
+                const { error } = await supabase.from('coupons').insert(newCoupons);
+                if (error) throw error;
+
+                // Create CSV
+                const csvContent = "data:text/csv;charset=utf-8,\uFEFF"
+                    + "쿠폰번호,금액,발행일\n"
+                    + newCoupons.map(c => `${c.code},${c.amount},${new Date().toLocaleDateString()}`).join("\n");
+
+                const encodedUri = encodeURI(csvContent);
+                setGeneratedBatch({ count: quantity, amount, csvUrl: encodedUri });
+
+                onUpdate();
+                setMemo('');
+            } catch (error) {
+                console.error(error);
+                alert('대량 발행 중 오류가 발생했습니다.');
+            }
         }
     };
 
     return (
         <div className="p-6">
             {/* Issue Form */}
+            {/* Issue Form */}
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100 mb-8 shadow-sm">
-                <h4 className="font-bold text-indigo-900 mb-4 flex items-center gap-2">
-                    <DollarSign className="w-5 h-5" /> 새 쿠폰 발행
-                </h4>
-                <form onSubmit={handleIssue} className="flex gap-4 items-end">
-                    <div className="flex-1">
-                        <label className="block text-xs font-bold text-gray-500 mb-1">고객 연락처</label>
-                        <input
-                            type="tel"
-                            placeholder="010-0000-0000"
-                            className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            value={phone}
-                            onChange={e => setPhone(e.target.value)}
-                            required
-                        />
+                <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-bold text-indigo-900 flex items-center gap-2">
+                        <DollarSign className="w-5 h-5" /> 쿠폰 발행
+                    </h4>
+                    <div className="flex bg-white rounded-lg p-1 border border-indigo-100">
+                        <button
+                            onClick={() => setMode('single')}
+                            className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${mode === 'single' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            개별 발송 (문자)
+                        </button>
+                        <button
+                            onClick={() => setMode('bulk')}
+                            className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${mode === 'bulk' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            대량 발행 (파일)
+                        </button>
                     </div>
+                </div>
+
+                <form onSubmit={handleIssue} className="flex gap-4 items-end flex-wrap">
+                    {mode === 'single' ? (
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-bold text-gray-500 mb-1">고객 연락처</label>
+                            <input
+                                type="tel"
+                                placeholder="010-0000-0000"
+                                className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                value={phone}
+                                onChange={e => setPhone(e.target.value)}
+                                required
+                            />
+                        </div>
+                    ) : (
+                        <>
+                            <div className="w-32">
+                                <label className="block text-xs font-bold text-gray-500 mb-1">발행 수량 (장)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="1000"
+                                    className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                    value={quantity}
+                                    onChange={e => setQuantity(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div className="flex-1 min-w-[200px]">
+                                <label className="block text-xs font-bold text-gray-500 mb-1">발행 메모 (예: 제휴 행사용)</label>
+                                <input
+                                    type="text"
+                                    placeholder="식별용 메모 입력"
+                                    className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                    value={memo}
+                                    onChange={e => setMemo(e.target.value)}
+                                />
+                            </div>
+                        </>
+                    )}
                     <div className="w-40">
                         <label className="block text-xs font-bold text-gray-500 mb-1">금액 (원)</label>
                         <select
-                            className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                             value={amount}
                             onChange={e => setAmount(e.target.value)}
                         >
@@ -758,6 +842,34 @@ function CouponPanel({ coupons, onUpdate }) {
                             >
                                 문자 내용 복사하기
                             </button>
+                        </div>
+                    </div>
+                </div>
+            {/* Bulk Result Modal */}
+            {generatedBatch && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-bounce-in">
+                        <div className="bg-indigo-900 text-white p-4 flex justify-between items-center">
+                            <span className="font-bold">대량 발행 완료</span>
+                            <button onClick={() => setGeneratedBatch(null)} className="text-indigo-200 hover:text-white">&times;</button>
+                        </div>
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <DollarSign className="w-8 h-8" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 text-lg mb-2">{generatedBatch.count}장 발행 성공!</h3>
+                            <p className="text-gray-500 text-sm mb-6">
+                                총 {Number(generatedBatch.amount * generatedBatch.count).toLocaleString()}원 규모의 쿠폰이 생성되었습니다.<br />
+                                아래 버튼을 눌러 엑셀(CSV) 파일을 다운로드하세요.
+                            </p>
+
+                            <a
+                                href={generatedBatch.csvUrl}
+                                download={`coupons_${new Date().toISOString().slice(0, 10)}.csv`}
+                                className="block w-full py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                            >
+                                📥 쿠폰 파일 다운로드
+                            </a>
                         </div>
                     </div>
                 </div>
