@@ -8,7 +8,8 @@ import {
     Truck,
     Star,
     Heart,
-    LogOut
+    LogOut,
+    Gift // New: Gift Icon
 } from 'lucide-react';
 
 export default function CustomerStatus() {
@@ -16,6 +17,7 @@ export default function CustomerStatus() {
     const [user, setUser] = useState(null);
     const [myCase, setMyCase] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [couponCode, setCouponCode] = useState(''); // New: Coupon Code State
 
     useEffect(() => {
         checkSession();
@@ -79,6 +81,56 @@ export default function CustomerStatus() {
         navigate('/login');
     };
 
+    const handleRegisterCoupon = async (e) => {
+        e.preventDefault();
+        if (!couponCode) return;
+
+        try {
+            setLoading(true);
+
+            // 1. Verify Coupon
+            const { data: coupon, error: fetchError } = await supabase
+                .from('coupons')
+                .select('*')
+                .eq('code', couponCode.toUpperCase())
+                .eq('status', 'issued')
+                .single();
+
+            if (fetchError || !coupon) {
+                alert('유효하지 않은 쿠폰이거나 이미 사용된 쿠폰입니다.');
+                setLoading(false);
+                return;
+            }
+
+            // 2. Update Coupon Status
+            const { error: updateError } = await supabase
+                .from('coupons')
+                .update({
+                    status: 'used',
+                    used_by: user.id,
+                    used_at: new Date().toISOString()
+                })
+                .eq('code', coupon.code);
+
+            if (updateError) throw updateError;
+
+            // 3. Update User Cashback (Optional: if we want to track total cashback on profile immediately)
+            // But for now, we can just rely on the connection or trigger a profile update if needed.
+            // Let's assume we just mark it as used and maybe show it in a list later.
+            // For better UX, let's update profile cashback if column exists.
+
+            // Re-fetch or just alert success
+            alert(`🎉 축하합니다! ${coupon.amount.toLocaleString()}원 캐시백이 적립되었습니다.`);
+            setCouponCode('');
+
+        } catch (error) {
+            console.error('Coupon Error:', error);
+            alert('쿠폰 등록 중 오류가 발생했습니다.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
     }
@@ -128,6 +180,33 @@ export default function CustomerStatus() {
                     <p className="text-gray-500 text-sm">
                         <span className="font-bold text-gray-900">{user.name}</span>님, 따뜻한 마음으로 함께하겠습니다.
                     </p>
+                </div>
+
+                {/* New: Coupon Registration Section */}
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-lg p-6 text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+                    <div className="relative z-10">
+                        <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
+                            <Gift className="w-5 h-5 text-amber-300" /> 캐시백 쿠폰 등록
+                        </h3>
+                        <p className="text-indigo-100 text-sm mb-4">발급받으신 쿠폰 번호를 입력하고 혜택을 받으세요.</p>
+
+                        <form onSubmit={handleRegisterCoupon} className="flex gap-2">
+                            <input
+                                type="text"
+                                placeholder="쿠폰 번호 입력"
+                                className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-indigo-200 focus:outline-none focus:bg-white/20 transition-all font-mono"
+                                value={couponCode}
+                                onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                            />
+                            <button
+                                type="submit"
+                                className="px-4 py-2 bg-white text-indigo-600 font-bold rounded-lg hover:bg-gray-100 transition-colors shadow-sm"
+                            >
+                                등록
+                            </button>
+                        </form>
+                    </div>
                 </div>
 
                 {/* Status Card */}

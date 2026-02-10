@@ -24,6 +24,7 @@ export default function AdminDashboard() {
     const [partners, setPartners] = useState([]);
     const [partnerFilter, setPartnerFilter] = useState('all'); // 'all', 'leader', 'dealer'
     const [passwordRequests, setPasswordRequests] = useState([]); // New: Password Reset Requests
+    const [coupons, setCoupons] = useState([]); // New: Coupons
     const [config, setConfig] = useState({});
     const [loading, setLoading] = useState(true);
 
@@ -77,10 +78,16 @@ export default function AdminDashboard() {
 
             // 5. Fetch Password Reset Requests
             const { data: requestData } = await supabase
-                .from('profiles')
                 .select('*')
                 .eq('password_reset_requested', true);
             if (requestData) setPasswordRequests(requestData);
+
+            // 6. Fetch Coupons
+            const { data: couponData } = await supabase
+                .from('coupons')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (couponData) setCoupons(couponData);
 
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -231,6 +238,12 @@ export default function AdminDashboard() {
                         onClick={() => setActiveTab('partners')}
                     />
                     <NavItem
+                        icon={<DollarSign />}
+                        label="쿠폰 관리"
+                        active={activeTab === 'coupons'}
+                        onClick={() => setActiveTab('coupons')}
+                    />
+                    <NavItem
                         icon={<Settings />}
                         label="환경 설정"
                         active={activeTab === 'settings'}
@@ -259,7 +272,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3">
                         {/* Mobile Menu Button - Placeholder/Simple toggle could go here */}
                         <h2 className="text-lg font-semibold text-gray-800">
-                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : '👥 파트너'}
+                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : '👥 파트너'}
                         </h2>
                     </div>
 
@@ -298,7 +311,7 @@ export default function AdminDashboard() {
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
                         <div className="p-5 border-b border-gray-100 flex justify-between items-center">
                             <h3 className="font-bold text-gray-800 text-lg">
-                                {activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : '파트너 리스트'}
+                                {activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : '파트너 리스트'}
                             </h3>
                             <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
                             <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
@@ -320,6 +333,8 @@ export default function AdminDashboard() {
                                 passwordRequests={passwordRequests}
                                 onApproveReset={handleApproveReset}
                             />
+                        ) : activeTab === 'coupons' ? (
+                            <CouponPanel coupons={coupons} onUpdate={fetchData} />
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
@@ -634,6 +649,149 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
                         </button>
                     </form>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function CouponPanel({ coupons, onUpdate }) {
+    const [amount, setAmount] = useState('200000');
+    const [phone, setPhone] = useState('');
+    const [generatedCoupon, setGeneratedCoupon] = useState(null);
+
+    const handleIssue = async (e) => {
+        e.preventDefault();
+        if (!confirm(`${phone}님께 ${Number(amount).toLocaleString()}원 쿠폰을 발행하시겠습니까?`)) return;
+
+        // Generate simple 8-char code
+        const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+        try {
+            const { error } = await supabase.from('coupons').insert([{
+                code: code,
+                amount: parseInt(amount),
+                status: 'issued',
+                issued_to: phone
+            }]);
+
+            if (error) throw error;
+
+            setGeneratedCoupon({ code, amount, phone });
+            onUpdate();
+            setPhone('');
+        } catch (error) {
+            console.error(error);
+            alert('쿠폰 발행 중 오류가 발생했습니다.');
+        }
+    };
+
+    return (
+        <div className="p-6">
+            {/* Issue Form */}
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100 mb-8 shadow-sm">
+                <h4 className="font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5" /> 새 쿠폰 발행
+                </h4>
+                <form onSubmit={handleIssue} className="flex gap-4 items-end">
+                    <div className="flex-1">
+                        <label className="block text-xs font-bold text-gray-500 mb-1">고객 연락처</label>
+                        <input
+                            type="tel"
+                            placeholder="010-0000-0000"
+                            className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            value={phone}
+                            onChange={e => setPhone(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="w-40">
+                        <label className="block text-xs font-bold text-gray-500 mb-1">금액 (원)</label>
+                        <select
+                            className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            value={amount}
+                            onChange={e => setAmount(e.target.value)}
+                        >
+                            <option value="10000">10,000</option>
+                            <option value="50000">50,000</option>
+                            <option value="100000">100,000</option>
+                            <option value="200000">200,000</option>
+                            <option value="300000">300,000</option>
+                            <option value="500000">500,000</option>
+                        </select>
+                    </div>
+                    <button type="submit" className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-95 h-10">
+                        발행하기
+                    </button>
+                </form>
+            </div>
+
+            {/* Mock SMS Modal */}
+            {generatedCoupon && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-bounce-in">
+                        <div className="bg-gray-900 text-white p-4 flex justify-between items-center">
+                            <span className="font-bold">문자 발송 시뮬레이션</span>
+                            <button onClick={() => setGeneratedCoupon(null)} className="text-gray-400 hover:text-white">&times;</button>
+                        </div>
+                        <div className="p-6">
+                            <div className="bg-gray-100 p-4 rounded-lg mb-4 text-sm whitespace-pre-line border border-gray-200">
+                                <p className="font-bold text-indigo-600 mb-2">[10년의 약속] 쿠폰 도착 🎁</p>
+                                <p>{generatedCoupon.phone} 고객님, 감사합니다.</p>
+                                <p>{Number(generatedCoupon.amount).toLocaleString()}원 캐시백 쿠폰이 발급되었습니다.</p>
+                                <br />
+                                <p className="bg-white p-2 rounded border border-dashed border-gray-300 font-mono text-center font-bold text-lg select-all">
+                                    {generatedCoupon.code}
+                                </p>
+                                <br />
+                                <p className="text-gray-500 text-xs">
+                                    * 사용방법: 로그인 {'>'} 마이페이지 {'>'} 쿠폰 등록<br />
+                                    * 문의: 1544-1234
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const msg = `[10년의 약속] ${Number(generatedCoupon.amount).toLocaleString()}원 쿠폰코드: ${generatedCoupon.code}`;
+                                    navigator.clipboard.writeText(msg);
+                                    alert('문자 내용이 복사되었습니다!');
+                                }}
+                                className="w-full py-3 bg-gray-900 text-white rounded-lg font-bold hover:bg-black transition-colors"
+                            >
+                                문자 내용 복사하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* List */}
+            <h4 className="font-bold text-gray-800 mb-4">발행 내역</h4>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-500 font-medium">
+                        <tr>
+                            <th className="px-6 py-4">쿠폰 코드</th>
+                            <th className="px-6 py-4">대상 연락처</th>
+                            <th className="px-6 py-4">금액</th>
+                            <th className="px-6 py-4 text-center">상태</th>
+                            <th className="px-6 py-4">발행일</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {coupons.map(coupon => (
+                            <tr key={coupon.code} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 font-mono font-bold text-indigo-600">{coupon.code}</td>
+                                <td className="px-6 py-4 text-gray-900">{coupon.issued_to}</td>
+                                <td className="px-6 py-4 font-bold">₩ {coupon.amount.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-center">
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${coupon.status === 'used' ? 'bg-gray-200 text-gray-500' : 'bg-green-100 text-green-700'}`}>
+                                        {coupon.status === 'used' ? '사용 완료' : '발급됨'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-gray-500 text-xs">{new Date(coupon.created_at).toLocaleDateString()}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </div>
     );
