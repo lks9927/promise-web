@@ -349,13 +349,7 @@ export default function Home() {
                             <li><strong>이메일:</strong> help@promise10.com</li>
                         </ul>
                     </div>
-                    <div>
-                        <h4 className="font-bold text-[#433831] mb-6">바로가기</h4>
-                        <ul className="space-y-4 text-[#6E6D74] text-sm">
-                            <li><a href="/admin?role=super" className="hover:underline">관리자 페이지 (Demo)</a></li>
-                            <li><a href="/leader" className="hover:underline">파트너 페이지 (Demo)</a></li>
-                        </ul>
-                    </div>
+
                 </div>
                 <div className="border-t border-[#D4C5A9]/30 pt-8 text-center text-[#8C8174] text-xs">
                     © 2026 Promise of 10 Years. All rights reserved.
