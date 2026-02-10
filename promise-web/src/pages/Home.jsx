@@ -23,6 +23,7 @@ export default function Home() {
     const [suggestions, setSuggestions] = useState([]);
 
     const [user, setUser] = useState(null);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -84,6 +85,8 @@ export default function Home() {
                     <Link to="/" className="text-2xl font-bold text-[#433831] font-serif tracking-tight cursor-pointer hover:opacity-80 transition-opacity">
                         10년의 약속
                     </Link>
+
+                    {/* Desktop Menu */}
                     <div className="hidden md:flex gap-8 items-center">
                         <a href="#story" className="text-[#8E806A] hover:text-[#433831] font-medium transition-colors">Brand Story</a>
                         <a href="#process" className="text-[#8E806A] hover:text-[#433831] font-medium transition-colors">Process</a>
@@ -110,7 +113,76 @@ export default function Home() {
                             Contact
                         </button>
                     </div>
+
+                    {/* Mobile Menu Button */}
+                    <button
+                        className="md:hidden p-2 text-[#433831]"
+                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                    >
+                        {isMobileMenuOpen ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 18 18" /></svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></svg>
+                        )}
+                    </button>
                 </div>
+
+                {/* Mobile Menu Dropdown */}
+                {isMobileMenuOpen && (
+                    <div className="md:hidden absolute top-20 left-0 w-full bg-[#FDFBF7] border-b border-[#EAE5D9] shadow-lg flex flex-col p-6 gap-4 animate-in slide-in-from-top-2">
+                        <a
+                            href="#story"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className="text-[#8E806A] hover:text-[#433831] font-medium p-2"
+                        >
+                            Brand Story
+                        </a>
+                        <a
+                            href="#process"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className="text-[#8E806A] hover:text-[#433831] font-medium p-2"
+                        >
+                            Process
+                        </a>
+                        <a
+                            href="/apply"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className="text-[#8E806A] hover:text-[#433831] font-medium p-2"
+                        >
+                            Partners
+                        </a>
+
+                        {user ? (
+                            <Link
+                                to={getDashboardLink(user.role)}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className="flex items-center gap-2 bg-[#EAE5D9]/50 px-4 py-3 rounded-xl hover:bg-[#EAE5D9] transition-colors"
+                            >
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                <span className="text-[#433831] font-bold text-sm">{user.name}님</span>
+                                <span className="text-[#8E806A] text-xs">({user.role === 'leader' ? '팀장' : user.role === 'dealer' ? '딜러' : '고객'})</span>
+                            </Link>
+                        ) : (
+                            <Link
+                                to="/login"
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className="text-[#8E806A] hover:text-[#433831] font-medium p-2"
+                            >
+                                Login
+                            </Link>
+                        )}
+
+                        <button
+                            onClick={() => {
+                                setIsMobileMenuOpen(false);
+                                setIsModalOpen(true);
+                            }}
+                            className="bg-[#433831] text-[#FDFBF7] px-6 py-3 rounded-xl font-bold hover:bg-[#322A25] transition-all shadow-md w-full"
+                        >
+                            Contact
+                        </button>
+                    </div>
+                )}
             </nav>
 
             {/* Hero Section (Emotional & Warm) */}
