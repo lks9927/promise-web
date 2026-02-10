@@ -200,7 +200,7 @@ export default function PartnerApply() {
                         )}
 
                         <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">자택 주소 (선물 발송용)</label>
+                            <label className="block text-sm font-medium text-gray-700">자택 주소</label>
                             <div className="flex gap-2">
                                 <input
                                     type="text"
