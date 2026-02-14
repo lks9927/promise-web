@@ -130,9 +130,25 @@ const Login = () => {
                                 autoComplete="username"
                                 required
                                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                                placeholder="전화번호 또는 아이디 (예: admin)"
+                                placeholder="전화번호 또는 아이디 (예: 010-1234-5678, admin)"
                                 value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    // If starts with number, apply phone formatting
+                                    if (/^\d/.test(value)) {
+                                        const raw = value.replace(/[^0-9]/g, '');
+                                        let formatted = raw;
+                                        if (raw.length > 3 && raw.length <= 7) {
+                                            formatted = `${raw.slice(0, 3)}-${raw.slice(3)}`;
+                                        } else if (raw.length > 7) {
+                                            formatted = `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7, 11)}`;
+                                        }
+                                        setPhone(formatted);
+                                    } else {
+                                        // Allow text input for 'admin', 'manager'
+                                        setPhone(value);
+                                    }
+                                }}
                             />
                         </div>
                         <div>

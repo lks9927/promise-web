@@ -9,6 +9,7 @@ import CustomerStatus from './pages/CustomerStatus'
 
 // Placeholder Pages
 import Login from './pages/Login'
+import ProjectStatus from './pages/ProjectStatus'
 const Dashboard = () => <div className="p-10 text-xl text-center">대시보드 (딜러/팀장)</div>
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
         <Route path="/apply" element={<PartnerApply />} />
         <Route path="/mypage" element={<CustomerStatus />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/status" element={<ProjectStatus />} />
         <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </div>

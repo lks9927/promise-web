@@ -144,9 +144,9 @@ export default function MasterDashboard() {
                                 window.location.href = '/login';
                             }
                         }}
-                        className="text-gray-400 hover:text-red-400 transition-colors ml-2"
-                        title="로그아웃"
+                        className="flex items-center gap-1 text-gray-400 hover:text-red-400 transition-colors ml-2"
                     >
+                        <span className="text-sm font-medium">로그아웃</span>
                         <LogOut className="w-6 h-6" />
                     </button>
                 </div>

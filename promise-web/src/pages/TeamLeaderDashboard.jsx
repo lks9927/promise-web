@@ -8,21 +8,54 @@ import {
     DollarSign,
     ChevronRight,
     AlertTriangle,
-    LogOut
+    LogOut,
+    Bell,
+    Clock,
+    Briefcase,
+    Crown,
+    Users,
+    Power,
+    XCircle,
+    MoreVertical,
+    Activity
 } from 'lucide-react';
-
-// Mock Logged In User (Team Leader Park)
-const CURRENT_LEADER_ID = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12';
+import { useNavigate } from 'react-router-dom';
 
 export default function TeamLeaderDashboard() {
-    const [cases, setCases] = useState([]);
+    const [activeTab, setActiveTab] = useState('available');
+    const [availableCases, setAvailableCases] = useState([]);
+    const [myCases, setMyCases] = useState([]);
+    const [myTeam, setMyTeam] = useState([]);
     const [isFlowerOrderRequired, setIsFlowerOrderRequired] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(null);
+    const [myStatus, setMyStatus] = useState('waiting');
+    const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+    const [assignModal, setAssignModal] = useState({ isOpen: false, caseId: null });
+    const navigate = useNavigate();
 
     useEffect(() => {
-        fetchMyCases();
-        fetchSystemConfig();
-    }, []);
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            if (!parsedUser.id) {
+                alert('로그인 정보 오류: ID가 없습니다. 다시 로그인해주세요.');
+                navigate('/login');
+                return;
+            }
+            setUser(parsedUser);
+        } else {
+            navigate('/login');
+        }
+    }, [navigate]);
+
+    useEffect(() => {
+        if (user) {
+            fetchData();
+            fetchSystemConfig();
+            fetchMyStatus();
+        }
+    }, [user, activeTab]);
 
     const fetchSystemConfig = async () => {
         const { data } = await supabase.from('system_config').select('*').eq('key', 'flower_order_required').single();
@@ -33,240 +66,375 @@ export default function TeamLeaderDashboard() {
         }
     };
 
-    const fetchMyCases = async () => {
-        try {
-            setLoading(true);
-            // Fetch cases assigned to this leader (using dealer_id for demo or adding a leader_id field properly later)
-            // For the demo schema, we don't have a direct 'leader_id' in funeral_cases yet in the simplified schema,
-            // but let's assume for this matching service, 'dealer_id' was used or we fetch all for demo.
-            // Wait, let's look at schema. 'dealer_id' is for dealer. 
-            // The schema didn't have assignments table implemented in SQL yet, it was in the plan but maybe simplified in SQL?
-            // Re-reading SQL: funeral_cases has customer_id, dealer_id.
-            // Ah, I missed 'leader_id' or 'assignments' table in the SQL I provided to user?
-            // Let's check schema.sql content again in memory... 
-            // "create table funeral_cases ... dealer_id ... " -> No leader_id column in funeral_cases.
-            // "create table partners ... user_id ..."
-            // For this MVP, let's assume we show ALL 'requested' cases or we add a leader column.
-            // OR, since the user ran the SQL, I should not change schema if possible.
-            // I'll fetch ALL cases for now to demonstrate, or filter by mock logic.
+    const fetchMyStatus = async () => {
+        if (!user) return;
+        const { data } = await supabase.from('partners').select('current_status, is_working').eq('user_id', user.id).single();
+        if (data) {
+            if (data.current_status) {
+                setMyStatus(data.current_status);
+            } else {
+                setMyStatus(data.is_working ? 'waiting' : 'off');
+                handleStatusChange(data.is_working ? 'waiting' : 'off', false);
+            }
+        }
+    };
 
-            const { data, error } = await supabase
+    const handleStatusChange = async (newStatus, showAlert = true) => {
+        let msg = '';
+        if (newStatus === 'waiting') msg = '🟢 [출동 대기] 상태로 전환되었습니다.\n언제든 배정을 받을 수 있습니다.';
+        else if (newStatus === 'working') msg = '🔵 [상담/장례 진행 중] 상태로 전환되었습니다.\n현재 업무에 집중합니다.';
+        else if (newStatus === 'off') msg = '⚪ [휴식] 상태로 전환되었습니다.\n배정 알림을 받지 않습니다.';
+
+        const updates = {
+            current_status: newStatus,
+            is_working: newStatus !== 'off'
+        };
+
+        const { error } = await supabase.from('partners').update(updates).eq('user_id', user.id);
+
+        if (!error) {
+            setMyStatus(newStatus);
+            setStatusMenuOpen(false);
+            if (showAlert) alert(msg);
+        } else {
+            alert('상태 변경 실패: ' + error.message);
+        }
+    };
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            // 1. Fetch Available Cases
+            const { data: requestedData } = await supabase
                 .from('funeral_cases')
-                .select(`
-          *,
-          *,
-          profiles:customer_id (name, phone),
-          flower_orders (id, status)
-        `)
+                .select('*, profiles:customer_id(name, phone)')
+                .eq('status', 'requested')
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
-            setCases(data || []);
+            if (requestedData) setAvailableCases(requestedData);
+
+            // 2. Fetch My Assigned Cases (Simplifying query to avoid potential join errors)
+            const { data: allAssigned, error: myError } = await supabase
+                .from('funeral_cases')
+                .select('*, profiles:customer_id(name, phone)')
+                .in('status', ['assigned', 'consulting', 'in_progress', 'team_settling', 'hq_check', 'completed'])
+                .order('created_at', { ascending: false });
+
+            if (myError) console.error("My Cases fetch error:", myError);
+
+            // Filter strictly: Ensure strings are trimmed and handle potential case mismatch
+            if (allAssigned) {
+                console.log("Debug - All Assigned from DB:", allAssigned.length);
+                console.log("Debug - Logging User ID:", user.id);
+
+                const myAssigned = allAssigned.filter(c => {
+                    if (!c.team_leader_id || !user.id) return false;
+                    const dbId = String(c.team_leader_id).toLowerCase().trim();
+                    const loginId = String(user.id).toLowerCase().trim();
+                    return dbId === loginId;
+                });
+
+                console.log("Debug - Matches found:", myAssigned.length);
+                setMyCases(myAssigned);
+            }
+
+            // 3. If Master, fetch team
+            if (user.grade === 'Master') {
+                const { data: teamData } = await supabase
+                    .from('partners')
+                    .select('*, profiles:user_id(name, phone)')
+                    .eq('master_id', user.id);
+                if (teamData) setMyTeam(teamData);
+            }
+
         } catch (error) {
-            console.error('Error fetching cases:', error);
+            console.error('Error fetching data:', error);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleStatusUpdate = async (caseId, newStatus) => {
+    const handleBid = async (caseId, assigneeId = null, assigneeName = null) => {
+        const isSelfAssign = !assigneeId || assigneeId === user.id;
+
+        if (isSelfAssign && myStatus === 'off') {
+            if (!confirm('현재 [휴식 중] 상태입니다.\n그래도 이 장례를 배정받으시겠습니까? (상태가 [진행 중]으로 변경됩니다)')) return;
+            await handleStatusChange('working', false);
+        }
+
+        const confirmMsg = isSelfAssign
+            ? '이 장례를 본인이 직접 배정받으시겠습니까?'
+            : `${assigneeName} 팀장에게 이 장례를 배정하시겠습니까?`;
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const { data: check } = await supabase.from('funeral_cases').select('status').eq('id', caseId).single();
+            if (check.status !== 'requested') {
+                alert('이미 다른 팀장님이 배정받으셨습니다.');
+                fetchData();
+                return;
+            }
+
+            const newLeaderId = assigneeId || user.id;
+
+            const { data, error } = await supabase
+                .from('funeral_cases')
+                .update({ status: 'assigned', team_leader_id: newLeaderId })
+                .eq('id', caseId)
+                .select();
+
+            if (error || !data || data.length === 0) {
+                console.error("Update failed:", error);
+                alert("배정 실패: 데이터베이스 권한 문제로 저장이 안 되었습니다.");
+                return;
+            }
+
+            if (isSelfAssign) {
+                await handleStatusChange('working', false);
+                alert(`✅ 배정되었습니다!\n[상담/장례 진행 중] 상태로 변경되었습니다.\n[내 현황] 탭에서 확인하세요.`);
+
+                // IMPORTANT: Switch tab and fetch sequentially
+                setActiveTab('my_cases');
+                setTimeout(() => {
+                    fetchData(); // Fetch fresh data for the new tab
+                }, 100);
+            } else {
+                alert(`✅ ${assigneeName} 팀장에게 배정되었습니다!`);
+                fetchData();
+            }
+        } catch (error) {
+            console.error(error);
+            alert('배정 실패: ' + error.message);
+        }
+    };
+
+    const handleStatusUpdate = async (caseId, newStatus, extraData = {}) => {
         try {
             const { error } = await supabase
                 .from('funeral_cases')
-                .update({ status: newStatus })
+                .update({ status: newStatus, ...extraData })
                 .eq('id', caseId);
-
             if (error) throw error;
-
-            // If status is team_settling, it implies service done, leader is calculating.
-            // If status is hq_check, leader sent money.
-
-            alert('상태가 업데이트되었습니다!');
-            fetchMyCases(); // Refresh
+            fetchData();
+            if (newStatus === 'hq_check' || newStatus === 'completed') {
+                if (confirm('장례가 종료되었습니다. 상태를 [출동 대기]로 변경하시겠습니까?')) {
+                    handleStatusChange('waiting');
+                }
+            }
         } catch (error) {
-            console.error('Error updating status:', error);
             alert('업데이트 실패: ' + error.message);
         }
     };
 
     const handleOrderFlower = async (caseId) => {
-        if (!window.confirm('하늘꽃(입관꽃)을 발주하시겠습니까?\n(본사로 주문이 전송됩니다.)')) return;
-
+        if (!window.confirm('하늘꽃(입관꽃)을 발주하시겠습니까?')) return;
         try {
-            const { error } = await supabase
-                .from('flower_orders')
-                .insert([{
-                    case_id: caseId,
-                    team_leader_id: CURRENT_LEADER_ID,
-                    status: 'ordered',
-                    amount: 150000 // Default price
-                }]);
-
+            const { error } = await supabase.from('flower_orders').insert([{
+                case_id: caseId, team_leader_id: user.id, status: 'ordered', amount: 150000
+            }]);
             if (error) throw error;
-
-            alert('하늘꽃 발주가 완료되었습니다.');
-            fetchMyCases();
+            alert('하늘꽃 발주 완료');
+            fetchData();
         } catch (error) {
-            console.error('Error ordering flower:', error);
             alert('발주 실패: ' + error.message);
         }
     };
 
+    if (!user) return <div className="p-4 text-center">Loading...</div>;
+    const isMaster = user.grade === 'Master';
+    const getStatusInfo = (status) => {
+        switch (status) {
+            case 'waiting': return { label: '출동 대기', color: 'bg-green-100 text-green-700', icon: 'bg-green-500' };
+            case 'working': return { label: '상담/장례 진행 중', color: 'bg-blue-100 text-blue-700', icon: 'bg-blue-500' };
+            case 'off': return { label: '휴식 중', color: 'bg-gray-100 text-gray-500', icon: 'bg-gray-400' };
+            default: return { label: '상태 미정', color: 'bg-gray-100 text-gray-500', icon: 'bg-gray-400' };
+        }
+    }
+    const myStatusInfo = getStatusInfo(myStatus);
+
     return (
-        <div className="min-h-screen bg-gray-50 pb-20">
-            {/* Mobile-friendly Header */}
-            <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10 flex justify-between items-center">
-                <div>
-                    <h1 className="text-xl font-bold text-gray-900">내 배정 현황</h1>
-                    <p className="text-sm text-gray-500">박영웅 팀장님 (Master)</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => {
-                            if (confirm('로그아웃 하시겠습니까?')) {
-                                localStorage.removeItem('user');
-                                window.location.href = '/login';
-                            }
-                        }}
-                        className="text-gray-400 hover:text-red-500 transition-colors"
-                        title="로그아웃"
-                    >
-                        <LogOut className="w-6 h-6" />
-                    </button>
-                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold">
-                        박
+        <div className="min-h-screen bg-gray-50 pb-20 font-sans">
+            <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-30 shadow-sm">
+                <div className="flex justify-between items-center mb-2">
+                    <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        {activeTab === 'available' ? '실시간 배정 대기' : '내 진행/정산 현황'}
+                        {isMaster && <Crown className="w-5 h-5 text-yellow-500 fill-current" />}
+                    </h1>
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <Bell className={`w-6 h-6 ${availableCases.length > 0 ? 'text-indigo-600 animate-pulse' : 'text-gray-400'}`} />
+                            {availableCases.length > 0 && (
+                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center border-2 border-white">
+                                    {availableCases.length}
+                                </span>
+                            )}
+                        </div>
+                        <button onClick={() => { if (confirm('로그아웃 하시겠습니까?')) { localStorage.removeItem('user'); navigate('/login'); } }} className="text-gray-400 hover:text-red-500 transition-colors">
+                            <LogOut className="w-6 h-6" />
+                        </button>
                     </div>
+                </div>
+                <div className="flex justify-between items-center bg-gray-50 rounded-lg p-2 relative">
+                    <div className="flex items-center gap-2 pl-1">
+                        <div className="text-sm font-bold text-gray-700">{user.name} 팀장</div>
+                        <div className={`text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1.5 ${myStatusInfo.color}`}>
+                            <span className={`w-2 h-2 rounded-full ${myStatusInfo.icon} ${myStatus === 'waiting' ? 'animate-pulse' : ''}`}></span>
+                            {myStatusInfo.label}
+                        </div>
+                    </div>
+                    <button onClick={() => setStatusMenuOpen(!statusMenuOpen)} className="text-xs bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-md font-medium text-gray-600 hover:bg-gray-50 flex items-center gap-1 active:bg-gray-100">
+                        상태 변경 <ChevronRight className={`w-3 h-3 transition-transform ${statusMenuOpen ? 'rotate-90' : ''}`} />
+                    </button>
+                    {statusMenuOpen && (
+                        <div className="absolute top-12 right-0 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-40 overflow-hidden animate-fadeIn">
+                            <div className="p-2 space-y-1">
+                                <button onClick={() => handleStatusChange('waiting')} className="w-full text-left px-3 py-2 rounded-lg hover:bg-green-50 text-sm flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span><span className="font-bold text-gray-700">출동 대기</span></button>
+                                <button onClick={() => handleStatusChange('working')} className="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span><span className="font-bold text-gray-700">상담/장례 진행 중</span></button>
+                                <button onClick={() => handleStatusChange('off')} className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 text-sm flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-gray-400"></span><span className="font-bold text-gray-500">휴식 (오프)</span></button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </header>
 
-            <main className="p-4 max-w-lg mx-auto space-y-4">
-                {/* Summary Card */}
-                <div className="bg-[#1a1f37] rounded-2xl p-6 text-white shadow-lg">
-                    <div className="flex justify-between items-center mb-4">
-                        <span className="text-indigo-200 text-sm font-medium">이번 달 정산 예정금</span>
-                        <DollarSign className="w-5 h-5 text-indigo-400" />
-                    </div>
-                    <h2 className="text-3xl font-bold">₩ 2,450,000</h2>
-                    <div className="mt-4 flex gap-2">
-                        <span className="bg-indigo-900/50 px-3 py-1 rounded-lg text-xs">진행중 2건</span>
-                        <span className="bg-green-900/50 px-3 py-1 rounded-lg text-xs">완료 5건</span>
-                    </div>
+            <main className="p-4 max-w-lg mx-auto space-y-4 pb-24">
+                <div className="flex bg-white rounded-xl p-1 border border-gray-200 mb-4 shadow-sm sticky top-[7.5rem] z-20">
+                    <button onClick={() => setActiveTab('available')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'available' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Briefcase className="w-4 h-4" />입찰 가능 ({availableCases.length})</button>
+                    <button onClick={() => setActiveTab('my_cases')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'my_cases' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />내 현황 ({myCases.length})</button>
                 </div>
 
-                {/* Action Required Section */}
-                <h3 className="font-bold text-gray-800 mt-6 mb-2 px-1">진행 중인 장례</h3>
-
-                {loading ? (
-                    <p className="text-center text-gray-400 py-10">데이터를 불러오는 중...</p>
-                ) : cases.length === 0 ? (
-                    <div className="bg-white rounded-xl p-8 text-center shadow-sm">
-                        <p className="text-gray-500">배정된 장례가 없습니다.</p>
-                    </div>
+                {loading ? <div className="text-center py-10 text-gray-400">데이터를 불러오는 중...</div> : activeTab === 'available' ? (
+                    <AvailableList cases={availableCases} onBid={handleBid} isMaster={isMaster} onOpenAssignModal={(caseId) => setAssignModal({ isOpen: true, caseId })} />
                 ) : (
-                    cases.map(item => (
-                        <CaseCard
-                            key={item.id}
-                            item={item}
-                            isFlowerOrderRequired={isFlowerOrderRequired}
-                            onUpdate={handleStatusUpdate}
-                            onOrderFlower={handleOrderFlower}
-                        />
-                    ))
+                    <MyCaseList cases={myCases} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={handleStatusUpdate} onOrderFlower={handleOrderFlower} />
                 )}
             </main>
+
+            {assignModal.isOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100">
+                        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <div><h3 className="font-bold text-lg text-gray-900">팀원에게 배정하기</h3><p className="text-xs text-gray-500">배정할 팀원을 선택해주세요</p></div>
+                            <button onClick={() => setAssignModal({ isOpen: false, caseId: null })} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-200 rounded-full transition-colors"><XCircle className="w-6 h-6" /></button>
+                        </div>
+                        <div className="p-4 max-h-[60vh] overflow-y-auto bg-white">
+                            {myTeam.length === 0 ? <p className="text-center text-gray-500 py-8">등록된 하위 팀원이 없습니다.</p> : (
+                                <div className="space-y-2">
+                                    <button onClick={() => handleBid(assignModal.caseId, user.id, '본인')} className="w-full p-3 rounded-xl border border-indigo-100 bg-indigo-50 hover:bg-indigo-100 text-left flex items-center gap-3 transition-colors group mb-4 relative overflow-hidden"><div className="absolute left-0 top-0 h-full w-1 bg-indigo-500"></div><div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold group-hover:bg-indigo-300 shadow-sm">나</div><div><div className="font-bold text-gray-900">본인 직접 수행</div><div className="text-xs text-indigo-600 font-medium">Master Leader 출동</div></div></button>
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">소속 팀원 리스트</h4>
+                                    {myTeam.map(member => {
+                                        const mStatus = member.current_status || (member.is_working ? 'waiting' : 'off');
+                                        const sInfo = getStatusInfo(mStatus);
+                                        const isAvailable = mStatus === 'waiting';
+                                        return (
+                                            <button key={member.user_id} onClick={() => { if (mStatus === 'off') { alert('해당 팀원은 현재 [휴식 중]입니다.'); return; } if (mStatus === 'working') { if (!confirm('해당 팀원은 현재 [장례 진행 중]입니다.\n추가 배정을 하시겠습니까?')) return; } handleBid(assignModal.caseId, member.user_id, member.profiles?.name); }} className={`w-full p-3 rounded-xl border text-left flex items-center gap-3 transition-colors ${isAvailable ? 'border-gray-100 hover:bg-gray-50 bg-white' : 'border-gray-100 bg-gray-50 opacity-80'}`}><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-sm relative ${sInfo.color.replace('text-', 'bg-').replace('100', '200')}`}>{member.profiles?.name?.[0]}<span className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-white rounded-full ${sInfo.icon}`}></span></div><div className="flex-1"><div className="flex justify-between items-center"><span className={`font-bold ${mStatus === 'off' ? 'text-gray-500' : 'text-gray-900'}`}>{member.profiles?.name} <span className="text-xs font-normal text-gray-400">({member.profiles?.role === 'leader' ? '팀장' : '팀원'})</span></span><span className={`text-[10px] px-1.5 py-0.5 rounded ${sInfo.color}`}>{sInfo.label}</span></div><div className="text-xs text-gray-500">{member.region} • {member.grade}</div></div></button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
+}
+
+function AvailableList({ cases, onBid, isMaster, onOpenAssignModal }) {
+    if (cases.length === 0) return <div className="bg-white rounded-xl p-10 text-center border border-gray-200 mt-8"><div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle className="w-8 h-8 text-gray-300" /></div><h3 className="font-bold text-gray-800">현재 대기 중인 콜이 없습니다.</h3></div>;
+    return (
+        <div className="space-y-4">
+            {cases.map(item => (
+                <div key={item.id} className="bg-white p-6 rounded-2xl shadow-md border border-red-50 relative overflow-hidden transform transition-all hover:scale-[1.01]">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
+                    <div className="flex justify-between items-start mb-4"><span className="bg-red-50 text-red-600 text-xs font-bold px-2 py-1 rounded-md mb-2 flex items-center gap-1 animate-pulse">🚨 접수 대기</span><span className="text-xs text-gray-400 font-mono">{new Date(item.created_at).toLocaleTimeString()}</span></div>
+                    <div className="mb-6"><h3 className="text-xl font-bold text-gray-900 mb-1">{item.location || '장소 미정'}</h3><div className="flex items-center gap-2 text-sm text-gray-600"><Briefcase className="w-4 h-4 text-gray-400" />{item.package_name}</div><div className="flex items-center gap-2 text-sm text-gray-600 mt-1"><User className="w-4 h-4 text-gray-400" />{item.profiles?.name} 고객님</div></div>
+                    <div className="grid grid-cols-2 gap-3"><button onClick={() => onBid(item.id)} className={`bg-indigo-600 text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2 ${isMaster ? '' : 'col-span-2'}`}><span className="text-lg">⚡</span><span>{isMaster ? '본인 배정' : '즉시 배정 받기'}</span></button>{isMaster && (<button onClick={() => onOpenAssignModal(item.id)} className="bg-white border-2 border-indigo-100 text-indigo-600 font-bold py-3.5 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2"><Users className="w-5 h-5" />팀원 배정</button>)}</div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower }) {
+    if (cases.length === 0) return <div className="bg-white rounded-xl p-10 text-center border border-gray-200 mt-8"><p className="text-gray-500">현재 진행 중인 건이 없습니다.</p></div>;
+    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} />);
 }
 
 function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower }) {
-    const { id, profiles, location, package_name, status, final_price, commission_amount, flower_orders } = item;
-
-    // Ordered check
+    const { id, profiles, location, package_name, status, flower_orders } = item;
     const hasOrderedFlower = flower_orders && flower_orders.length > 0;
 
-    // Status Logic
-    const isServiceDone = status !== 'assigned' && status !== 'in_progress' && status !== 'requested';
-    const isSettlementRequested = status === 'hq_check' || status === 'completed';
+    const getStatusBadge = (s) => {
+        switch (s) {
+            case 'assigned': return <span className="text-yellow-700 bg-yellow-100 px-2 py-1 rounded-md text-xs font-bold">🟡 팀장 배정</span>;
+            case 'consulting': return <span className="text-orange-700 bg-orange-100 px-2 py-1 rounded-md text-xs font-bold">🗣️ 상담 중</span>;
+            case 'in_progress': return <span className="text-blue-700 bg-blue-100 px-2 py-1 rounded-md text-xs font-bold">🔵 서비스 진행</span>;
+            case 'team_settling': return <span className="text-green-700 bg-green-100 px-2 py-1 rounded-md text-xs font-bold">🟢 정산 대기</span>;
+            case 'hq_check': return <span className="text-green-700 bg-green-100 px-2 py-1 rounded-md text-xs font-bold">🟢 정산 검토 중</span>;
+            case 'completed': return <span className="text-gray-700 bg-gray-100 px-2 py-1 rounded-md text-xs font-bold">⚪ 완료됨</span>;
+            default: return <span className="text-gray-500 bg-gray-100 px-2 py-1 rounded-md text-xs font-bold">{s}</span>;
+        }
+    };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* Card Header */}
-            <div className="p-5 border-b border-gray-50 flex justify-between items-start">
-                <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full ${status === 'requested' ? 'bg-red-500' : 'bg-green-500'}`}></span>
-                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{status}</span>
-                    </div>
-                    <h4 className="font-bold text-lg text-gray-900">{profiles?.name || '고객'} 님 장례</h4>
-                    <div className="flex items-center text-gray-500 text-sm mt-1">
-                        <MapPin className="w-3.5 h-3.5 mr-1" />
-                        {location}
-                    </div>
-                </div>
-                <button className="text-gray-400 hover:text-gray-600">
-                    <ChevronRight />
-                </button>
-            </div>
-
-            {/* Card Body */}
-            <div className="p-5 bg-gray-50/50 space-y-3">
-                <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">이용 상품</span>
-                    <span className="font-medium text-gray-900">{package_name}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">결제 금액</span>
-                    <span className="font-bold text-gray-900">₩ {final_price?.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
-                    <span className="text-gray-600 font-medium">본사 입금할 수수료</span>
-                    <span className="font-bold text-red-600">₩ {commission_amount?.toLocaleString()}</span>
-                </div>
-            </div>
-
-            {/* Action Button */}
-            <div className="p-4 bg-white border-t border-gray-100">
-                {isFlowerOrderRequired && !hasOrderedFlower && (status === 'assigned' || status === 'in_progress') ? (
-                    <button
-                        onClick={() => onOrderFlower(id)}
-                        className="w-full bg-pink-100 text-pink-700 font-bold py-3 rounded-xl mb-3 hover:bg-pink-200 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                        ✿ 하늘꽃 발주 (필수)
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4 transition-all hover:shadow-md">
+            <div className="p-5 border-b border-gray-50 flex justify-between items-start bg-gray-50/30"><div><div className="flex items-center gap-2 mb-2">{getStatusBadge(status)}</div><h4 className="font-bold text-lg text-gray-900">{profiles?.name || '고객'} 님 장례</h4><div className="flex items-center text-gray-500 text-sm mt-1"><MapPin className="w-3.5 h-3.5 mr-1" />{location}</div></div></div>
+            <div className="p-4 bg-white border-t border-gray-100 space-y-2">
+                {status === 'assigned' && (
+                    <button onClick={() => onUpdate(id, 'consulting')} className="w-full bg-orange-50 text-orange-700 border border-orange-200 font-bold py-3.5 rounded-xl hover:bg-orange-100 transition-colors flex items-center justify-center gap-2">
+                        <span>다음 단계:</span> <span>🗣️ 상담 시작</span>
                     </button>
-                ) : null}
-
-                {status === 'team_settling' ? (
-                    <button
-                        onClick={() => {
-                            if (window.confirm(`${commission_amount?.toLocaleString()}원을 본사 계좌로 이체하셨습니까?`)) {
-                                onUpdate(id, 'hq_check');
-                            }
-                        }}
-                        className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                        <CheckCircle className="w-5 h-5" />
-                        이체 완료 (정산 신청)
+                )}
+                {status === 'consulting' && (
+                    <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => onUpdate(id, 'in_progress')} className="bg-blue-50 text-blue-700 border border-blue-200 font-bold py-3.5 rounded-xl hover:bg-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
+                            <span>🔵 빈소 설치</span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (confirm('상담을 취소하시겠습니까?\n배정이 취소되어 다시 전체 공고로 올라갑니다.')) {
+                                    onUpdate(id, 'requested', { team_leader_id: null });
+                                }
+                            }}
+                            className="bg-red-50 text-red-600 border border-red-100 font-bold py-3.5 rounded-xl hover:bg-red-100 transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                            <span>❌ 상담 취소</span>
+                        </button>
+                    </div>
+                )}
+                {status === 'in_progress' && (
+                    <div className="space-y-2">
+                        {isFlowerOrderRequired && !hasOrderedFlower && (
+                            <button onClick={() => onOrderFlower(id)} className="w-full bg-pink-50 text-pink-700 border border-pink-200 font-bold py-3.5 rounded-xl hover:bg-pink-100 transition-colors flex items-center justify-center gap-2 animate-pulse">
+                                ✿ 하늘꽃 발주 (필수)
+                            </button>
+                        )}
+                        <button onClick={() => onUpdate(id, 'team_settling')} className="w-full bg-green-50 text-green-700 border border-green-200 font-bold py-3.5 rounded-xl hover:bg-green-100 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
+                            <span>다음 단계:</span> <span>🟢 장례 종료 (정산 요청)</span>
+                        </button>
+                    </div>
+                )}
+                {status === 'team_settling' && (
+                    <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                        🟢 정산 확인 대기 (관리자 승인 대기)
                     </button>
-                ) : status === 'hq_check' ? (
-                    <div className="w-full bg-blue-50 text-blue-600 font-bold py-3 rounded-xl flex items-center justify-center gap-2">
+                )}
+                {status === 'hq_check' && (
+                    <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
                         <Clock className="w-5 h-5" />
-                        본사 확인 중
-                    </div>
-                ) : status === 'in_progress' || status === 'assigned' || status === 'requested' ? (
-                    <button
-                        onClick={() => onUpdate(id, 'team_settling')}
-                        className="w-full bg-white border-2 border-indigo-600 text-indigo-600 font-bold py-3 rounded-xl hover:bg-indigo-50 active:scale-95 transition-all"
-                    >
-                        장례 종료 (정산 시작)
+                        🟢 본사 정산 검토 중
                     </button>
-                ) : (
-                    <div className="text-center text-gray-400 text-sm font-medium py-2">
-                        완료된 건입니다.
-                    </div>
+                )}
+                {status === 'completed' && (
+                    <button className="w-full bg-gray-50 border border-gray-200 text-gray-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
+                        <CheckCircle className="w-5 h-5" />
+                        ⚪ 완료된 장례입니다
+                    </button>
                 )}
             </div>
         </div>
     );
 }
-
-

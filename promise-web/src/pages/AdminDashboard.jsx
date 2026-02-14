@@ -14,8 +14,10 @@ import {
     ChevronRight,
     DollarSign,
     LogOut,
-    Lock
+    Lock,
+    Download // New: Icon for download
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState('settlement'); // 'dashboard', 'settlement', 'cases', 'partners', 'settings'
@@ -78,16 +80,28 @@ export default function AdminDashboard() {
 
             // 5. Fetch Password Reset Requests
             const { data: requestData } = await supabase
+                .from('profiles')
                 .select('*')
                 .eq('password_reset_requested', true);
             if (requestData) setPasswordRequests(requestData);
 
             // 6. Fetch Coupons
-            const { data: couponData } = await supabase
-                .from('coupons')
-                .select('*')
-                .order('created_at', { ascending: false });
-            if (couponData) setCoupons(couponData);
+            // 6. Fetch Coupons
+            try {
+                const { data: couponData, error: couponError } = await supabase
+                    .from('coupons')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (couponError) {
+                    console.error('Coupons Fetch Error:', couponError);
+                } else {
+                    console.log('Fetched Coupons:', couponData?.length || 0, couponData);
+                    if (couponData) setCoupons(couponData);
+                }
+            } catch (innerError) {
+                console.error('Coupons Fetch Exception:', innerError);
+            }
 
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -193,6 +207,33 @@ export default function AdminDashboard() {
         return role === 'assistant' ? '상례사' : role;
     };
 
+    // Grade Change Modal State
+    const [gradeModal, setGradeModal] = useState({ isOpen: false, partnerId: null, currentGrade: '', name: '' });
+
+    const openGradeModal = (partnerId, currentGrade, name) => {
+        setGradeModal({ isOpen: true, partnerId, currentGrade, name });
+    };
+
+    const confirmGradeChange = async (newGrade) => {
+        if (!gradeModal.partnerId) return;
+
+        if (confirm(`${gradeModal.name}님의 등급을 '${gradeModal.currentGrade}' → '${newGrade}'(으)로 변경하시겠습니까?`)) {
+            const { error } = await supabase
+                .from('partners')
+                .update({ grade: newGrade })
+                .eq('user_id', gradeModal.partnerId);
+
+            if (error) {
+                console.error('Grade Update Error:', error);
+                alert('등급 변경 실패: ' + error.message);
+            } else {
+                alert('등급이 변경되었습니다.');
+                fetchData();
+            }
+        }
+        setGradeModal({ isOpen: false, partnerId: null, currentGrade: '', name: '' });
+    };
+
     return (
         <div className="min-h-screen bg-[#FCFBF9] flex font-sans">
             {/* Sidebar */}
@@ -285,14 +326,20 @@ export default function AdminDashboard() {
                             <Bell className="w-5 h-5 text-gray-500 hover:text-gray-700 cursor-pointer" />
                             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
                         </div>
-                        <div
-                            className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs cursor-pointer"
+                        <button
                             onClick={() => {
                                 if (confirm('로그아웃 하시겠습니까?')) {
                                     localStorage.removeItem('user');
                                     window.location.href = '/login';
                                 }
                             }}
+                            className="flex items-center gap-1 text-gray-500 hover:text-red-500 transition-colors text-sm font-medium"
+                        >
+                            로그아웃
+                            <LogOut className="w-4 h-4" />
+                        </button>
+                        <div
+                            className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs"
                         >
                             {JSON.parse(localStorage.getItem('user') || '{}').name?.[0] || 'A'}
                         </div>
@@ -314,7 +361,6 @@ export default function AdminDashboard() {
                                 {activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : '파트너 리스트'}
                             </h3>
                             <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
-                            <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
                         </div>
 
                         {/* Partner Filter Tabs */}
@@ -334,7 +380,7 @@ export default function AdminDashboard() {
                                 onApproveReset={handleApproveReset}
                             />
                         ) : activeTab === 'coupons' ? (
-                            <CouponPanel coupons={coupons} onUpdate={fetchData} />
+                            <CouponPanel coupons={coupons} onUpdate={fetchData} supabase={supabase} />
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
@@ -346,6 +392,8 @@ export default function AdminDashboard() {
                                                     <th className="px-6 py-4">상주 성함 (연락처)</th>
                                                     <th className="px-6 py-4">장소</th>
                                                     <th className="px-6 py-4">상품</th>
+                                                    <th className="px-6 py-4">담당 팀장</th>
+                                                    <th className="px-6 py-4">소속 마스터</th>
                                                     <th className="px-6 py-4 text-center">상태</th>
                                                 </>
                                             ) : activeTab === 'settlement' ? (
@@ -362,7 +410,7 @@ export default function AdminDashboard() {
                                                     <th className="px-6 py-4">연락처</th>
                                                     <th className="px-6 py-4">활동 지역</th>
                                                     <th className="px-6 py-4">등급</th>
-                                                    <th className="px-6 py-4">상태 관리</th>
+                                                    <th className="px-6 py-4 text-center">상태 관리</th>
                                                 </>
                                             )}
                                         </tr>
@@ -379,10 +427,48 @@ export default function AdminDashboard() {
                                                     </td>
                                                     <td className="px-6 py-4 text-gray-600">{item.location}</td>
                                                     <td className="px-6 py-4 text-gray-600">{item.package_name}</td>
+                                                    <td className="px-6 py-4">
+                                                        {(() => {
+                                                            if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
+                                                            const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                            return p ? (
+                                                                <div>
+                                                                    <div className="font-bold text-gray-900">{p.profiles?.name}</div>
+                                                                    <div className="text-xs text-indigo-500">{p.grade}</div>
+                                                                </div>
+                                                            ) : <span className="text-gray-400">정보 없음</span>;
+                                                        })()}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {(() => {
+                                                            if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
+                                                            const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                            if (!p) return '-';
+                                                            if (p.grade === 'Master') return <span className="text-xs  bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">본인 (Master)</span>;
+                                                            if (p.master_id) {
+                                                                const m = partners.find(mp => mp.user_id === p.master_id);
+                                                                return m ? <span className="font-medium text-gray-700">{m.profiles?.name}</span> : <span className="text-red-400 text-xs">마스터 정보 없음</span>;
+                                                            }
+                                                            return <span className="text-gray-400 text-xs">-</span>;
+                                                        })()}
+                                                    </td>
                                                     <td className="px-6 py-4 text-center">
-                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${item.status === 'requested' ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-gray-100 text-gray-600'}`}>
-                                                            {item.status === 'requested' ? '🚨 긴급 접수' : item.status}
-                                                        </span>
+                                                        {(() => {
+                                                            const statusMap = {
+                                                                'requested': { label: '🚨 접수 대기', class: 'bg-red-100 text-red-700 animate-pulse' },
+                                                                'assigned': { label: '🟡 팀장 배정', class: 'bg-yellow-100 text-yellow-700' },
+                                                                'consulting': { label: '🗣️ 상담 중', class: 'bg-orange-100 text-orange-700' },
+                                                                'in_progress': { label: '🔵 서비스 진행', class: 'bg-blue-100 text-blue-700' },
+                                                                'settling': { label: '🟢 정산 대기', class: 'bg-green-100 text-green-700' },
+                                                                'completed': { label: '⚪ 완료됨', class: 'bg-gray-100 text-gray-600' }
+                                                            };
+                                                            const status = statusMap[item.status] || { label: item.status, class: 'bg-gray-100 text-gray-600' };
+                                                            return (
+                                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${status.class}`}>
+                                                                    {status.label}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                 </tr>
                                             ))
@@ -420,7 +506,13 @@ export default function AdminDashboard() {
                                                         <td className="px-6 py-4 text-gray-600">{partner.profiles?.phone}</td>
                                                         <td className="px-6 py-4 text-gray-600">{partner.region}</td>
                                                         <td className="px-6 py-4">
-                                                            <span className="bg-purple-100 text-purple-700 font-bold px-2 py-1 rounded text-xs">{partner.grade}</span>
+                                                            <button
+                                                                onClick={() => openGradeModal(partner.user_id, partner.grade, partner.profiles?.name)}
+                                                                className="bg-purple-100 text-purple-700 font-bold px-2 py-1 rounded text-xs hover:bg-purple-200 transition-colors cursor-pointer border border-purple-200"
+                                                                title="클릭하여 등급 변경"
+                                                            >
+                                                                {partner.grade || 'N/A'} ✏️
+                                                            </button>
                                                         </td>
                                                         <td className="px-6 py-4 font-mono text-gray-500 text-xs flex items-center gap-2">
                                                             <button
@@ -441,14 +533,48 @@ export default function AdminDashboard() {
                                                 ))
                                         )}
                                     </tbody>
-                                </table>
+                                </table >
                             </div>
                         )}
-
                     </div>
                 </div>
-            </main>
-        </div>
+            </main >
+
+            {/* Grade Selection Modal */}
+            {
+                gradeModal.isOpen && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fadeIn">
+                        <div className="bg-white rounded-xl shadow-2xl p-6 w-80 max-w-full transform transition-all scale-100">
+                            <h3 className="text-lg font-bold text-gray-800 mb-2">등급 변경</h3>
+                            <p className="text-sm text-gray-500 mb-6">
+                                <span className="font-bold text-indigo-600">{gradeModal.name}</span> 님의 새로운 등급을 선택하세요.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                {['Master', 'A', 'B', 'C'].map((grade) => (
+                                    <button
+                                        key={grade}
+                                        onClick={() => confirmGradeChange(grade)}
+                                        className={`py-3 rounded-lg font-bold border transition-all 
+                                        ${gradeModal.currentGrade === grade ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300'}
+                                    `}
+                                    >
+                                        {grade}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={() => setGradeModal({ ...gradeModal, isOpen: false })}
+                                className="w-full py-2.5 text-gray-500 font-medium hover:bg-gray-100 rounded-lg transition-colors text-sm"
+                            >
+                                취소
+                            </button>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }
 
@@ -654,8 +780,13 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
     );
 }
 
-function CouponPanel({ coupons, onUpdate }) {
+function CouponPanel({ coupons, onUpdate, supabase }) {
     const [amount, setAmount] = useState('200000');
+    const [debugMsg, setDebugMsg] = useState('');
+
+    useEffect(() => {
+        setDebugMsg(`Loaded Coupons: ${coupons ? coupons.length : 'null'}`);
+    }, [coupons]);
     const [phone, setPhone] = useState('');
     const [generatedCoupon, setGeneratedCoupon] = useState(null);
     // New: Bulk Issuance State
@@ -663,6 +794,21 @@ function CouponPanel({ coupons, onUpdate }) {
     const [quantity, setQuantity] = useState(1);
     const [memo, setMemo] = useState('');
     const [generatedBatch, setGeneratedBatch] = useState(null); // { count: 10, amount: 200000, csvUrl: ... }
+    const [searchTerm, setSearchTerm] = useState(''); // New: Search Term
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        await onUpdate();
+        setTimeout(() => setIsRefreshing(false), 500); // Visual feedback
+    };
+
+    // Filter coupons based on search
+    const filteredCoupons = coupons ? coupons.filter(c =>
+        c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.issued_to && c.issued_to.includes(searchTerm)) ||
+        (c.batch_name && c.batch_name.toLowerCase().includes(searchTerm.toLowerCase()))
+    ) : [];
 
     const handleIssue = async (e) => {
         e.preventDefault();
@@ -878,7 +1024,35 @@ function CouponPanel({ coupons, onUpdate }) {
             )}
 
             {/* List */}
-            <h4 className="font-bold text-gray-800 mb-4">발행 내역</h4>
+            {/* List */}
+            {/* List */}
+
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-4">
+                    <h4 className="font-bold text-gray-800">발행 내역</h4>
+                    <div className="relative">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="쿠폰번호, 연락처, 메모 검색..."
+                            className="pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64 transition-all"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                </div>
+                <button
+                    onClick={handleRefresh}
+                    className={`text-xs text-indigo-500 underline flex items-center gap-1 ${isRefreshing ? 'opacity-50 cursor-not-allowed' : 'hover:text-indigo-700'}`}
+                    disabled={isRefreshing}
+                >
+                    {isRefreshing ? '불러오는 중...' : '새로고침'}
+                </button>
+            </div>
+
+            {/* Hidden Coupon Template for Image Generation */}
+            {/* ... (Hidden Template Code) ... */}
+
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                     <thead className="bg-gray-50 text-gray-500 font-medium">
@@ -888,13 +1062,29 @@ function CouponPanel({ coupons, onUpdate }) {
                             <th className="px-6 py-4">금액</th>
                             <th className="px-6 py-4 text-center">상태</th>
                             <th className="px-6 py-4">발행일</th>
+                            <th className="px-6 py-4 text-right">관리</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {coupons.map(coupon => (
+                        {filteredCoupons.length === 0 && (
+                            <tr>
+                                <td colSpan="6" className="px-6 py-8 text-center text-gray-400">
+                                    {searchTerm ? '검색 결과가 없습니다.' : '발행된 쿠폰이 없습니다.'}
+                                </td>
+                            </tr>
+                        )}
+                        {filteredCoupons.map(coupon => (
                             <tr key={coupon.code} className="hover:bg-gray-50">
                                 <td className="px-6 py-4 font-mono font-bold text-indigo-600">{coupon.code}</td>
-                                <td className="px-6 py-4 text-gray-900">{coupon.issued_to}</td>
+                                <td className="px-6 py-4 text-gray-900">
+                                    {coupon.issued_to ? (
+                                        coupon.issued_to
+                                    ) : (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                            {coupon.batch_name || '대량발행'}
+                                        </span>
+                                    )}
+                                </td>
                                 <td className="px-6 py-4 font-bold">₩ {coupon.amount.toLocaleString()}</td>
                                 <td className="px-6 py-4 text-center">
                                     <span className={`px-2 py-1 rounded text-xs font-bold ${coupon.status === 'used' ? 'bg-gray-200 text-gray-500' : 'bg-green-100 text-green-700'}`}>
@@ -902,6 +1092,38 @@ function CouponPanel({ coupons, onUpdate }) {
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 text-gray-500 text-xs">{new Date(coupon.created_at).toLocaleDateString()}</td>
+                                <td className="px-6 py-4 text-right">
+                                    <button
+                                        onClick={async () => {
+                                            const template = document.getElementById('coupon-template');
+                                            const amountEl = document.getElementById('coupon-amount');
+                                            const codeEl = document.getElementById('coupon-code');
+                                            const dateEl = document.getElementById('coupon-date');
+
+                                            if (template && amountEl && codeEl && dateEl) {
+                                                // Fill Data
+                                                amountEl.innerText = coupon.amount.toLocaleString();
+                                                codeEl.innerText = coupon.code;
+                                                dateEl.innerText = new Date(coupon.created_at).toLocaleDateString();
+
+                                                try {
+                                                    const canvas = await html2canvas(template, { scale: 2 });
+                                                    const link = document.createElement('a');
+                                                    link.download = `coupon_${coupon.code}.jpg`;
+                                                    link.href = canvas.toDataURL('image/jpeg', 0.9);
+                                                    link.click();
+                                                } catch (err) {
+                                                    console.error('Image Gen Error', err);
+                                                    alert('이미지 생성 실패');
+                                                }
+                                            }
+                                        }}
+                                        className="text-gray-400 hover:text-indigo-600 transition-colors p-2"
+                                        title="이미지로 다운로드"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>

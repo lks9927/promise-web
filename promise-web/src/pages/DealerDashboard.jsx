@@ -7,240 +7,393 @@ import {
     Calendar,
     ChevronRight,
     PieChart,
-    LogOut
+    LogOut,
+    PlusCircle,
+    List,
+    Home,
+    MapPin,
+    Package
 } from 'lucide-react';
-
-// Mock Logged In Dealer (Kim Cheol-su)
-const CURRENT_DEALER_ID = 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13';
+import { useNavigate } from 'react-router-dom';
 
 export default function DealerDashboard() {
+    const [activeTab, setActiveTab] = useState('home'); // 'home', 'register', 'status'
+    const [user, setUser] = useState(null);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            setUser(JSON.parse(storedUser));
+        } else {
+            navigate('/login');
+        }
+    }, [navigate]);
+
+    if (!user) return <div className="p-4 text-center">Loading...</div>;
+
+    return (
+        <div className="min-h-screen bg-gray-50 pb-20">
+            {/* Header */}
+            <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10 flex justify-between items-center shadow-sm">
+                <div>
+                    <h1 className="text-xl font-bold text-gray-900">
+                        {activeTab === 'home' && '파트너 센터'}
+                        {activeTab === 'register' && '장례 간편 접수'}
+                        {activeTab === 'status' && '내 접수 현황'}
+                    </h1>
+                    <p className="text-sm text-gray-500">{user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님 ({user.role === 'dealer' && 'Master'})</p>
+                </div>
+                <button
+                    onClick={() => {
+                        if (confirm('로그아웃 하시겠습니까?')) {
+                            localStorage.removeItem('user');
+                            navigate('/login');
+                        }
+                    }}
+                    className="flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors"
+                >
+                    <span className="text-sm font-medium">로그아웃</span>
+                    <LogOut className="w-6 h-6" />
+                </button>
+            </header>
+
+            <main className="p-4 max-w-lg mx-auto space-y-6">
+                {activeTab === 'home' && <HomeTab user={user} />}
+                {activeTab === 'register' && <RegisterTab user={user} onSuccess={() => setActiveTab('status')} />}
+                {activeTab === 'status' && <StatusTab user={user} />}
+            </main>
+
+            {/* Bottom Navigation */}
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-3 pb-safe z-50">
+                <NavButton icon={Home} label="홈" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+                <NavButton icon={PlusCircle} label="접수하기" active={activeTab === 'register'} onClick={() => setActiveTab('register')} />
+                <NavButton icon={List} label="접수현황" active={activeTab === 'status'} onClick={() => setActiveTab('status')} />
+            </nav>
+        </div>
+    );
+}
+
+function NavButton({ icon: Icon, label, active, onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            className={`flex flex-col items-center gap-1 ${active ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+        >
+            <Icon className={`w-6 h-6 ${active ? 'fill-current' : ''}`} />
+            <span className="text-xs font-medium">{label}</span>
+        </button>
+    );
+}
+
+// --- Tabs ---
+
+function HomeTab({ user }) {
     const [earnings, setEarnings] = useState([]);
-    const [team, setTeam] = useState([]); // Sub-dealers
-    const [config, setConfig] = useState({}); // System Config
+    const [team, setTeam] = useState([]);
+    const [coupons, setCoupons] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchEarnings();
-        fetchTeamAndConfig();
-    }, []);
+        fetchData();
+    }, [user.id]);
 
-    const fetchEarnings = async () => {
+    const fetchData = async () => {
+        setLoading(true);
+        // 1. Fetch Earnings
+        const { data: earningData } = await supabase
+            .from('settlements')
+            .select(`*, funeral_cases (location, package_name, profiles:customer_id (name))`)
+            .eq('recipient_id', user.id)
+            .order('created_at', { ascending: false });
+        if (earningData) setEarnings(earningData);
+
+        // 2. Fetch Team (if Master)
+        // Assuming current user ID is master_id for others
+        const { data: teamData } = await supabase
+            .from('partners')
+            .select('*, profiles:user_id(name)')
+            .eq('master_id', user.id);
+        if (teamData) setTeam(teamData);
+
+        // 3. Fetch Coupons
+        // "Allow All Access" policy is active, but we should verify logic.
+        // For now, fetching all coupons to see if permissions work, ideally filter by issued_to or owner if column exists.
+        // Based on previous check, 'issued_to' was null.
+        // Assuming we show ALL coupons for now as per permission fix, or user specific if they claim it.
+        // Let's fetch all for diagnosis if 'issued_to' is not reliable yet.
+        const { data: couponData } = await supabase
+            .from('coupons')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (couponData) setCoupons(couponData);
+
+        setLoading(false);
+    };
+
+    const totalRevenue = earnings.reduce((acc, curr) => acc + curr.amount, 0);
+
+    return (
+        <div className="space-y-6">
+            {/* Revenue Card */}
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-6 text-white shadow-lg shadow-indigo-200">
+                <div className="flex justify-between items-center mb-4">
+                    <span className="text-indigo-100 font-medium">총 누적 수익금</span>
+                    <TrendingUp className="w-5 h-5 text-indigo-200" />
+                </div>
+                <h2 className="text-4xl font-bold">₩ {totalRevenue.toLocaleString()}</h2>
+                <div className="mt-4 flex gap-2">
+                    <span className="text-xs bg-white/20 px-2 py-1 rounded">이번 달: ₩ {(totalRevenue * 0.8).toLocaleString()} (예상)</span>
+                </div>
+            </div>
+
+            {/* Coupons Section */}
+            <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+                <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-indigo-600" />
+                    보유 쿠폰
+                </h3>
+                {loading ? <p>로딩 중...</p> : (
+                    <div className="space-y-3">
+                        {coupons.length === 0 ? <p className="text-gray-400 text-sm">보유한 쿠폰이 없습니다.</p> : coupons.map(coupon => (
+                            <div key={coupon.code} className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex justify-between items-center">
+                                <div>
+                                    <div className="font-bold text-indigo-900 text-lg">₩ {coupon.amount.toLocaleString()}</div>
+                                    <div className="text-xs text-indigo-600 font-mono mt-1">{coupon.code}</div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${coupon.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                                        {coupon.status === 'active' ? '사용 가능' : '사용 완료'}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(coupon.code);
+                                            alert('쿠폰 코드가 복사되었습니다.');
+                                        }}
+                                        className="text-xs text-gray-500 underline"
+                                    >
+                                        코드 복사
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* My Team */}
+            {team.length > 0 && (
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+                    <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                        <Users className="w-5 h-5 text-indigo-600" />
+                        내 하위 파트너 ({team.length}명)
+                    </h3>
+                    <div className="space-y-2">
+                        {team.map(member => (
+                            <div key={member.id} className="flex justify-between text-sm py-2 border-b border-gray-50 last:border-0">
+                                <span className="font-medium">{member.profiles?.name}</span>
+                                <span className="text-gray-500">{member.region} • {member.grade}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Recent Activity List (Simplified) */}
+            <div>
+                <h3 className="font-bold text-gray-800 mb-3">최근 수익 내역</h3>
+                {loading ? <p>로딩 중...</p> : (
+                    <div className="space-y-3">
+                        {earnings.length === 0 ? <p className="text-gray-400 text-center py-4">내역이 없습니다.</p> : earnings.map(item => (
+                            <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                                <div>
+                                    <div className="font-bold text-gray-800">{item.funeral_cases?.profiles?.name || '고객'} 장례</div>
+                                    <div className="text-xs text-gray-500">{item.type === 'dealer_commission' ? '판매 수수료' : '오버라이딩'}</div>
+                                </div>
+                                <div className="text-indigo-600 font-bold">+ {item.amount.toLocaleString()}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function RegisterTab({ user, onSuccess }) {
+    const [formData, setFormData] = useState({
+        customerName: '',
+        customerPhone: '',
+        location: '',
+        packageName: '기본형',
+        memo: ''
+    });
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!confirm('정말 접수하시겠습니까?')) return;
+        setLoading(true);
+
         try {
-            setLoading(true);
+            // 1. Create/Find Customer Profile (Simplified flow: dealers register on behalf of customers)
+            // Since we don't have full customer auth flow here, we'll link it to the dealer as the 'creator' but ideally should be customer_id
+            // For this MVP, we map 'customer_id' to the User ID (Dealer) temporarily OR create a dummy customer.
+            // Let's use the Dealer ID as 'customer_id' for now to show "My Cases", 
+            // OR better: Create a dummy profile for the customer? No, that's complex.
+            // USE CASE: Dealer IS the requester in the system for now.
 
-            // Fetch settlements for this dealer
-            const { data, error } = await supabase
-                .from('settlements')
-                .select(`
-          *,
-          funeral_cases (
-            location,
-            package_name,
-            profiles:customer_id (name)
-          )
-        `)
-                .eq('recipient_id', CURRENT_DEALER_ID) // Only my money
-                .order('created_at', { ascending: false });
+            const { error } = await supabase.from('funeral_cases').insert({
+                customer_id: user.id, // The dealer is the requester
+                location: formData.location || '미정',
+                package_name: formData.packageName,
+                status: 'requested' // 🚨 긴급 접수
+            });
 
             if (error) throw error;
-            setEarnings(data || []);
+
+            alert('✅ 접수가 완료되었습니다.\n본사에서 곧 해피콜을 드립니다.');
+            onSuccess();
         } catch (error) {
-            console.error('Error fetching earnings:', error);
+            console.error(error);
+            alert('접수 실패: ' + error.message);
         } finally {
             setLoading(false);
         }
     };
 
-    const fetchTeamAndConfig = async () => {
-        // 1. Check if I am a Master (Do I have partners with my ID as master_id?)
-        const { data: teamData } = await supabase
-            .from('partners')
-            .select('*, profiles:user_id(name, phone)')
-            .eq('master_id', CURRENT_DEALER_ID);
-        if (teamData) setTeam(teamData);
-
-        // 2. Fetch System Config
-        const { data: configData } = await supabase.from('system_config').select('*');
-        if (configData) {
-            const configMap = configData.reduce((acc, cur) => ({ ...acc, [cur.key]: cur.value }), {});
-            setConfig(configMap);
-        }
-    };
-
-    // Calculate totals
-    const myCommission = earnings.filter(e => e.type !== 'override_fee').reduce((acc, curr) => acc + curr.amount, 0);
-    const overrideCommission = earnings.filter(e => e.type === 'override_fee').reduce((acc, curr) => acc + curr.amount, 0);
-
-    // Override Logic: Pending Count
-    const pendingOverrides = earnings.filter(e => e.type === 'override_fee' && e.status === 'pending');
-    const overrideCount = pendingOverrides.length;
-
-    // Total Display
-    const totalDisplay = myCommission + overrideCommission;
-    const pendingCommission = earnings.filter(e => e.status === 'pending').reduce((acc, curr) => acc + curr.amount, 0);
-    const paidCommission = earnings.filter(e => e.status === 'paid').reduce((acc, curr) => acc + curr.amount, 0);
-
-    // Global Settle Flag
-    const isGlobalSettleEnabled = config.global_settlement_enabled === 'true';
-
     return (
-        <div className="min-h-screen bg-gray-50 pb-20">
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10 flex justify-between items-center">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">장례 긴급 접수</h2>
+            <p className="text-sm text-gray-500 mb-6">고객님의 정보를 입력해주시면 상황실로 즉시 전송됩니다.</p>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <h1 className="text-xl font-bold text-gray-900">파트너 센터</h1>
-                    <p className="text-sm text-gray-500">김철수 딜러님 (Gold)</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">고객명 (상주)</label>
+                    <input
+                        type="text"
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="홍길동"
+                        value={formData.customerName}
+                        onChange={e => setFormData({ ...formData, customerName: e.target.value })}
+                    />
                 </div>
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => {
-                            if (confirm('로그아웃 하시겠습니까?')) {
-                                localStorage.removeItem('user');
-                                window.location.href = '/login';
-                            }
-                        }}
-                        className="text-gray-400 hover:text-red-500 transition-colors"
-                        title="로그아웃"
-                    >
-                        <LogOut className="w-6 h-6" />
-                    </button>
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                        김
-                    </div>
-                </div>
-            </header>
-
-            <main className="p-4 max-w-lg mx-auto space-y-6">
-                {/* Earnings Card */}
-                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg shadow-blue-200">
-                    <div className="flex justify-between items-center mb-6">
-                        <span className="text-blue-100 font-medium">총 누적 수익금 (본인+팀)</span>
-                        <TrendingUp className="w-5 h-5 text-blue-200" />
-                    </div>
-                    <h2 className="text-4xl font-bold mb-2">₩ {totalDisplay.toLocaleString()}</h2>
-
-                    {team.length > 0 && (
-                        <div className="mb-4 text-sm bg-blue-800/30 p-2 rounded inline-block">
-                            👑 팀 오버라이딩: ₩ {overrideCommission.toLocaleString()} (적립 {overrideCount}건)
-                        </div>
-                    )}
-
-                    <div className="flex gap-4 mt-2">
-                        <div className="bg-white/10 rounded-lg p-3 flex-1 backdrop-blur-sm">
-                            <span className="block text-xs text-blue-200 mb-1">지급 완료</span>
-                            <span className="font-bold text-lg">₩ {paidCommission.toLocaleString()}</span>
-                        </div>
-                        <div className="bg-white/20 rounded-lg p-3 flex-1 backdrop-blur-sm border border-white/10">
-                            <span className="block text-xs text-blue-100 mb-1">정산 대기</span>
-                            <span className="font-bold text-lg">₩ {pendingCommission.toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Master Section: My Team */}
-                {team.length > 0 && (
-                    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-                        <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                            <Users className="w-5 h-5 text-indigo-600" />
-                            내 하위 파트너 ({team.length}명)
-                        </h3>
-                        <div className="space-y-2">
-                            {team.map(member => (
-                                <div key={member.id} className="flex justify-between text-sm py-2 border-b border-gray-50 last:border-0">
-                                    <span className="font-medium">{member.profiles?.name}</span>
-                                    <span className="text-gray-500">{member.region} • {member.grade}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Recent Activity */}
                 <div>
-                    <h3 className="font-bold text-gray-800 mb-3 px-1 flex items-center justify-between">
-                        <span>최근 영업 실적</span>
-                        <button onClick={fetchEarnings} className="text-xs text-blue-600">새로고침</button>
-                    </h3>
-
-                    <div className="space-y-3">
-                        {loading ? (
-                            <p className="text-center text-gray-400 py-8">데이터 불러오는 중...</p>
-                        ) : earnings.length === 0 ? (
-                            <div className="bg-white p-8 rounded-xl text-center text-gray-500 shadow-sm">
-                                아직 정산 내역이 없습니다.
-                            </div>
-                        ) : (
-                            earnings.map(item => (
-                                <EarningItem key={item.id} item={item} />
-                            ))
-                        )}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">연락처</label>
+                    <input
+                        type="tel"
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="010-1234-5678"
+                        value={formData.customerPhone}
+                        onChange={e => {
+                            // Auto-format phone
+                            let val = e.target.value.replace(/[^0-9]/g, '');
+                            if (val.length > 3 && val.length <= 7) val = val.replace(/(\d{3})(\d+)/, '$1-$2');
+                            else if (val.length > 7) val = val.replace(/(\d{3})(\d{4})(\d+)/, '$1-$2-$3');
+                            setFormData({ ...formData, customerPhone: val.slice(0, 13) });
+                        }}
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">장례식장 (선택)</label>
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="서울대병원 장례식장"
+                            value={formData.location}
+                            onChange={e => setFormData({ ...formData, location: e.target.value })}
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">희망 상품 (선택)</label>
+                    <div className="relative">
+                        <Package className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+                        <select
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none bg-white"
+                            value={formData.packageName}
+                            onChange={e => setFormData({ ...formData, packageName: e.target.value })}
+                        >
+                            <option value="기본형">기본형 (390만원)</option>
+                            <option value="고급형">고급형 (490만원)</option>
+                            <option value="프리미엄">프리미엄 (590만원)</option>
+                            <option value="VIP">VIP (790만원)</option>
+                        </select>
                     </div>
                 </div>
 
-                {/* Quick Actions */}
-                <div className="grid grid-cols-2 gap-4">
-                    <button className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center gap-2 hover:bg-gray-50 transition-colors">
-                        <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
-                            <PieChart className="w-5 h-5" />
-                        </div>
-                        <span className="font-bold text-gray-700 text-sm">실적 리포트</span>
-                    </button>
-
-                    <button
-                        disabled={!isGlobalSettleEnabled || (overrideCount > 0 && overrideCount < 10)}
-                        onClick={() => {
-                            if (!isGlobalSettleEnabled) return alert('현재 정산 기간이 아닙니다.');
-                            if (overrideCount > 0 && overrideCount < 10) return alert('오버라이딩 수익은 10건 이상 누적 시 정산 가능합니다.');
-                            alert('본사로 출금 신청을 보냈습니다.');
-                        }}
-                        className={`p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center gap-2 transition-colors ${!isGlobalSettleEnabled || (overrideCount > 0 && overrideCount < 10)
-                            ? 'bg-gray-100 cursor-not-allowed opacity-50'
-                            : 'bg-white hover:bg-gray-50'
-                            }`}
-                    >
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${!isGlobalSettleEnabled ? 'bg-gray-200 text-gray-400' : 'bg-green-100 text-green-600'
-                            }`}>
-                            <DollarSign className="w-5 h-5" />
-                        </div>
-                        <span className="font-bold text-gray-700 text-sm">
-                            {!isGlobalSettleEnabled ? '정산 마감' : '출금 신청'}
-                        </span>
-                    </button>
-                </div>
-            </main>
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
+                >
+                    {loading ? '접수 중...' : '접수 완료'}
+                </button>
+            </form>
         </div>
     );
 }
 
-function EarningItem({ item }) {
-    const { amount, status, is_pre_paid, funeral_cases, type } = item;
+function StatusTab({ user }) {
+    const [myCases, setMyCases] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Status Badge Logic
-    let statusBadge;
-    if (status === 'paid') {
-        statusBadge = <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-bold">지급 완료</span>;
-    } else if (is_pre_paid) {
-        statusBadge = <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-bold">선지급 완료</span>;
-    } else {
-        statusBadge = <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-1 rounded font-bold">정산 대기</span>;
-    }
+    useEffect(() => {
+        fetchMyCases();
+    }, [user.id]);
+
+    const fetchMyCases = async () => {
+        setLoading(true);
+        const { data } = await supabase
+            .from('funeral_cases')
+            .select('*')
+            .eq('customer_id', user.id) // Fetch cases requested by ME
+            .order('created_at', { ascending: false });
+        if (data) setMyCases(data);
+        setLoading(false);
+    };
+
+    const statusMap = {
+        'requested': { label: '🚨 접수 대기', color: 'bg-red-100 text-red-700' },
+        'assigned': { label: '🟡 팀장 배정', color: 'bg-yellow-100 text-yellow-700' },
+        'consulting': { label: '🗣️ 상담 중', color: 'bg-orange-100 text-orange-700' },
+        'in_progress': { label: '🔵 서비스 진행', color: 'bg-blue-100 text-blue-700' },
+        'settling': { label: '🟢 정산 대기', color: 'bg-green-100 text-green-700' },
+        'completed': { label: '⚪ 완료됨', color: 'bg-gray-100 text-gray-600' }
+    };
 
     return (
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center">
-            <div>
-                <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-gray-900">{funeral_cases?.profiles?.name || '고객'} 님 장례</span>
-                    {statusBadge}
+        <div className="space-y-4">
+            <h2 className="font-bold text-gray-800 px-1">접수 현황 ({myCases.length}건)</h2>
+            {loading ? <div className="text-center py-10">로딩 중...</div> : myCases.length === 0 ? (
+                <div className="bg-white p-10 rounded-2xl text-center text-gray-400 border border-gray-100">
+                    접수한 내역이 없습니다.
                 </div>
-                <p className="text-xs text-gray-500">
-                    {funeral_cases?.location || '장소 미정'} • {funeral_cases?.package_name || '상품 미정'}
-                    {type === 'override_fee' && <span className="ml-1 text-purple-600 font-bold">(Team Override)</span>}
-                </p>
-            </div>
-            <div className="text-right">
-                <span className={`block font-bold ${type === 'override_fee' ? 'text-purple-600' : 'text-blue-600'}`}>+ {amount.toLocaleString()}</span>
-                <span className="text-xs text-gray-400">{type === 'override_fee' ? '오버라이딩' : '수수료'}</span>
-            </div>
+            ) : (
+                myCases.map(item => {
+                    const status = statusMap[item.status] || { label: item.status, color: 'bg-gray-100 text-gray-500' };
+                    return (
+                        <div key={item.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${status.color}`}>
+                                        {status.label}
+                                    </span>
+                                    <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>
+                                </div>
+                                <div className="font-bold text-gray-800 text-lg">{item.location}</div>
+                                <div className="text-sm text-gray-500">{item.package_name}</div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-300" />
+                        </div>
+                    );
+                })
+            )}
         </div>
     );
 }
