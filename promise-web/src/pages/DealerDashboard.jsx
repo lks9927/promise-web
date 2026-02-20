@@ -15,6 +15,7 @@ import {
     Package
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import MySettlements from '../components/dealer/MySettlements';
 
 export default function DealerDashboard() {
     const [activeTab, setActiveTab] = useState('home'); // 'home', 'register', 'status'
@@ -41,6 +42,7 @@ export default function DealerDashboard() {
                         {activeTab === 'home' && '파트너 센터'}
                         {activeTab === 'register' && '장례 간편 접수'}
                         {activeTab === 'status' && '내 접수 현황'}
+                        {activeTab === 'settlement' && '정산 및 수익'}
                     </h1>
                     <p className="text-sm text-gray-500">{user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님 ({user.role === 'dealer' && 'Master'})</p>
                 </div>
@@ -62,6 +64,7 @@ export default function DealerDashboard() {
                 {activeTab === 'home' && <HomeTab user={user} />}
                 {activeTab === 'register' && <RegisterTab user={user} onSuccess={() => setActiveTab('status')} />}
                 {activeTab === 'status' && <StatusTab user={user} />}
+                {activeTab === 'settlement' && <MySettlements user={user} />}
             </main>
 
             {/* Bottom Navigation */}
@@ -69,6 +72,7 @@ export default function DealerDashboard() {
                 <NavButton icon={Home} label="홈" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
                 <NavButton icon={PlusCircle} label="접수하기" active={activeTab === 'register'} onClick={() => setActiveTab('register')} />
                 <NavButton icon={List} label="접수현황" active={activeTab === 'status'} onClick={() => setActiveTab('status')} />
+                <NavButton icon={DollarSign} label="정산관리" active={activeTab === 'settlement'} onClick={() => setActiveTab('settlement')} />
             </nav>
         </div>
     );

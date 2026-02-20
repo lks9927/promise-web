@@ -17,7 +17,8 @@ import {
     Lock,
     Download // New: Icon for download
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas'; // Keeping this if used elsewhere, though not seen in snippets.
+import SettlementManager from '../components/admin/SettlementManager';
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState('settlement'); // 'dashboard', 'settlement', 'cases', 'partners', 'settings'
@@ -473,17 +474,14 @@ export default function AdminDashboard() {
                                                 </tr>
                                             ))
                                         ) : activeTab === 'settlement' ? (
-                                            settlements.map((item) => (
-                                                <TableRow
-                                                    key={item.id}
-                                                    id={item.funeral_cases?.id?.substring(0, 8)}
-                                                    names={`${item.profiles?.name} (${item.profiles?.role})`}
-                                                    amount={item.amount.toLocaleString()}
-                                                    type={item.type === 'dealer_commission' ? '딜러 수수료' : '고객 캐시백'}
-                                                    status={item.status}
-                                                    isPrePaid={item.is_pre_paid}
-                                                />
-                                            ))
+                                            /* Refactored to use SettlementManager Component */
+                                            <tr>
+                                                <td colSpan="5" className="p-0">
+                                                    <div className="p-6">
+                                                        <SettlementManager />
+                                                    </div>
+                                                </td>
+                                            </tr>
                                         ) : (
                                             partners
                                                 .filter(p => partnerFilter === 'all' || p.profiles?.role === partnerFilter)

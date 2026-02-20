@@ -12,6 +12,7 @@ import Login from './pages/Login'
 import ProjectStatus from './pages/ProjectStatus'
 const Dashboard = () => <div className="p-10 text-xl text-center">대시보드 (딜러/팀장)</div>
 import MobileBriefing from './pages/MobileBriefing'
+import DevLogin from './pages/DevLogin'
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path="/status" element={<ProjectStatus />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/briefing" element={<MobileBriefing />} />
+        <Route path="/dev" element={<DevLogin />} />
       </Routes>
     </div>
   )
