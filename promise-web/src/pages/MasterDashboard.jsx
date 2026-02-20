@@ -8,10 +8,10 @@ import {
     LogOut
 } from 'lucide-react';
 
-// Mock Master Team Leader ID (Someone logged in as Master)
-const CURRENT_MASTER_ID = 'e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15'; // Need to create this in mock data
-
 export default function MasterDashboard() {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const CURRENT_MASTER_ID = user.id || 'e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15'; // Fallback for dev
+
     const [candidates, setCandidates] = useState([]);
     const [myTeam, setMyTeam] = useState([]);
     const [earnings, setEarnings] = useState([]);

@@ -20,7 +20,7 @@ export default function DevLogin() {
                 .from('profiles')
                 .select(`
                     *,
-                    partners:id (grade, region, status)
+                    partners (grade, region, status)
                 `)
                 .order('role');
 
@@ -35,12 +35,11 @@ export default function DevLogin() {
     };
 
     const handleLogin = (user) => {
+        const partner = Array.isArray(user.partners) ? user.partners[0] : user.partners;
         // Mock Login: Set user data in localStorage
         localStorage.setItem('user', JSON.stringify({
-            id: user.id,
-            name: user.name,
-            role: user.role,
-            grade: user.partners?.[0]?.grade, // Optional: if partner exists
+            ...user,
+            grade: partner?.grade, // Optional: if partner exists
         }));
 
         // Redirect based on role
@@ -59,11 +58,12 @@ export default function DevLogin() {
     };
 
     const getGroupedUsers = () => {
+        const getGrade = (p) => (Array.isArray(p.partners) ? p.partners[0] : p.partners)?.grade;
         const groups = {
             'Admin': profiles.filter(p => p.role === 'admin'),
-            'Master': profiles.filter(p => p.role === 'master' || (p.role === 'dealer' && p.partners?.[0]?.grade === 'Master')),
+            'Master': profiles.filter(p => p.role === 'master' || (p.role === 'dealer' && getGrade(p) === 'Master')),
             'Team Leader': profiles.filter(p => p.role === 'leader'),
-            'Dealer': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && p.partners?.[0]?.grade !== 'Master'),
+            'Dealer': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && getGrade(p) !== 'Master'),
             'Others': profiles.filter(p => !['admin', 'master', 'leader', 'dealer', 'morning', 'meal'].includes(p.role))
         };
         return groups;
@@ -111,7 +111,7 @@ export default function DevLogin() {
                                                         {user.name}
                                                     </div>
                                                     <div className="text-xs text-gray-500">
-                                                        {user.role} {user.partners?.[0]?.grade ? `• ${user.partners[0].grade}` : ''}
+                                                        {user.role} {(Array.isArray(user.partners) ? user.partners[0] : user.partners)?.grade ? `• ${(Array.isArray(user.partners) ? user.partners[0] : user.partners).grade}` : ''}
                                                     </div>
                                                 </div>
                                             </div>
