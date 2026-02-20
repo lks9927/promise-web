@@ -1,33 +1,30 @@
 -- Create notifications table
-CREATE TABLE IF NOT EXISTS public.notifications (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     type VARCHAR(50) NOT NULL, -- 'info', 'success', 'warning', 'error'
-    title TEXT NOT NULL,
-    message TEXT,
-    link TEXT,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    link VARCHAR(255),
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Enable RLS
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
--- Policy: Users can see their own notifications
-CREATE POLICY "Users can view own notifications" 
-ON public.notifications FOR SELECT 
+-- Policies
+CREATE POLICY "Users can view their own notifications" 
+ON notifications FOR SELECT 
 USING (auth.uid() = user_id);
 
--- Policy: Users can update their own notifications (mark as read)
-CREATE POLICY "Users can update own notifications" 
-ON public.notifications FOR UPDATE 
+CREATE POLICY "Users can update their own notifications (mark as read)" 
+ON notifications FOR UPDATE 
 USING (auth.uid() = user_id);
 
--- Policy: System/Admin can insert notifications (for now, allow everyone to insert for testing)
--- In production, this should be restricted to service role or specific triggers
-CREATE POLICY "Anyone can insert notifications" 
-ON public.notifications FOR INSERT 
-WITH CHECK (true);
+CREATE POLICY "System/Admin can insert notifications" 
+ON notifications FOR INSERT 
+WITH CHECK (true); -- Ideally restrict to service roles or specific triggers
 
--- Enable Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+-- Realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
