@@ -21,8 +21,11 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
+import { useNotification } from '../contexts/NotificationContext';
+import NotificationCenter from '../components/common/NotificationCenter';
 
 export default function TeamLeaderDashboard() {
+    const { showToast, sendNotification, unreadCount } = useNotification();
     const [activeTab, setActiveTab] = useState('available');
     const [availableCases, setAvailableCases] = useState([]);
     const [myCases, setMyCases] = useState([]);
@@ -33,6 +36,7 @@ export default function TeamLeaderDashboard() {
     const [myStatus, setMyStatus] = useState('waiting');
     const [statusMenuOpen, setStatusMenuOpen] = useState(false);
     const [assignModal, setAssignModal] = useState({ isOpen: false, caseId: null });
+    const [isNotifOpen, setIsNotifOpen] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -96,9 +100,9 @@ export default function TeamLeaderDashboard() {
         if (!error) {
             setMyStatus(newStatus);
             setStatusMenuOpen(false);
-            if (showAlert) alert(msg);
+            if (showAlert) showToast('success', '상태 변경 완료', msg);
         } else {
-            alert('상태 변경 실패: ' + error.message);
+            showToast('error', '상태 변경 실패', error.message);
         }
     };
 
@@ -125,17 +129,12 @@ export default function TeamLeaderDashboard() {
 
             // Filter strictly: Ensure strings are trimmed and handle potential case mismatch
             if (allAssigned) {
-                console.log("Debug - All Assigned from DB:", allAssigned.length);
-                console.log("Debug - Logging User ID:", user.id);
-
                 const myAssigned = allAssigned.filter(c => {
                     if (!c.team_leader_id || !user.id) return false;
                     const dbId = String(c.team_leader_id).toLowerCase().trim();
                     const loginId = String(user.id).toLowerCase().trim();
                     return dbId === loginId;
                 });
-
-                console.log("Debug - Matches found:", myAssigned.length);
                 setMyCases(myAssigned);
             }
 
@@ -172,7 +171,7 @@ export default function TeamLeaderDashboard() {
         try {
             const { data: check } = await supabase.from('funeral_cases').select('status').eq('id', caseId).single();
             if (check.status !== 'requested') {
-                alert('이미 다른 팀장님이 배정받으셨습니다.');
+                showToast('error', '배정 실패', '이미 다른 팀장님이 배정받으셨습니다.');
                 fetchData();
                 return;
             }
@@ -187,26 +186,30 @@ export default function TeamLeaderDashboard() {
 
             if (error || !data || data.length === 0) {
                 console.error("Update failed:", error);
-                alert("배정 실패: 데이터베이스 권한 문제로 저장이 안 되었습니다.");
+                showToast('error', '배정 실패', "데이터베이스 권한 문제로 저장이 안 되었습니다.");
                 return;
             }
 
             if (isSelfAssign) {
                 await handleStatusChange('working', false);
-                alert(`✅ 배정되었습니다!\n[상담/장례 진행 중] 상태로 변경되었습니다.\n[내 현황] 탭에서 확인하세요.`);
+                showToast('success', '배정 완료', '상담/장례 진행 중 상태로 변경되었습니다.');
 
-                // IMPORTANT: Switch tab and fetch sequentially
+                // Notify Customer (Optional/Future)
+                // sendNotification(customerId, 'info', '팀장 배정 완료', `${user.name} 팀장이 배정되었습니다.`);
+
                 setActiveTab('my_cases');
                 setTimeout(() => {
                     fetchData(); // Fetch fresh data for the new tab
                 }, 100);
             } else {
-                alert(`✅ ${assigneeName} 팀장에게 배정되었습니다!`);
+                showToast('success', '배정 완료', `${assigneeName} 팀장에게 배정되었습니다.`);
+                // Notify the assignee
+                sendNotification(assigneeId, 'assignment', '새로운 장례 배정', `${user.name} 마스터가 장례를 배정했습니다.`, '/leader');
                 fetchData();
             }
         } catch (error) {
             console.error(error);
-            alert('배정 실패: ' + error.message);
+            showToast('error', '배정 실패', error.message);
         }
     };
 
@@ -218,27 +221,29 @@ export default function TeamLeaderDashboard() {
                 .eq('id', caseId);
             if (error) throw error;
             fetchData();
+            showToast('success', '상태 업데이트', '장례 진행 단계가 변경되었습니다.');
+
             if (newStatus === 'hq_check' || newStatus === 'completed') {
                 if (confirm('장례가 종료되었습니다. 상태를 [출동 대기]로 변경하시겠습니까?')) {
                     handleStatusChange('waiting');
                 }
             }
         } catch (error) {
-            alert('업데이트 실패: ' + error.message);
+            showToast('error', '업데이트 실패', error.message);
         }
     };
 
     const handleOrderFlower = async (caseId) => {
-        if (!window.confirm('하늘꽃(입관꽃)을 발주하시겠습니까?')) return;
+        if (!window.confirm('하늘꽃(입관꽃)을 발주하시겠습니까? (150,000원)')) return;
         try {
             const { error } = await supabase.from('flower_orders').insert([{
                 case_id: caseId, team_leader_id: user.id, status: 'ordered', amount: 150000
             }]);
             if (error) throw error;
-            alert('하늘꽃 발주 완료');
+            showToast('success', '발주 완료', '하늘꽃 발주가 접수되었습니다.');
             fetchData();
         } catch (error) {
-            alert('발주 실패: ' + error.message);
+            showToast('error', '발주 실패', error.message);
         }
     };
 
@@ -264,12 +269,15 @@ export default function TeamLeaderDashboard() {
                     </h1>
                     <div className="flex items-center gap-3">
                         <div className="relative">
-                            <Bell className={`w-6 h-6 ${availableCases.length > 0 ? 'text-indigo-600 animate-pulse' : 'text-gray-400'}`} />
-                            {availableCases.length > 0 && (
-                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center border-2 border-white">
-                                    {availableCases.length}
-                                </span>
-                            )}
+                            <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative p-1 rounded-full hover:bg-gray-100 transition-colors">
+                                <Bell className={`w-6 h-6 ${unreadCount > 0 ? 'text-indigo-600 animate-pulse' : 'text-gray-400'}`} />
+                                {unreadCount > 0 && (
+                                    <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                                        {unreadCount}
+                                    </span>
+                                )}
+                            </button>
+                            {isNotifOpen && <NotificationCenter onClose={() => setIsNotifOpen(false)} />}
                         </div>
                         <button onClick={() => { if (confirm('로그아웃 하시겠습니까?')) { localStorage.removeItem('user'); navigate('/login'); } }} className="text-gray-400 hover:text-red-500 transition-colors">
                             <LogOut className="w-6 h-6" />
@@ -314,6 +322,21 @@ export default function TeamLeaderDashboard() {
                     <MyWallet user={user} />
                 )}
             </main>
+
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-3 pb-6 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                <button onClick={() => setActiveTab('available')} className={`flex flex-col items-center gap-1 min-w-[64px] ${activeTab === 'available' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <Briefcase className={`w-6 h-6 ${activeTab === 'available' ? 'fill-current' : ''}`} />
+                    <span className="text-xs font-bold">입찰가능</span>
+                </button>
+                <button onClick={() => setActiveTab('my_cases')} className={`flex flex-col items-center gap-1 min-w-[64px] ${activeTab === 'my_cases' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <User className={`w-6 h-6 ${activeTab === 'my_cases' ? 'fill-current' : ''}`} />
+                    <span className="text-xs font-bold">내 현황</span>
+                </button>
+                <button onClick={() => setActiveTab('wallet')} className={`flex flex-col items-center gap-1 min-w-[64px] ${activeTab === 'wallet' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <DollarSign className={`w-6 h-6 ${activeTab === 'wallet' ? 'fill-current' : ''}`} />
+                    <span className="text-xs font-bold">지갑</span>
+                </button>
+            </nav>
 
             {assignModal.isOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">

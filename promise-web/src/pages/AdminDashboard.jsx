@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
     BarChart3,
@@ -15,24 +15,28 @@ import {
     DollarSign,
     LogOut,
     Lock,
-    Download // New: Icon for download
+    Download
 } from 'lucide-react';
-import html2canvas from 'html2canvas'; // Keeping this if used elsewhere, though not seen in snippets.
+import html2canvas from 'html2canvas';
 import SettlementManager from '../components/admin/SettlementManager';
+import { useNotification } from '../contexts/NotificationContext';
+import NotificationCenter from '../components/common/NotificationCenter';
 
 export default function AdminDashboard() {
-    const [activeTab, setActiveTab] = useState('settlement'); // 'dashboard', 'settlement', 'cases', 'partners', 'settings'
+    const { showToast, sendNotification, unreadCount } = useNotification();
+    const [activeTab, setActiveTab] = useState('settlement');
     const [settlements, setSettlements] = useState([]);
     const [cases, setCases] = useState([]);
     const [partners, setPartners] = useState([]);
-    const [partnerFilter, setPartnerFilter] = useState('all'); // 'all', 'leader', 'dealer'
-    const [passwordRequests, setPasswordRequests] = useState([]); // New: Password Reset Requests
-    const [coupons, setCoupons] = useState([]); // New: Coupons
+    const [partnerFilter, setPartnerFilter] = useState('all');
+    const [passwordRequests, setPasswordRequests] = useState([]);
+    const [coupons, setCoupons] = useState([]);
     const [config, setConfig] = useState({});
     const [loading, setLoading] = useState(true);
+    const [isNotifOpen, setIsNotifOpen] = useState(false);
 
     const [searchParams] = useSearchParams();
-    // Mock Admin Level (Dynamic for Demo)
+    const navigate = useNavigate();
     const CURRENT_ADMIN_LEVEL = searchParams.get('role') === 'operating' ? 'operating' : 'super';
 
     useEffect(() => {
@@ -64,7 +68,7 @@ export default function AdminDashboard() {
             if (caseData) setCases(caseData);
 
             // 3. Fetch Partners
-            const { data: partnerData, error: partnerError } = await supabase
+            const { data: partnerData } = await supabase
                 .from('partners')
                 .select(`
                     *,
@@ -87,44 +91,32 @@ export default function AdminDashboard() {
             if (requestData) setPasswordRequests(requestData);
 
             // 6. Fetch Coupons
-            // 6. Fetch Coupons
-            try {
-                const { data: couponData, error: couponError } = await supabase
-                    .from('coupons')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (couponError) {
-                    console.error('Coupons Fetch Error:', couponError);
-                } else {
-                    console.log('Fetched Coupons:', couponData?.length || 0, couponData);
-                    if (couponData) setCoupons(couponData);
-                }
-            } catch (innerError) {
-                console.error('Coupons Fetch Exception:', innerError);
-            }
+            const { data: couponData } = await supabase
+                .from('coupons')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (couponData) setCoupons(couponData);
 
         } catch (error) {
             console.error('Error fetching data:', error);
+            showToast('error', '데이터 로드 실패', error.message);
         } finally {
             setLoading(false);
         }
     };
 
     const togglePartnerStatus = async (partnerId, currentStatus, role) => {
-        // If suspended or pending, approve them. If approved, suspend them.
         const newStatus = (currentStatus === 'suspended' || currentStatus === 'pending') ? 'approved' : 'suspended';
 
-        // SAFETY LOCK: Prevent suspending 'leader' if they have active cases
         if (role === 'leader' && newStatus === 'suspended') {
-            const { count, error } = await supabase
+            const { count } = await supabase
                 .from('funeral_cases')
                 .select('*', { count: 'exact', head: true })
                 .eq('team_leader_id', partnerId)
-                .in('status', ['assigned', 'in_progress', 'team_settling']);
+                .in('status', ['assigned', 'consulting', 'in_progress', 'team_settling']);
 
             if (count > 0) {
-                alert(`⚠️ 진행 중인 장례 건(${count}건)이 있어 정지할 수 없습니다.\n모든 장례가 종료된 후 다시 시도해주세요.`);
+                showToast('error', '정지 불가', `진행 중인 장례 건(${count}건)이 있어 정지할 수 없습니다.`);
                 return;
             }
         }
@@ -137,8 +129,9 @@ export default function AdminDashboard() {
 
             if (error) {
                 console.error(error);
-                alert('처리 중 오류가 발생했습니다.');
+                showToast('error', '처리 실패', '상태 변경 중 오류가 발생했습니다.');
             } else {
+                showToast('success', '처리 완료', `파트너가 ${newStatus === 'approved' ? '승인' : '정지'}되었습니다.`);
                 fetchData();
             }
         }
@@ -154,10 +147,8 @@ export default function AdminDashboard() {
 
         let newPassword;
         if (isAdmin) {
-            // Generate Random 6-char Password for Admins
             newPassword = Math.random().toString(36).slice(-6).toUpperCase();
         } else {
-            // Use Last 4 Digits of Phone for everyone else
             newPassword = phone.slice(-4);
         }
 
@@ -175,22 +166,19 @@ export default function AdminDashboard() {
             if (isAdmin) {
                 alert(`✅ 초기화 완료!\n\n임시 비밀번호: [ ${newPassword} ]\n\n이 비밀번호를 ${name} 관리자님께 전달해주세요.`);
             } else {
-                alert('비밀번호가 초기화되었습니다.\n(연락처 끝 4자리)');
+                showToast('success', '초기화 완료', '비밀번호가 연락처 끝 4자리로 초기화되었습니다.');
             }
             fetchData();
         } catch (error) {
             console.error(error);
-            alert('초기화 중 오류가 발생했습니다.');
+            showToast('error', '초기화 실패', error.message);
         }
     };
 
-    // 🔹 New: Admin triggers reset manually for a partner
     const handlePasswordReset = async (userId, name) => {
-        // Need to fetch phone number first since it's not passed directly in the onClick
-        // Or we can just fetch it from the partners list state
         const partner = partners.find(p => p.user_id === userId);
         if (!partner || !partner.profiles?.phone) {
-            alert('사용자 정보를 찾을 수 없습니다.');
+            showToast('error', '오류', '사용자 정보를 찾을 수 없습니다.');
             return;
         }
 
@@ -208,7 +196,6 @@ export default function AdminDashboard() {
         return role === 'assistant' ? '상례사' : role;
     };
 
-    // Grade Change Modal State
     const [gradeModal, setGradeModal] = useState({ isOpen: false, partnerId: null, currentGrade: '', name: '' });
 
     const openGradeModal = (partnerId, currentGrade, name) => {
@@ -226,9 +213,9 @@ export default function AdminDashboard() {
 
             if (error) {
                 console.error('Grade Update Error:', error);
-                alert('등급 변경 실패: ' + error.message);
+                showToast('error', '변경 실패', error.message);
             } else {
-                alert('등급이 변경되었습니다.');
+                showToast('success', '변경 완료', '등급이 변경되었습니다.');
                 fetchData();
             }
         }
@@ -237,7 +224,6 @@ export default function AdminDashboard() {
 
     return (
         <div className="min-h-screen bg-[#FCFBF9] flex font-sans">
-            {/* Sidebar */}
             <aside className="w-64 bg-[#1B2B48] text-white hidden md:block flex-shrink-0">
                 <div className="p-6 border-b border-[#2C3E5D]">
                     <Link to="/" className="cursor-pointer hover:opacity-80 transition-opacity">
@@ -308,11 +294,9 @@ export default function AdminDashboard() {
                 </div>
             </aside>
 
-            {/* Main Content */}
             <main className="flex-1 flex flex-col min-w-0">
                 <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 sticky top-0 z-30">
                     <div className="flex items-center gap-3">
-                        {/* Mobile Menu Button - Placeholder/Simple toggle could go here */}
                         <h2 className="text-lg font-semibold text-gray-800">
                             {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : '👥 파트너'}
                         </h2>
@@ -324,8 +308,13 @@ export default function AdminDashboard() {
                             <div className="text-xs text-gray-500">{CURRENT_ADMIN_LEVEL === 'super' ? '슈퍼 관리자' : '운영 관리자'}</div>
                         </div>
                         <div className="relative">
-                            <Bell className="w-5 h-5 text-gray-500 hover:text-gray-700 cursor-pointer" />
-                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                            <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative p-1 rounded-full hover:bg-gray-100 transition-colors">
+                                <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'text-red-500 animate-pulse' : 'text-gray-500'}`} />
+                                {unreadCount > 0 && (
+                                    <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                                )}
+                            </button>
+                            {isNotifOpen && <NotificationCenter onClose={() => setIsNotifOpen(false)} />}
                         </div>
                         <button
                             onClick={() => {
@@ -339,16 +328,13 @@ export default function AdminDashboard() {
                             로그아웃
                             <LogOut className="w-4 h-4" />
                         </button>
-                        <div
-                            className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs"
-                        >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
                             {JSON.parse(localStorage.getItem('user') || '{}').name?.[0] || 'A'}
                         </div>
                     </div>
                 </header>
 
                 <div className="p-6 overflow-y-auto">
-                    {/* Stats Cards - Shared */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                         <StatCard label="오늘 접수 건" value={cases.filter(c => new Date(c.created_at).getDate() === new Date().getDate()).length} icon={<FileText className="text-blue-600" />} />
                         <StatCard label="진행 중" value={cases.filter(c => c.status === 'in_progress').length} icon={<Clock className="text-orange-600" />} />
@@ -364,7 +350,6 @@ export default function AdminDashboard() {
                             <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
                         </div>
 
-                        {/* Partner Filter Tabs */}
                         {activeTab === 'partners' && (
                             <div className="px-6 pt-4 flex gap-2">
                                 <button onClick={() => setPartnerFilter('all')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${partnerFilter === 'all' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:bg-gray-50'}`}>전체</button>
@@ -460,7 +445,8 @@ export default function AdminDashboard() {
                                                                 'assigned': { label: '🟡 팀장 배정', class: 'bg-yellow-100 text-yellow-700' },
                                                                 'consulting': { label: '🗣️ 상담 중', class: 'bg-orange-100 text-orange-700' },
                                                                 'in_progress': { label: '🔵 서비스 진행', class: 'bg-blue-100 text-blue-700' },
-                                                                'settling': { label: '🟢 정산 대기', class: 'bg-green-100 text-green-700' },
+                                                                'team_settling': { label: '🟢 정산 대기', class: 'bg-green-100 text-green-700' },
+                                                                'hq_check': { label: '🟢 정산 검토 중', class: 'bg-green-100 text-green-700' },
                                                                 'completed': { label: '⚪ 완료됨', class: 'bg-gray-100 text-gray-600' }
                                                             };
                                                             const status = statusMap[item.status] || { label: item.status, class: 'bg-gray-100 text-gray-600' };
@@ -474,7 +460,6 @@ export default function AdminDashboard() {
                                                 </tr>
                                             ))
                                         ) : activeTab === 'settlement' ? (
-                                            /* Refactored to use SettlementManager Component */
                                             <tr>
                                                 <td colSpan="5" className="p-0">
                                                     <div className="p-6">
@@ -485,8 +470,6 @@ export default function AdminDashboard() {
                                         ) : (
                                             partners
                                                 .filter(p => partnerFilter === 'all' || p.profiles?.role === partnerFilter)
-                                                // If filter is 'dealer', include 'master' as well if needed, but for now strict match.
-                                                // Actually let's refine: if filter is 'dealer', show dealers. If 'leader', show leaders.
                                                 .filter(p => {
                                                     if (partnerFilter === 'all') return true;
                                                     if (partnerFilter === 'leader') return p.profiles?.role === 'leader';
@@ -538,7 +521,6 @@ export default function AdminDashboard() {
                 </div>
             </main >
 
-            {/* Grade Selection Modal */}
             {
                 gradeModal.isOpen && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fadeIn">
@@ -576,7 +558,6 @@ export default function AdminDashboard() {
     );
 }
 
-// Helper Components
 function NavItem({ icon, label, active, badge, onClick }) {
     return (
         <div
@@ -609,32 +590,14 @@ function StatCard({ label, value, icon, change, highlight }) {
     );
 }
 
-function TableRow({ id, names, amount, type, status, isPrePaid }) {
-    const getStatusBadge = (s, paid) => {
-        if (s === 'paid') return <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-xs font-bold">지급 완료</span>;
-        if (paid) return <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold">선지급 완료</span>;
-        return <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold">지급 대기</span>;
-    };
-
-    return (
-        <tr className="hover:bg-gray-50 transition-colors">
-            <td className="px-6 py-4 font-mono text-gray-500 text-xs">{id}...</td>
-            <td className="px-6 py-4 font-medium text-gray-900">{names}</td>
-            <td className="px-6 py-4 font-bold text-gray-900">₩ {amount}</td>
-            <td className="px-6 py-4 text-gray-600">{type}</td>
-            <td className="px-6 py-4 text-center">{getStatusBadge(status, isPrePaid)}</td>
-        </tr>
-    );
-}
-
 function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
+    const { showToast } = useNotification();
     const toggleConfig = async (key, currentValue) => {
-        // Handle null/undefined values by defaulting to 'false'
         const safeValue = currentValue || 'false';
         const newValue = safeValue === 'true' ? 'false' : 'true';
 
         await supabase.from('system_config').upsert({ key, value: newValue });
-        alert('설정이 변경되었습니다.');
+        showToast('success', '설정 변경', '설정이 변경되었습니다.');
         onUpdate();
     };
 
@@ -642,7 +605,6 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
         <div className="p-8 max-w-2xl mx-auto">
             <h3 className="text-xl font-bold mb-6">시스템 운영 설정</h3>
 
-            {/* Password Reset Requests Section */}
             {passwordRequests && passwordRequests.length > 0 && (
                 <div id="pw-requests" className="mb-8 bg-red-50 border border-red-200 rounded-xl p-6">
                     <h4 className="font-bold text-red-800 flex items-center gap-2 mb-4">
@@ -669,7 +631,6 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
             )}
 
             <div className="space-y-6">
-                {/* New: Real-time Bidding Switch */}
                 <div className="bg-white p-6 rounded-xl border border-indigo-100 shadow-sm flex items-center justify-between ring-1 ring-indigo-50">
                     <div>
                         <h4 className="font-bold text-indigo-900 mb-1 flex items-center gap-2">
@@ -711,7 +672,6 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
                     </button>
                 </div>
 
-                {/* New: Admin Password Change */}
                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                     <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                         <Lock className="w-4 h-4 text-gray-600" /> 관리자 비밀번호 변경
@@ -723,11 +683,11 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
                             const confirmPw = e.target.confirmPw.value;
 
                             if (newPw !== confirmPw) {
-                                alert('비밀번호가 일치하지 않습니다.');
+                                showToast('error', '오류', '비밀번호가 일치하지 않습니다.');
                                 return;
                             }
                             if (newPw.length < 4) {
-                                alert('비밀번호는 4자리 이상이어야 합니다.');
+                                showToast('error', '오류', '비밀번호는 4자리 이상이어야 합니다.');
                                 return;
                             }
 
@@ -741,7 +701,7 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
                                     .eq('id', user.id);
 
                                 if (error) {
-                                    alert('변경 중 오류가 발생했습니다.');
+                                    showToast('error', '오류', '변경 중 오류가 발생했습니다.');
                                 } else {
                                     alert('비밀번호가 변경되었습니다. 다시 로그인해주세요.');
                                     localStorage.removeItem('user');
@@ -779,6 +739,7 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
 }
 
 function CouponPanel({ coupons, onUpdate, supabase }) {
+    const { showToast } = useNotification();
     const [amount, setAmount] = useState('200000');
     const [debugMsg, setDebugMsg] = useState('');
 
@@ -787,21 +748,19 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
     }, [coupons]);
     const [phone, setPhone] = useState('');
     const [generatedCoupon, setGeneratedCoupon] = useState(null);
-    // New: Bulk Issuance State
-    const [mode, setMode] = useState('single'); // 'single', 'bulk'
+    const [mode, setMode] = useState('single');
     const [quantity, setQuantity] = useState(1);
     const [memo, setMemo] = useState('');
-    const [generatedBatch, setGeneratedBatch] = useState(null); // { count: 10, amount: 200000, csvUrl: ... }
-    const [searchTerm, setSearchTerm] = useState(''); // New: Search Term
+    const [generatedBatch, setGeneratedBatch] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
         await onUpdate();
-        setTimeout(() => setIsRefreshing(false), 500); // Visual feedback
+        setTimeout(() => setIsRefreshing(false), 500);
     };
 
-    // Filter coupons based on search
     const filteredCoupons = coupons ? coupons.filter(c =>
         c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (c.issued_to && c.issued_to.includes(searchTerm)) ||
@@ -826,12 +785,12 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                 setGeneratedCoupon({ code, amount, phone });
                 onUpdate();
                 setPhone('');
+                showToast('success', '발급 완료', '쿠폰이 발급되었습니다.');
             } catch (error) {
                 console.error(error);
-                alert('쿠폰 발행 중 오류가 발생했습니다.');
+                showToast('error', '오류', '쿠폰 발행 중 오류가 발생했습니다.');
             }
         } else {
-            // Bulk Issue
             if (!confirm(`${Number(amount).toLocaleString()}원 쿠폰 ${quantity}장을 대량 발행하시겠습니까?`)) return;
 
             const newCoupons = [];
@@ -839,10 +798,10 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
 
             for (let i = 0; i < quantity; i++) {
                 newCoupons.push({
-                    code: Math.random().toString(36).substring(2, 10).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase(), // Longer code for security in bulk
+                    code: Math.random().toString(36).substring(2, 10).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase(),
                     amount: parseInt(amount),
                     status: 'issued',
-                    issued_to: null, // Anonymous
+                    issued_to: null,
                     batch_name: batchName
                 });
             }
@@ -851,7 +810,6 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                 const { error } = await supabase.from('coupons').insert(newCoupons);
                 if (error) throw error;
 
-                // Create CSV
                 const csvContent = "data:text/csv;charset=utf-8,\uFEFF"
                     + "쿠폰번호,금액,발행일\n"
                     + newCoupons.map(c => `${c.code},${c.amount},${new Date().toLocaleDateString()}`).join("\n");
@@ -861,17 +819,16 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
 
                 onUpdate();
                 setMemo('');
+                showToast('success', '대량 발급 완료', `${quantity}장의 쿠폰이 발급되었습니다.`);
             } catch (error) {
                 console.error(error);
-                alert('대량 발행 중 오류가 발생했습니다.');
+                showToast('error', '오류', '대량 발행 중 오류가 발생했습니다.');
             }
         }
     };
 
     return (
         <div className="p-6">
-            {/* Issue Form */}
-            {/* Issue Form */}
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100 mb-8 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                     <h4 className="font-bold text-indigo-900 flex items-center gap-2">
@@ -953,7 +910,6 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                 </form>
             </div>
 
-            {/* Mock SMS Modal */}
             {generatedCoupon && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-bounce-in">
@@ -980,7 +936,7 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                                 onClick={() => {
                                     const msg = `[10년의 약속] ${Number(generatedCoupon.amount).toLocaleString()}원 쿠폰코드: ${generatedCoupon.code}`;
                                     navigator.clipboard.writeText(msg);
-                                    alert('문자 내용이 복사되었습니다!');
+                                    showToast('success', '복사 완료', '문자 내용이 복사되었습니다!');
                                 }}
                                 className="w-full py-3 bg-gray-900 text-white rounded-lg font-bold hover:bg-black transition-colors"
                             >
@@ -991,7 +947,6 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                 </div>
             )}
 
-            {/* Bulk Result Modal */}
             {generatedBatch && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-bounce-in">
@@ -1021,10 +976,6 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                 </div>
             )}
 
-            {/* List */}
-            {/* List */}
-            {/* List */}
-
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
                     <h4 className="font-bold text-gray-800">발행 내역</h4>
@@ -1048,8 +999,21 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                 </button>
             </div>
 
-            {/* Hidden Coupon Template for Image Generation */}
-            {/* ... (Hidden Template Code) ... */}
+            <div id="coupon-template" className="hidden relative w-[400px] h-[200px] bg-gradient-to-br from-indigo-600 to-purple-800 text-white p-6 rounded-xl overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-20">
+                    <DollarSign className="w-32 h-32" />
+                </div>
+                <div className="relative z-10 h-full flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-sm font-medium text-indigo-200 mb-1">10년의 약속 캐시백 쿠폰</h3>
+                        <h1 className="text-4xl font-bold">₩ <span id="coupon-amount"></span></h1>
+                    </div>
+                    <div>
+                        <div className="text-2xl font-mono font-bold tracking-wider mb-2" id="coupon-code"></div>
+                        <div className="text-xs text-indigo-200">발행일: <span id="coupon-date"></span></div>
+                    </div>
+                </div>
+            </div>
 
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
@@ -1099,20 +1063,23 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                                             const dateEl = document.getElementById('coupon-date');
 
                                             if (template && amountEl && codeEl && dateEl) {
-                                                // Fill Data
                                                 amountEl.innerText = coupon.amount.toLocaleString();
                                                 codeEl.innerText = coupon.code;
                                                 dateEl.innerText = new Date(coupon.created_at).toLocaleDateString();
+                                                template.classList.remove('hidden');
 
                                                 try {
                                                     const canvas = await html2canvas(template, { scale: 2 });
+                                                    template.classList.add('hidden');
                                                     const link = document.createElement('a');
                                                     link.download = `coupon_${coupon.code}.jpg`;
                                                     link.href = canvas.toDataURL('image/jpeg', 0.9);
                                                     link.click();
+                                                    showToast('success', '다운로드 완료', '쿠폰 이미지가 저장되었습니다.');
                                                 } catch (err) {
                                                     console.error('Image Gen Error', err);
-                                                    alert('이미지 생성 실패');
+                                                    template.classList.add('hidden');
+                                                    showToast('error', '오류', '이미지 생성 실패');
                                                 }
                                             }
                                         }}

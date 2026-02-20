@@ -14,9 +14,21 @@ const Dashboard = () => <div className="p-10 text-xl text-center">대시보드 (
 import MobileBriefing from './pages/MobileBriefing'
 import DevLogin from './pages/DevLogin'
 
-function App() {
+import { NotificationProvider, useNotification } from './contexts/NotificationContext'
+import Toast from './components/common/Toast'
+
+function AppContent() {
+  const { toast, showToast } = useNotification();
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+    <>
+      {toast && (
+        <Toast
+          type={toast.type}
+          title={toast.title}
+          message={toast.message}
+          onClose={() => showToast(null)}
+        />
+      )}
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/admin" element={<AdminDashboard />} />
@@ -30,7 +42,18 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/briefing" element={<MobileBriefing />} />
         <Route path="/dev" element={<DevLogin />} />
+        <Route path="*" element={<div className="flex items-center justify-center h-screen bg-gray-100 text-xl font-bold text-gray-600">404 - 페이지를 찾을 수 없습니다</div>} />
       </Routes>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+      <NotificationProvider>
+        <AppContent />
+      </NotificationProvider>
     </div>
   )
 }

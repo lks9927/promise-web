@@ -12,14 +12,19 @@ import {
     List,
     Home,
     MapPin,
-    Package
+    Package,
+    Bell
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MySettlements from '../components/dealer/MySettlements';
+import { useNotification } from '../contexts/NotificationContext';
+import NotificationCenter from '../components/common/NotificationCenter';
 
 export default function DealerDashboard() {
+    const { showToast, unreadCount } = useNotification();
     const [activeTab, setActiveTab] = useState('home'); // 'home', 'register', 'status'
     const [user, setUser] = useState(null);
+    const [isNotifOpen, setIsNotifOpen] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -46,18 +51,32 @@ export default function DealerDashboard() {
                     </h1>
                     <p className="text-sm text-gray-500">{user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님 ({user.role === 'dealer' && 'Master'})</p>
                 </div>
-                <button
-                    onClick={() => {
-                        if (confirm('로그아웃 하시겠습니까?')) {
-                            localStorage.removeItem('user');
-                            navigate('/login');
-                        }
-                    }}
-                    className="flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors"
-                >
-                    <span className="text-sm font-medium">로그아웃</span>
-                    <LogOut className="w-6 h-6" />
-                </button>
+                <div className="flex items-center gap-3">
+                    {/* Notification Bell */}
+                    <div className="relative">
+                        <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative p-1 rounded-full hover:bg-gray-100 transition-colors">
+                            <Bell className={`w-6 h-6 ${unreadCount > 0 ? 'text-indigo-600 animate-pulse' : 'text-gray-400'}`} />
+                            {unreadCount > 0 && (
+                                <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                                    {unreadCount}
+                                </span>
+                            )}
+                        </button>
+                        {isNotifOpen && <NotificationCenter onClose={() => setIsNotifOpen(false)} />}
+                    </div>
+
+                    <button
+                        onClick={() => {
+                            if (confirm('로그아웃 하시겠습니까?')) {
+                                localStorage.removeItem('user');
+                                navigate('/login');
+                            }
+                        }}
+                        className="flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                        <LogOut className="w-6 h-6" />
+                    </button>
+                </div>
             </header>
 
             <main className="p-4 max-w-lg mx-auto space-y-6">
@@ -93,6 +112,7 @@ function NavButton({ icon: Icon, label, active, onClick }) {
 // --- Tabs ---
 
 function HomeTab({ user }) {
+    const { showToast } = useNotification();
     const [earnings, setEarnings] = useState([]);
     const [team, setTeam] = useState([]);
     const [coupons, setCoupons] = useState([]);
@@ -113,7 +133,6 @@ function HomeTab({ user }) {
         if (earningData) setEarnings(earningData);
 
         // 2. Fetch Team (if Master)
-        // Assuming current user ID is master_id for others
         const { data: teamData } = await supabase
             .from('partners')
             .select('*, profiles:user_id(name)')
@@ -121,11 +140,6 @@ function HomeTab({ user }) {
         if (teamData) setTeam(teamData);
 
         // 3. Fetch Coupons
-        // "Allow All Access" policy is active, but we should verify logic.
-        // For now, fetching all coupons to see if permissions work, ideally filter by issued_to or owner if column exists.
-        // Based on previous check, 'issued_to' was null.
-        // Assuming we show ALL coupons for now as per permission fix, or user specific if they claim it.
-        // Let's fetch all for diagnosis if 'issued_to' is not reliable yet.
         const { data: couponData } = await supabase
             .from('coupons')
             .select('*')
@@ -173,7 +187,7 @@ function HomeTab({ user }) {
                                     <button
                                         onClick={() => {
                                             navigator.clipboard.writeText(coupon.code);
-                                            alert('쿠폰 코드가 복사되었습니다.');
+                                            showToast('success', '복사 완료', '쿠폰 코드가 복사되었습니다.');
                                         }}
                                         className="text-xs text-gray-500 underline"
                                     >
@@ -226,6 +240,7 @@ function HomeTab({ user }) {
 }
 
 function RegisterTab({ user, onSuccess }) {
+    const { showToast } = useNotification();
     const [formData, setFormData] = useState({
         customerName: '',
         customerPhone: '',
@@ -241,13 +256,6 @@ function RegisterTab({ user, onSuccess }) {
         setLoading(true);
 
         try {
-            // 1. Create/Find Customer Profile (Simplified flow: dealers register on behalf of customers)
-            // Since we don't have full customer auth flow here, we'll link it to the dealer as the 'creator' but ideally should be customer_id
-            // For this MVP, we map 'customer_id' to the User ID (Dealer) temporarily OR create a dummy customer.
-            // Let's use the Dealer ID as 'customer_id' for now to show "My Cases", 
-            // OR better: Create a dummy profile for the customer? No, that's complex.
-            // USE CASE: Dealer IS the requester in the system for now.
-
             const { error } = await supabase.from('funeral_cases').insert({
                 customer_id: user.id, // The dealer is the requester
                 location: formData.location || '미정',
@@ -257,11 +265,11 @@ function RegisterTab({ user, onSuccess }) {
 
             if (error) throw error;
 
-            alert('✅ 접수가 완료되었습니다.\n본사에서 곧 해피콜을 드립니다.');
+            showToast('success', '접수 완료', '장례 접수가 완료되었습니다. 해피콜을 기다려주세요.');
             onSuccess();
         } catch (error) {
             console.error(error);
-            alert('접수 실패: ' + error.message);
+            showToast('error', '접수 실패', error.message);
         } finally {
             setLoading(false);
         }
@@ -367,7 +375,9 @@ function StatusTab({ user }) {
         'assigned': { label: '🟡 팀장 배정', color: 'bg-yellow-100 text-yellow-700' },
         'consulting': { label: '🗣️ 상담 중', color: 'bg-orange-100 text-orange-700' },
         'in_progress': { label: '🔵 서비스 진행', color: 'bg-blue-100 text-blue-700' },
-        'settling': { label: '🟢 정산 대기', color: 'bg-green-100 text-green-700' },
+        'team_settling': { label: '🟢 정산 대기', color: 'bg-green-100 text-green-700' },
+        'settling': { label: '🟢 정산 대기', color: 'bg-green-100 text-green-700' }, // Fallback
+        'hq_check': { label: '🟢 정산 검토 중', color: 'bg-green-100 text-green-700' },
         'completed': { label: '⚪ 완료됨', color: 'bg-gray-100 text-gray-600' }
     };
 

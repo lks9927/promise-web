@@ -9,6 +9,7 @@ export default function DevLogin() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        console.log('DevLogin Page Mounted');
         fetchUsers();
     }, []);
 
