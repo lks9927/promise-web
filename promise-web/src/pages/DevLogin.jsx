@@ -20,7 +20,7 @@ export default function DevLogin() {
                 .from('profiles')
                 .select(`
                     *,
-                    partners (grade, region, status)
+                    partners!partners_user_id_fkey (grade, region, status)
                 `)
                 .order('role');
 
