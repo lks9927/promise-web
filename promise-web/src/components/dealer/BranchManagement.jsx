@@ -30,7 +30,7 @@ export default function BranchManagement({ user }) {
                 .from('partners')
                 .select(`
                     *,
-                    profiles:user_id (name, phone, role)
+                    profiles!partners_user_id_fkey (name, phone, role)
                 `)
                 .eq('master_id', user.id)
                 .order('created_at', { ascending: false });

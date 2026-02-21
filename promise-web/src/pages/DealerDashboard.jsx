@@ -166,7 +166,7 @@ function HomeTab({ user }) {
         // 2. Fetch Team (if Master)
         const { data: teamData } = await supabase
             .from('partners')
-            .select('*, profiles:user_id(name)')
+            .select('*, profiles!partners_user_id_fkey(name)')
             .eq('master_id', user.id);
         if (teamData) setTeam(teamData);
 
