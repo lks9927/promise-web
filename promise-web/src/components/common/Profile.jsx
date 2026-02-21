@@ -138,8 +138,14 @@ export default function Profile({ user, onUpdate }) {
                         />
                     </label>
                 </div>
-                <p className="mt-4 font-bold text-lg text-gray-800">{profileData?.name}</p>
-                <p className="text-sm text-gray-500">{user.grade === 'Master' ? '마스터팀장' : '팀장'} ({profileData?.phone})</p>
+                <p className="mt-4 font-bold text-lg text-gray-800">{profileData?.name || user.name}</p>
+                <p className="text-sm text-gray-500">
+                    {user.role === 'admin' ? '관리자' :
+                        user.role === 'master' ? '본사 마스터' :
+                            user.role === 'leader' ? (user.grade === 'Master' ? '마스터팀장' : '팀장') :
+                                user.role === 'dealer' ? (user.grade === 'Master' ? '마스터딜러' : '파트너딜러') :
+                                    '사용자'} ({profileData?.phone || user.phone})
+                </p>
             </div>
 
             <div className="space-y-4">
