@@ -13,7 +13,8 @@ import {
     Home,
     MapPin,
     Package,
-    Bell
+    Bell,
+    User
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MySettlements from '../components/dealer/MySettlements';
