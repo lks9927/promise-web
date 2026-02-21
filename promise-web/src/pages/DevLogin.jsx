@@ -64,11 +64,11 @@ export default function DevLogin() {
         const getGrade = (p) => (Array.isArray(p.partners) ? p.partners[0] : p.partners)?.grade;
         const groups = {
             '관리자 (Admin)': profiles.filter(p => p.role === 'admin'),
+            '고객 (Customer)': profiles.filter(p => p.role === 'customer'),
             '마스터 팀장 (Master Leader)': profiles.filter(p => p.role === 'master' || (p.role === 'leader' && getGrade(p) === 'Master')),
             '일반 팀장 (Team Leader)': profiles.filter(p => ['leader', 'assistant'].includes(p.role) && getGrade(p) !== 'Master'),
             '마스터 딜러 (Master Dealer)': profiles.filter(p => p.role === 'dealer' && getGrade(p) === 'Master'),
             '일반 딜러 (Dealer)': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && getGrade(p) !== 'Master'),
-            '고객 (Customer)': profiles.filter(p => p.role === 'customer'),
             '기타 (Others)': profiles.filter(p => !['admin', 'master', 'leader', 'assistant', 'dealer', 'morning', 'meal', 'customer'].includes(p.role))
         };
         return groups;
