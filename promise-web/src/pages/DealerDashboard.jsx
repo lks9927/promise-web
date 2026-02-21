@@ -29,12 +29,34 @@ export default function DealerDashboard() {
     const navigate = useNavigate();
 
     useEffect(() => {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        } else {
-            navigate('/login');
-        }
+        const loadUser = async () => {
+            const storedUser = localStorage.getItem('user');
+            if (storedUser) {
+                const parsedUser = JSON.parse(storedUser);
+
+                // Fetch latest grade to ensure UI displays correctly (Master dealer features)
+                try {
+                    const { data: partnerData } = await supabase
+                        .from('partners')
+                        .select('grade, status')
+                        .eq('user_id', parsedUser.id)
+                        .single();
+
+                    if (partnerData) {
+                        parsedUser.grade = partnerData.grade;
+                        parsedUser.partner_status = partnerData.status;
+                        localStorage.setItem('user', JSON.stringify(parsedUser)); // Update local storage cache
+                    }
+                } catch (error) {
+                    console.error('Error fetching partner grade:', error);
+                }
+
+                setUser(parsedUser);
+            } else {
+                navigate('/login');
+            }
+        };
+        loadUser();
     }, [navigate]);
 
     if (!user) return <div className="p-4 text-center">Loading...</div>;
@@ -51,7 +73,10 @@ export default function DealerDashboard() {
                         {activeTab === 'settlement' && '정산 및 수익'}
                         {activeTab === 'branch' && '지점 관리'}
                     </h1>
-                    <p className="text-sm text-gray-500">{user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님 ({user.role === 'dealer' && 'Master'})</p>
+                    <p className="text-sm text-gray-500">
+                        {user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님
+                        {user.grade === 'Master' ? ' (Master)' : ''}
+                    </p>
                 </div>
                 <div className="flex items-center gap-3">
                     {/* Notification Bell */}
