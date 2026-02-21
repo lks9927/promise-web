@@ -93,6 +93,23 @@ export default function BranchManagement({ user }) {
         }
     };
 
+    const handleGradeChange = async (dealerId, newGrade) => {
+        try {
+            const { error } = await supabase
+                .from('partners')
+                .update({ grade: newGrade })
+                .eq('id', dealerId);
+
+            if (error) throw error;
+
+            showToast('success', '등급 수정 완료', '해당 딜러의 등급이 변경되었습니다.');
+            fetchSubDealers(); // Refresh list to show changes
+        } catch (error) {
+            console.error('등급 수정 오류:', error);
+            showToast('error', '수정 실패', '등급 수정 중 오류가 발생했습니다.');
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center p-10 text-gray-500">
@@ -207,9 +224,15 @@ export default function BranchManagement({ user }) {
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <h4 className="font-bold text-gray-800 text-lg">{dealer.profiles?.name || '알 수 없음'}</h4>
-                                        <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                                            {dealer.grade} 등급
-                                        </span>
+                                        <select
+                                            className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full border border-green-200 focus:outline-none focus:ring-1 focus:ring-green-500 cursor-pointer appearance-none text-center"
+                                            value={dealer.grade}
+                                            onChange={(e) => handleGradeChange(dealer.id, e.target.value)}
+                                        >
+                                            <option value="A">A 등급</option>
+                                            <option value="B">B 등급</option>
+                                            <option value="C">C 등급</option>
+                                        </select>
                                     </div>
                                     <div className="flex items-center gap-3 text-xs text-gray-500">
                                         <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {dealer.region}</span>
