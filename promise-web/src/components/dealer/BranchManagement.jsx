@@ -30,8 +30,10 @@ export default function BranchManagement({ user }) {
                 .from('partners')
                 .select(`
                     *,
-                    profiles!partners_user_id_fkey (name, phone, role),
-                    funeral_cases!customer_id (status)
+                    profiles!partners_user_id_fkey(
+                        name, phone, role,
+                        funeral_cases!funeral_cases_customer_id_fkey(status)
+                    )
                 `)
                 .eq('master_id', user.id)
                 .order('created_at', { ascending: false });
@@ -217,7 +219,7 @@ export default function BranchManagement({ user }) {
                     </div>
                 ) : (
                     subDealers.map(dealer => {
-                        const cases = dealer.funeral_cases || [];
+                        const cases = dealer.profiles?.funeral_cases || [];
                         const inProgressCount = cases.filter(c => ['requested', 'assigned', 'consulting', 'in_progress'].includes(c.status)).length;
                         const completedCount = cases.filter(c => ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length;
                         const canceledCount = cases.filter(c => c.status === 'canceled').length;
@@ -255,7 +257,7 @@ export default function BranchManagement({ user }) {
 
                                 <div className="text-right">
                                     <div className="text-xs text-gray-400 mb-1">상태</div>
-                                    <div className={`text-sm font-semibold ${dealer.status === 'approved' ? 'text-indigo-600' : 'text-orange-500'}`}>
+                                    <div className={`text - sm font - semibold ${dealer.status === 'approved' ? 'text-indigo-600' : 'text-orange-500'}`}>
                                         {dealer.status === 'approved' ? '활동 중' : '대기/정지'}
                                     </div>
                                 </div>
