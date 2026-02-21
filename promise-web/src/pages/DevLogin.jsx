@@ -50,21 +50,26 @@ export default function DevLogin() {
         else navigate('/');
     };
 
-    const getRoleIcon = (role) => {
+    const getRoleIcon = (role, grade) => {
         if (role === 'admin') return <Shield className="w-5 h-5 text-red-500" />;
-        if (role === 'master') return <Award className="w-5 h-5 text-purple-500" />;
-        if (role === 'leader') return <Briefcase className="w-5 h-5 text-blue-500" />;
-        return <User className="w-5 h-5 text-green-500" />;
+        if (role === 'master' || (role === 'leader' && grade === 'Master')) return <Award className="w-5 h-5 text-purple-600" />;
+        if (role === 'leader' || role === 'assistant') return <Briefcase className="w-5 h-5 text-blue-500" />;
+        if (role === 'dealer' && grade === 'Master') return <Award className="w-5 h-5 text-pink-500" />;
+        if (['dealer', 'morning', 'meal'].includes(role)) return <Briefcase className="w-5 h-5 text-orange-500" />;
+        if (role === 'customer') return <Users className="w-5 h-5 text-green-500" />;
+        return <User className="w-5 h-5 text-gray-500" />;
     };
 
     const getGroupedUsers = () => {
         const getGrade = (p) => (Array.isArray(p.partners) ? p.partners[0] : p.partners)?.grade;
         const groups = {
-            'Admin': profiles.filter(p => p.role === 'admin'),
-            'Master': profiles.filter(p => p.role === 'master' || (p.role === 'dealer' && getGrade(p) === 'Master')),
-            'Team Leader': profiles.filter(p => p.role === 'leader'),
-            'Dealer': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && getGrade(p) !== 'Master'),
-            'Others': profiles.filter(p => !['admin', 'master', 'leader', 'dealer', 'morning', 'meal'].includes(p.role))
+            '관리자 (Admin)': profiles.filter(p => p.role === 'admin'),
+            '마스터 팀장 (Master Leader)': profiles.filter(p => p.role === 'master' || (p.role === 'leader' && getGrade(p) === 'Master')),
+            '일반 팀장 (Team Leader)': profiles.filter(p => ['leader', 'assistant'].includes(p.role) && getGrade(p) !== 'Master'),
+            '마스터 딜러 (Master Dealer)': profiles.filter(p => p.role === 'dealer' && getGrade(p) === 'Master'),
+            '일반 딜러 (Dealer)': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && getGrade(p) !== 'Master'),
+            '고객 (Customer)': profiles.filter(p => p.role === 'customer'),
+            '기타 (Others)': profiles.filter(p => !['admin', 'master', 'leader', 'assistant', 'dealer', 'morning', 'meal', 'customer'].includes(p.role))
         };
         return groups;
     };
@@ -105,7 +110,7 @@ export default function DevLogin() {
                                             className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-100 transition-all group"
                                         >
                                             <div className="flex items-center gap-3">
-                                                {getRoleIcon(user.role)}
+                                                {getRoleIcon(user.role, (Array.isArray(user.partners) ? user.partners[0] : user.partners)?.grade)}
                                                 <div className="text-left">
                                                     <div className="font-bold text-gray-800 group-hover:text-indigo-700">
                                                         {user.name}
