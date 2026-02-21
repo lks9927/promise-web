@@ -17,12 +17,13 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MySettlements from '../components/dealer/MySettlements';
+import BranchManagement from '../components/dealer/BranchManagement';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
 
 export default function DealerDashboard() {
     const { showToast, unreadCount } = useNotification();
-    const [activeTab, setActiveTab] = useState('home'); // 'home', 'register', 'status'
+    const [activeTab, setActiveTab] = useState('home'); // 'home', 'register', 'status', 'settlement', 'branch'
     const [user, setUser] = useState(null);
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const navigate = useNavigate();
@@ -48,6 +49,7 @@ export default function DealerDashboard() {
                         {activeTab === 'register' && '장례 간편 접수'}
                         {activeTab === 'status' && '내 접수 현황'}
                         {activeTab === 'settlement' && '정산 및 수익'}
+                        {activeTab === 'branch' && '지점 관리'}
                     </h1>
                     <p className="text-sm text-gray-500">{user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님 ({user.role === 'dealer' && 'Master'})</p>
                 </div>
@@ -84,6 +86,7 @@ export default function DealerDashboard() {
                 {activeTab === 'register' && <RegisterTab user={user} onSuccess={() => setActiveTab('status')} />}
                 {activeTab === 'status' && <StatusTab user={user} />}
                 {activeTab === 'settlement' && <MySettlements user={user} />}
+                {activeTab === 'branch' && <BranchManagement user={user} />}
             </main>
 
             {/* Bottom Navigation */}
@@ -92,6 +95,9 @@ export default function DealerDashboard() {
                 <NavButton icon={PlusCircle} label="접수하기" active={activeTab === 'register'} onClick={() => setActiveTab('register')} />
                 <NavButton icon={List} label="접수현황" active={activeTab === 'status'} onClick={() => setActiveTab('status')} />
                 <NavButton icon={DollarSign} label="정산관리" active={activeTab === 'settlement'} onClick={() => setActiveTab('settlement')} />
+                {(user?.role === 'master' || user?.grade === 'Master') && (
+                    <NavButton icon={Users} label="지점관리" active={activeTab === 'branch'} onClick={() => setActiveTab('branch')} />
+                )}
             </nav>
         </div>
     );
