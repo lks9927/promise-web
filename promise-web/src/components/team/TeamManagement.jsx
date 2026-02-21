@@ -8,6 +8,7 @@ export default function TeamManagement({ user }) {
     const [teamMembers, setTeamMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
+    const [sortBy, setSortBy] = useState('latest'); // 'latest', 'completed', 'in_progress'
 
     // New team member form state
     const [formData, setFormData] = useState({
@@ -96,6 +97,26 @@ export default function TeamManagement({ user }) {
         }
     };
 
+    // Calculate stats and sort members
+    const getSortedMembers = () => {
+        const membersWithStats = teamMembers.map(member => {
+            const cases = member.profiles?.funeral_cases || [];
+            return {
+                ...member,
+                inProgressCount: cases.filter(c => ['assigned', 'consulting', 'in_progress'].includes(c.status)).length,
+                completedCount: cases.filter(c => ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length,
+                canceledCount: cases.filter(c => c.status === 'canceled').length,
+            };
+        });
+
+        return membersWithStats.sort((a, b) => {
+            if (sortBy === 'completed') return b.completedCount - a.completedCount;
+            if (sortBy === 'in_progress') return b.inProgressCount - a.inProgressCount;
+            // Default: 'latest'
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
+    };
+
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center p-10 text-gray-500">
@@ -105,13 +126,26 @@ export default function TeamManagement({ user }) {
         );
     }
 
+    const sortedMembers = getSortedMembers();
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                    <Users className="w-6 h-6 text-indigo-600" />
-                    내 팀원 관리
-                </h3>
+                <div className="flex items-center gap-4">
+                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                        <Users className="w-6 h-6 text-indigo-600" />
+                        내 팀원 관리
+                    </h3>
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="text-xs border border-gray-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                    >
+                        <option value="latest">최신순</option>
+                        <option value="completed">완료 많은 순</option>
+                        <option value="in_progress">수행 많은 순</option>
+                    </select>
+                </div>
                 <button
                     onClick={() => setIsAdding(!isAdding)}
                     className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors border border-indigo-200"
@@ -201,12 +235,7 @@ export default function TeamManagement({ user }) {
                         <p className="text-sm text-gray-400 mt-1">우측 상단의 팀원 추가 버튼을 눌러 등록하세요.</p>
                     </div>
                 ) : (
-                    teamMembers.map(member => {
-                        const cases = member.profiles?.funeral_cases || [];
-                        const inProgressCount = cases.filter(c => ['assigned', 'consulting', 'in_progress'].includes(c.status)).length;
-                        const completedCount = cases.filter(c => ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length;
-                        const canceledCount = cases.filter(c => c.status === 'canceled').length;
-
+                    sortedMembers.map(member => {
                         return (
                             <div key={member.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-indigo-200 transition-colors">
                                 <div className="flex items-center gap-4">
@@ -225,9 +254,9 @@ export default function TeamManagement({ user }) {
                                             <span>{member.profiles?.phone || '번호 없음'}</span>
                                         </div>
                                         <div className="flex gap-2">
-                                            <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-2 py-0.5 rounded">수행 {inProgressCount}</span>
-                                            <span className="text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded">완료 {completedCount}</span>
-                                            {canceledCount > 0 && <span className="text-[10px] font-medium bg-red-50 text-red-500 px-2 py-0.5 rounded">취소 {canceledCount}</span>}
+                                            <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-2 py-0.5 rounded">수행 {member.inProgressCount}</span>
+                                            <span className="text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded">완료 {member.completedCount}</span>
+                                            {member.canceledCount > 0 && <span className="text-[10px] font-medium bg-red-50 text-red-500 px-2 py-0.5 rounded">취소 {member.canceledCount}</span>}
                                         </div>
                                     </div>
                                 </div>
