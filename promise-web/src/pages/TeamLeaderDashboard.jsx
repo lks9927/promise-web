@@ -22,6 +22,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
 import TeamManagement from '../components/team/TeamManagement';
+import Profile from '../components/common/Profile';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
 
@@ -119,25 +120,30 @@ export default function TeamLeaderDashboard() {
 
             if (requestedData) setAvailableCases(requestedData);
 
-            // 2. Fetch My Assigned Cases (Simplifying query to avoid potential join errors)
-            const { data: allAssigned, error: myError } = await supabase
+            // 2. Fetch My Assigned Cases (Global Case Management Logic)
+            let targetTeamIds = [user.id];
+
+            // If user is a Master Team Leader, fetch cases for their sub-members as well
+            if (user.grade === 'Master' || user.grade === 'S') {
+                const { data: subMembers } = await supabase
+                    .from('partners')
+                    .select('user_id')
+                    .eq('master_id', user.id);
+
+                if (subMembers) {
+                    targetTeamIds = [...targetTeamIds, ...subMembers.map(m => m.user_id)];
+                }
+            }
+
+            const { data: myAssigned, error: myError } = await supabase
                 .from('funeral_cases')
                 .select('*, profiles:customer_id(name, phone)')
                 .in('status', ['assigned', 'consulting', 'in_progress', 'team_settling', 'hq_check', 'completed'])
+                .in('team_leader_id', targetTeamIds) // The core visibility rule
                 .order('created_at', { ascending: false });
 
             if (myError) console.error("My Cases fetch error:", myError);
-
-            // Filter strictly: Ensure strings are trimmed and handle potential case mismatch
-            if (allAssigned) {
-                const myAssigned = allAssigned.filter(c => {
-                    if (!c.team_leader_id || !user.id) return false;
-                    const dbId = String(c.team_leader_id).toLowerCase().trim();
-                    const loginId = String(user.id).toLowerCase().trim();
-                    return dbId === loginId;
-                });
-                setMyCases(myAssigned);
-            }
+            if (myAssigned) setMyCases(myAssigned);
 
             // 3. If Master, fetch team
             if (user.grade === 'Master') {
@@ -265,7 +271,10 @@ export default function TeamLeaderDashboard() {
             <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-30 shadow-sm">
                 <div className="flex justify-between items-center mb-2">
                     <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        {activeTab === 'available' ? '실시간 배정 대기' : '내 진행/정산 현황'}
+                        {activeTab === 'available' && '실시간 배정 대기'}
+                        {activeTab === 'my_cases' && '내 진행/정산 현황'}
+                        {activeTab === 'team' && '내 팀원 관리'}
+                        {activeTab === 'profile' && '내 기본 정보'}
                         {isMaster && <Crown className="w-5 h-5 text-yellow-500 fill-current" />}
                     </h1>
                     <div className="flex items-center gap-3">
@@ -316,6 +325,7 @@ export default function TeamLeaderDashboard() {
                     {user?.grade === 'Master' && (
                         <button onClick={() => setActiveTab('team')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'team' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Users className="w-4 h-4" />팀 관리</button>
                     )}
+                    <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />프로필</button>
                 </div>
 
                 {loading ? <div className="text-center py-10 text-gray-400">데이터를 불러오는 중...</div> : activeTab === 'available' ? (
@@ -324,8 +334,10 @@ export default function TeamLeaderDashboard() {
                     <MyCaseList cases={myCases} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={handleStatusUpdate} onOrderFlower={handleOrderFlower} />
                 ) : activeTab === 'team' ? (
                     <TeamManagement user={user} />
-                ) : (
+                ) : activeTab === 'wallet' ? (
                     <MyWallet user={user} />
+                ) : (
+                    <Profile user={user} onUpdate={setUser} />
                 )}
             </main>
 
@@ -348,6 +360,10 @@ export default function TeamLeaderDashboard() {
                         <span className="text-xs font-bold">팀 관리</span>
                     </button>
                 )}
+                <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 min-w-[64px] ${activeTab === 'profile' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <User className={`w-6 h-6 ${activeTab === 'profile' ? 'fill-current' : ''}`} />
+                    <span className="text-xs font-bold">프로필</span>
+                </button>
             </nav>
 
             {assignModal.isOpen && (

@@ -18,6 +18,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import MySettlements from '../components/dealer/MySettlements';
 import BranchManagement from '../components/dealer/BranchManagement';
+import Profile from '../components/common/Profile';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
 
@@ -72,6 +73,7 @@ export default function DealerDashboard() {
                         {activeTab === 'status' && '내 접수 현황'}
                         {activeTab === 'settlement' && '정산 및 수익'}
                         {activeTab === 'branch' && '지점 관리'}
+                        {activeTab === 'profile' && '내 기본 정보'}
                     </h1>
                     <p className="text-sm text-gray-500">
                         {user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님
@@ -112,6 +114,7 @@ export default function DealerDashboard() {
                 {activeTab === 'status' && <StatusTab user={user} />}
                 {activeTab === 'settlement' && <MySettlements user={user} />}
                 {activeTab === 'branch' && <BranchManagement user={user} />}
+                {activeTab === 'profile' && <Profile user={user} onUpdate={setUser} />}
             </main>
 
             {/* Bottom Navigation */}
@@ -123,6 +126,7 @@ export default function DealerDashboard() {
                 {(user?.role === 'master' || user?.grade === 'Master') && (
                     <NavButton icon={Users} label="지점관리" active={activeTab === 'branch'} onClick={() => setActiveTab('branch')} />
                 )}
+                <NavButton icon={User} label="프로필" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
             </nav>
         </div>
     );
@@ -392,11 +396,26 @@ function StatusTab({ user }) {
 
     const fetchMyCases = async () => {
         setLoading(true);
+        let targetIds = [user.id];
+
+        // If user is a Master Dealer, fetch cases for their sub-dealers as well
+        if (user.grade === 'Master' || user.grade === 'S') {
+            const { data: subDealers } = await supabase
+                .from('partners')
+                .select('user_id')
+                .eq('master_id', user.id);
+
+            if (subDealers) {
+                targetIds = [...targetIds, ...subDealers.map(d => d.user_id)];
+            }
+        }
+
         const { data } = await supabase
             .from('funeral_cases')
             .select('*')
-            .eq('customer_id', user.id) // Fetch cases requested by ME
+            .in('customer_id', targetIds)
             .order('created_at', { ascending: false });
+
         if (data) setMyCases(data);
         setLoading(false);
     };
