@@ -30,7 +30,8 @@ export default function BranchManagement({ user }) {
                 .from('partners')
                 .select(`
                     *,
-                    profiles!partners_user_id_fkey (name, phone, role)
+                    profiles!partners_user_id_fkey (name, phone, role),
+                    funeral_cases!customer_id (status)
                 `)
                 .eq('master_id', user.id)
                 .order('created_at', { ascending: false });
@@ -215,40 +216,52 @@ export default function BranchManagement({ user }) {
                         <p className="text-sm text-gray-400 mt-1">우측 상단의 딜러 추가 버튼을 눌러 등록하세요.</p>
                     </div>
                 ) : (
-                    subDealers.map(dealer => (
-                        <div key={dealer.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-indigo-200 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="bg-indigo-50 p-3 rounded-full text-indigo-600">
-                                    <Briefcase className="w-6 h-6" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <h4 className="font-bold text-gray-800 text-lg">{dealer.profiles?.name || '알 수 없음'}</h4>
-                                        <select
-                                            className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full border border-green-200 focus:outline-none focus:ring-1 focus:ring-green-500 cursor-pointer appearance-none text-center"
-                                            value={dealer.grade}
-                                            onChange={(e) => handleGradeChange(dealer.id, e.target.value)}
-                                        >
-                                            <option value="A">A 등급</option>
-                                            <option value="B">B 등급</option>
-                                            <option value="C">C 등급</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                                        <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {dealer.region}</span>
-                                        <span>{dealer.profiles?.phone || '번호 없음'}</span>
-                                    </div>
-                                </div>
-                            </div>
+                    subDealers.map(dealer => {
+                        const cases = dealer.funeral_cases || [];
+                        const inProgressCount = cases.filter(c => ['requested', 'assigned', 'consulting', 'in_progress'].includes(c.status)).length;
+                        const completedCount = cases.filter(c => ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length;
+                        const canceledCount = cases.filter(c => c.status === 'canceled').length;
 
-                            <div className="text-right">
-                                <div className="text-xs text-gray-400 mb-1">상태</div>
-                                <div className={`text-sm font-semibold ${dealer.status === 'approved' ? 'text-indigo-600' : 'text-orange-500'}`}>
-                                    {dealer.status === 'approved' ? '활동 중' : '대기/정지'}
+                        return (
+                            <div key={dealer.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-indigo-200 transition-colors">
+                                <div className="flex items-center gap-4">
+                                    <div className="bg-indigo-50 p-3 rounded-full text-indigo-600">
+                                        <Briefcase className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <h4 className="font-bold text-gray-800 text-lg">{dealer.profiles?.name || '알 수 없음'}</h4>
+                                            <select
+                                                className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full border border-green-200 focus:outline-none focus:ring-1 focus:ring-green-500 cursor-pointer appearance-none text-center"
+                                                value={dealer.grade}
+                                                onChange={(e) => handleGradeChange(dealer.id, e.target.value)}
+                                            >
+                                                <option value="A">A 등급</option>
+                                                <option value="B">B 등급</option>
+                                                <option value="C">C 등급</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+                                            <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {dealer.region}</span>
+                                            <span>{dealer.profiles?.phone || '번호 없음'}</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-2 py-0.5 rounded">진행 {inProgressCount}</span>
+                                            <span className="text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded">완료 {completedCount}</span>
+                                            {canceledCount > 0 && <span className="text-[10px] font-medium bg-red-50 text-red-500 px-2 py-0.5 rounded">취소 {canceledCount}</span>}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="text-right">
+                                    <div className="text-xs text-gray-400 mb-1">상태</div>
+                                    <div className={`text-sm font-semibold ${dealer.status === 'approved' ? 'text-indigo-600' : 'text-orange-500'}`}>
+                                        {dealer.status === 'approved' ? '활동 중' : '대기/정지'}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
         </div>
