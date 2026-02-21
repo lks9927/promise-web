@@ -80,10 +80,10 @@ export default function DevLogin() {
     const projectTasks = [
         { id: 1, title: '디자인 및 퍼블리싱 (Stitch 100% 반영)', completed: true },
         { id: 2, title: '로그인 및 권한 분류 (6단계 적용 완료)', completed: true },
-        { id: 3, title: '데이터베이스 RLS 권한 세팅 및 우회 처리', completed: true },
-        { id: 4, title: '마스터 대시보드 (하드코딩 제거 및 로직 연결)', completed: true },
-        { id: 5, title: '마스터 딜러 하위 지점 관리 기능', completed: false },
-        { id: 6, title: '장례 발생 건별 배정 및 상태 흐름 처리', completed: false },
+        { id: 3, title: '데이터베이스 RLS 권한 세팅 및 사진 저장소 연동', completed: true },
+        { id: 4, title: '마스터 대시보드 (지점 및 하위 파트너 관리)', completed: true },
+        { id: 5, title: '장례 전역 권한 (Global Case) 배정 흐름 적용', completed: true },
+        { id: 6, title: '개인 정보 및 프로필 사진 최적화 업로드 기능', completed: true },
         { id: 7, title: '정산 로직 및 수익금 계산 표시', completed: false },
         { id: 8, title: '최종 QA 및 운영 환경 연동 검증', completed: false },
     ];
