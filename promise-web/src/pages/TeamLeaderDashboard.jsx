@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
+import TeamManagement from '../components/team/TeamManagement';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
 
@@ -312,18 +313,23 @@ export default function TeamLeaderDashboard() {
                     <button onClick={() => setActiveTab('available')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'available' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Briefcase className="w-4 h-4" />입찰가능</button>
                     <button onClick={() => setActiveTab('my_cases')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'my_cases' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />내 현황</button>
                     <button onClick={() => setActiveTab('wallet')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><DollarSign className="w-4 h-4" />지갑</button>
+                    {user?.grade === 'Master' && (
+                        <button onClick={() => setActiveTab('team')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'team' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Users className="w-4 h-4" />팀 관리</button>
+                    )}
                 </div>
 
                 {loading ? <div className="text-center py-10 text-gray-400">데이터를 불러오는 중...</div> : activeTab === 'available' ? (
                     <AvailableList cases={availableCases} onBid={handleBid} isMaster={isMaster} onOpenAssignModal={(caseId) => setAssignModal({ isOpen: true, caseId })} />
                 ) : activeTab === 'my_cases' ? (
                     <MyCaseList cases={myCases} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={handleStatusUpdate} onOrderFlower={handleOrderFlower} />
+                ) : activeTab === 'team' ? (
+                    <TeamManagement user={user} />
                 ) : (
                     <MyWallet user={user} />
                 )}
             </main>
 
-            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-3 pb-6 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-3 pb-6 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] overflow-x-auto">
                 <button onClick={() => setActiveTab('available')} className={`flex flex-col items-center gap-1 min-w-[64px] ${activeTab === 'available' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
                     <Briefcase className={`w-6 h-6 ${activeTab === 'available' ? 'fill-current' : ''}`} />
                     <span className="text-xs font-bold">입찰가능</span>
@@ -336,6 +342,12 @@ export default function TeamLeaderDashboard() {
                     <DollarSign className={`w-6 h-6 ${activeTab === 'wallet' ? 'fill-current' : ''}`} />
                     <span className="text-xs font-bold">지갑</span>
                 </button>
+                {user?.grade === 'Master' && (
+                    <button onClick={() => setActiveTab('team')} className={`flex flex-col items-center gap-1 min-w-[64px] ${activeTab === 'team' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                        <Users className={`w-6 h-6 ${activeTab === 'team' ? 'fill-current' : ''}`} />
+                        <span className="text-xs font-bold">팀 관리</span>
+                    </button>
+                )}
             </nav>
 
             {assignModal.isOpen && (
