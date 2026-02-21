@@ -63,24 +63,26 @@ export default function Profile({ user, onUpdate }) {
 
             if (uploadError) throw uploadError;
 
-            // 3. Get Public URL
+            // 3. Get Public URL and append timestamp to prevent browser caching
             const { data: { publicUrl } } = supabase.storage
                 .from('profiles')
                 .getPublicUrl(filePath);
 
+            const timestampedUrl = `${publicUrl}?t=${Date.now()}`;
+
             // 4. Update Profile Record
             const { error: updateError } = await supabase
                 .from('profiles')
-                .update({ avatar_url: publicUrl })
+                .update({ avatar_url: timestampedUrl })
                 .eq('id', user.id);
 
             if (updateError) throw updateError;
 
             // Update local state
-            setProfileData(prev => ({ ...prev, avatar_url: publicUrl }));
+            setProfileData(prev => ({ ...prev, avatar_url: timestampedUrl }));
 
             // Update global user object if onUpdate is provided
-            if (onUpdate) onUpdate({ ...user, avatar_url: publicUrl });
+            if (onUpdate) onUpdate({ ...user, avatar_url: timestampedUrl });
 
             showToast('success', '업로드 성공', '프로필 사진이 변경되었습니다.');
 
