@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import SettlementManager from '../components/admin/SettlementManager';
+import CommissionSettings from '../components/admin/CommissionSettings';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
 
@@ -271,6 +272,14 @@ export default function AdminDashboard() {
                         active={activeTab === 'coupons'}
                         onClick={() => setActiveTab('coupons')}
                     />
+                    {CURRENT_ADMIN_LEVEL === 'super' && (
+                        <NavItem
+                            icon={<DollarSign />}
+                            label="수수료/마진 설정"
+                            active={activeTab === 'commissions'}
+                            onClick={() => setActiveTab('commissions')}
+                        />
+                    )}
                     <NavItem
                         icon={<Settings />}
                         label="환경 설정"
@@ -298,7 +307,7 @@ export default function AdminDashboard() {
                 <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 sticky top-0 z-30">
                     <div className="flex items-center gap-3">
                         <h2 className="text-lg font-semibold text-gray-800">
-                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : '👥 파트너'}
+                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'commissions' ? '🧮 수수료 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : '👥 파트너'}
                         </h2>
                     </div>
 
@@ -345,7 +354,7 @@ export default function AdminDashboard() {
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
                         <div className="p-5 border-b border-gray-100 flex justify-between items-center">
                             <h3 className="font-bold text-gray-800 text-lg">
-                                {activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : '파트너 리스트'}
+                                {activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'commissions' ? '수수료 및 마진 설계' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : '파트너 리스트'}
                             </h3>
                             <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
                         </div>
@@ -365,6 +374,8 @@ export default function AdminDashboard() {
                                 passwordRequests={passwordRequests}
                                 onApproveReset={handleApproveReset}
                             />
+                        ) : activeTab === 'commissions' ? (
+                            <CommissionSettings supabase={supabase} />
                         ) : activeTab === 'coupons' ? (
                             <CouponPanel coupons={coupons} onUpdate={fetchData} supabase={supabase} />
                         ) : (
