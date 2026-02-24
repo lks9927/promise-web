@@ -106,30 +106,32 @@ export default function MyWallet({ user }) {
         // 9 Scenarios (Assuming Team Leader has already collected 1,000,000)
         // Team Leader keeps 1,000,000 and has to distribute it out (to Customer, Dealer, HQ, etc.)
 
-        // Helper to deduct
-        let remaining = p.base_margin - p.customer_payback;
+        const abs = (val) => p.is_percentage ? (p.base_margin * val / 100) : val;
+
+        baseContent.customer = abs(p.customer_payback);
+        let remaining = p.base_margin - abs(p.customer_payback);
 
         // If Sales is Dealer
         if (salesRole === 'dealer') {
             if (salesGrade === 'Master') {
                 // 3: 마스터딜러(영업) / 팀장(진행)
-                baseContent.sales_payout = p.sales_dealer_master_direct;
-                remaining -= p.sales_dealer_master_direct;
-                if (execGrade === 'S') remaining -= p.exec_leader_master_override; // Master team leader takes override
+                baseContent.sales_payout = abs(p.sales_dealer_master_direct);
+                remaining -= abs(p.sales_dealer_master_direct);
+                if (execGrade === 'S') remaining -= abs(p.exec_leader_master_override); // Master team leader takes override
 
             } else {
                 // 1 or 2: 일반딜러
-                baseContent.sales_payout = p.sales_dealer_regular;
-                remaining -= p.sales_dealer_regular;
+                baseContent.sales_payout = abs(p.sales_dealer_regular);
+                remaining -= abs(p.sales_dealer_regular);
                 // + Master Dealer Override (goes to their upline... simplified HQ takes it if no upline tracking, or HQ handles it)
-                remaining -= p.sales_dealer_master_override; // Assuming HQ holds the override to give to Master Dealer
+                remaining -= abs(p.sales_dealer_master_override); // Assuming HQ holds the override to give to Master Dealer
 
                 if (execGrade === 'Master') {
                     // 2: 일반딜러(영업) / 마스터팀장(진행)
-                    remaining -= p.exec_leader_master_direct;
+                    remaining -= abs(p.exec_leader_master_direct);
                 } else {
                     // 1: 일반딜러(영업) / 일반팀장(진행)
-                    remaining -= p.exec_leader_master_override;
+                    remaining -= abs(p.exec_leader_master_override);
                 }
             }
         }
@@ -139,22 +141,22 @@ export default function MyWallet({ user }) {
                 if (execGrade === 'Master') {
                     // 5: 마스터팀장(영업) / 마스터팀장(진행) -> Same person?
                     baseContent.sales_payout = 0; // Pre-deducted
-                    remaining = 200000; // As per doc
+                    remaining = p.base_margin - abs(p.customer_payback) - abs(p.sales_leader_master_direct); // Derived
                 } else {
                     // 4: 마스터팀장(영업) / 일반팀장(진행)
-                    baseContent.sales_payout = p.sales_leader_master_direct;
-                    remaining -= p.sales_leader_master_direct;
+                    baseContent.sales_payout = abs(p.sales_leader_master_direct);
+                    remaining -= abs(p.sales_leader_master_direct);
                 }
             } else {
                 // 일반팀장 영업
                 if (execGrade === 'Master') {
                     // 7: 일반팀장(영업) / 마스터팀장(진행)
                     baseContent.sales_payout = 0; // Pre-deducted
-                    remaining = 200000;
+                    remaining = p.base_margin - abs(p.customer_payback) - abs(p.sales_leader_regular) - abs(p.exec_leader_master_direct);
                 } else {
                     // 6: 일반팀장(영업) / 일반팀장(진행) -> Same person?
                     baseContent.sales_payout = 0; // Pre-deducted 
-                    remaining = 300000;
+                    remaining = p.base_margin - abs(p.customer_payback) - abs(p.sales_leader_regular) - abs(p.exec_leader_master_override);
                 }
             }
         }
@@ -163,11 +165,11 @@ export default function MyWallet({ user }) {
             if (execGrade === 'Master') {
                 // 9
                 baseContent.sales_payout = 0;
-                remaining -= p.exec_leader_master_direct; // 20만
+                remaining -= abs(p.exec_leader_master_direct); // 20만
             } else {
                 // 8
                 baseContent.sales_payout = 0;
-                remaining -= p.exec_leader_master_override; // 10만
+                remaining -= abs(p.exec_leader_master_override); // 10만
             }
         }
 
