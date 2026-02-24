@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
-import { Camera, User, Loader2 } from 'lucide-react';
+import { Camera, User, Loader2, CreditCard, Save } from 'lucide-react';
 
 export default function Profile({ user, onUpdate }) {
     const { showToast } = useNotification();
     const [profileData, setProfileData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
+    const [bankInfo, setBankInfo] = useState({ bank_name: '', account_number: '' });
+    const [savingBank, setSavingBank] = useState(false);
 
     useEffect(() => {
         if (user) fetchProfile();
@@ -24,6 +26,7 @@ export default function Profile({ user, onUpdate }) {
                 .single();
             if (error) throw error;
             setProfileData(data);
+            setBankInfo({ bank_name: data.bank_name || '', account_number: data.account_number || '' });
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
@@ -96,6 +99,30 @@ export default function Profile({ user, onUpdate }) {
         }
     };
 
+    const handleSaveBankInfo = async () => {
+        if (!bankInfo.bank_name || !bankInfo.account_number) {
+            showToast('error', '입력 오류', '은행명과 계좌번호를 모두 입력해주세요.');
+            return;
+        }
+        try {
+            setSavingBank(true);
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    bank_name: bankInfo.bank_name,
+                    account_number: bankInfo.account_number
+                })
+                .eq('id', user.id);
+            if (error) throw error;
+            showToast('success', '저장 완료', '정산 계좌 정보가 저장되었습니다.');
+        } catch (error) {
+            console.error(error);
+            showToast('error', '저장 실패', '계좌 정보 저장 중 오류가 발생했습니다.');
+        } finally {
+            setSavingBank(false);
+        }
+    };
+
     if (loading) return <div className="p-8 text-center text-gray-400">로딩 중...</div>;
 
     return (
@@ -148,11 +175,47 @@ export default function Profile({ user, onUpdate }) {
                 </p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6 mt-6">
+                <div className="bg-gray-50 rounded-xl border border-gray-100 p-5">
+                    <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
+                        <CreditCard className="w-5 h-5 text-indigo-600" /> 정산 계좌 관리
+                    </h3>
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">은행명</label>
+                            <input
+                                type="text"
+                                value={bankInfo.bank_name}
+                                onChange={(e) => setBankInfo({ ...bankInfo, bank_name: e.target.value })}
+                                placeholder="예: 신한은행, 카카오뱅크 등"
+                                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">계좌번호 (예금주: {profileData?.name || user.name})</label>
+                            <input
+                                type="text"
+                                value={bankInfo.account_number}
+                                onChange={(e) => setBankInfo({ ...bankInfo, account_number: e.target.value })}
+                                placeholder="- 기호 없이 숫자만 입력"
+                                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium font-mono"
+                            />
+                        </div>
+                        <button
+                            onClick={handleSaveBankInfo}
+                            disabled={savingBank}
+                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors mt-2"
+                        >
+                            {savingBank ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                            계좌 저장
+                        </button>
+                    </div>
+                </div>
+
                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                     <p className="text-xs text-gray-400 font-bold mb-1">안내사항</p>
                     <p className="text-sm text-gray-600">
-                        현재 프로필 사진 외의 세부 정보(소속, 비밀번호 등) 변경은 관리자(Admin)를 통해서만 가능합니다.
+                        계좌번호 외의 정보(소속, 비밀번호 등) 변경은 관리자를 통해서만 가능합니다.
                     </p>
                 </div>
             </div>
