@@ -111,69 +111,67 @@ export default function MyWallet({ user }) {
         baseContent.customer = abs(p.customer_payback);
         let remaining = p.base_margin - abs(p.customer_payback);
 
-        // If Sales is Dealer
-        if (salesRole === 'dealer') {
-            if (salesGrade === 'Master') {
-                // 3: 마스터딜러(영업) / 팀장(진행)
-                baseContent.sales_payout = abs(p.sales_dealer_master_direct);
-                remaining -= abs(p.sales_dealer_master_direct);
-                if (execGrade === 'S') remaining -= abs(p.exec_leader_master_override); // Master team leader takes override
+        // Calculate Sales Payout and HQ Margin based on 9 Scenarios
+        // Note: 'baseContent.sales_payout' only tracks the amount given to the *Sales Requester* directly
+        //       'baseContent.hq' is the amount the Team Leader needs to send to HQ after paying out the Customer, Sales Requester, and keeping their own share (if any).
 
-            } else {
-                // 1 or 2: 일반딜러
-                baseContent.sales_payout = abs(p.sales_dealer_regular);
-                remaining -= abs(p.sales_dealer_regular);
-                // + Master Dealer Override (goes to their upline... simplified HQ takes it if no upline tracking, or HQ handles it)
-                remaining -= abs(p.sales_dealer_master_override); // Assuming HQ holds the override to give to Master Dealer
+        let hqMargin = 0;
+        let salesPayout = 0;
 
-                if (execGrade === 'Master') {
-                    // 2: 일반딜러(영업) / 마스터팀장(진행)
-                    remaining -= abs(p.exec_leader_master_direct);
-                } else {
-                    // 1: 일반딜러(영업) / 일반팀장(진행)
-                    remaining -= abs(p.exec_leader_master_override);
-                }
-            }
+        // 1 일반딜러영업 / 일반팀장진행 : 일반팀장정산(100) - 고객정산(10) - 일반딜러(20) - 마스터딜러(10) - 마스터팀장(10) = 본사마진(50)
+        if (salesRole === 'dealer' && salesGrade !== 'Master' && execGrade === 'S') {
+            salesPayout = abs(p.sales_dealer_regular);
+            hqMargin = p.base_margin - abs(p.customer_payback) - salesPayout - abs(p.sales_dealer_master_override) - abs(p.exec_leader_master_override);
         }
-        // If Sales is Leader
-        else if (salesRole === 'leader') {
-            if (salesGrade === 'Master') {
-                if (execGrade === 'Master') {
-                    // 5: 마스터팀장(영업) / 마스터팀장(진행) -> Same person?
-                    baseContent.sales_payout = 0; // Pre-deducted
-                    remaining = p.base_margin - abs(p.customer_payback) - abs(p.sales_leader_master_direct); // Derived
-                } else {
-                    // 4: 마스터팀장(영업) / 일반팀장(진행)
-                    baseContent.sales_payout = abs(p.sales_leader_master_direct);
-                    remaining -= abs(p.sales_leader_master_direct);
-                }
-            } else {
-                // 일반팀장 영업
-                if (execGrade === 'Master') {
-                    // 7: 일반팀장(영업) / 마스터팀장(진행)
-                    baseContent.sales_payout = 0; // Pre-deducted
-                    remaining = p.base_margin - abs(p.customer_payback) - abs(p.sales_leader_regular) - abs(p.exec_leader_master_direct);
-                } else {
-                    // 6: 일반팀장(영업) / 일반팀장(진행) -> Same person?
-                    baseContent.sales_payout = 0; // Pre-deducted 
-                    remaining = p.base_margin - abs(p.customer_payback) - abs(p.sales_leader_regular) - abs(p.exec_leader_master_override);
-                }
-            }
+        // 2 일반딜러영업 / 마스터팀장진행 : 본사정산(100) - 고객정산(10) - 일반딜러(20) - 마스터팀장(20) = 본사마진(60)
+        else if (salesRole === 'dealer' && salesGrade !== 'Master' && execGrade === 'Master') {
+            salesPayout = abs(p.sales_dealer_regular);
+            hqMargin = p.base_margin - abs(p.customer_payback) - salesPayout - abs(p.exec_leader_master_direct);
         }
-        // If Sales is Admin/HQ
+        // 3 마스터딜러영업 / 일반팀장진행 : 본사정산(100) - 고객정산(10) - 마스터딜러(30) - 마스터팀장(10) = 본사마진(50)
+        else if (salesRole === 'dealer' && salesGrade === 'Master' && execGrade === 'S') {
+            salesPayout = abs(p.sales_dealer_master_direct);
+            hqMargin = p.base_margin - abs(p.customer_payback) - salesPayout - abs(p.exec_leader_master_override);
+        }
+        // 4 마스터팀장영업 / 일반팀장진행 : 본사정산(100) - 고객정산(10) - 마스터팀장(70) = 본사마진(20)
+        else if (salesRole === 'leader' && salesGrade === 'Master' && execGrade === 'S') {
+            salesPayout = abs(p.sales_leader_master_direct);
+            hqMargin = p.base_margin - abs(p.customer_payback) - salesPayout;
+        }
+        // 5 마스터팀장영업 / 마스터팀장진행 : 본사정산(30) - 고객정산(10) = 본사마진(20)
+        // (마스터팀장 영업이 70이고, 본인 혹은 다른 마스터팀장이 진행. 영업자에게 70 지급. 실제 본사입금은 20)
+        else if (salesRole === 'leader' && salesGrade === 'Master' && execGrade === 'Master') {
+            salesPayout = abs(p.sales_leader_master_direct);
+            hqMargin = p.base_margin - abs(p.customer_payback) - salesPayout;
+        }
+        // 6 일반팀장영업 / 일반팀장진행 : 본사정산(50) - 고객정산(10) - 마스터팀장(10) = 본사마진(30)
+        else if (salesRole === 'leader' && salesGrade !== 'Master' && execGrade === 'S') {
+            salesPayout = abs(p.sales_leader_regular);
+            hqMargin = p.base_margin - abs(p.customer_payback) - salesPayout - abs(p.exec_leader_master_override);
+        }
+        // 7 일반팀장영업 / 마스터팀장진행 : 본사정산(50) - 고객정산(10) - 마스터팀장(20) = 본사마진(20)
+        else if (salesRole === 'leader' && salesGrade !== 'Master' && execGrade === 'Master') {
+            salesPayout = abs(p.sales_leader_regular);
+            hqMargin = p.base_margin - abs(p.customer_payback) - salesPayout - abs(p.exec_leader_master_direct);
+        }
+        // 8 본사영업 (직접방문) / 일반팀장진행 : 본사정산(100) - 고객정산(10) - 마스터팀장(10) = 본사마진(80)
+        else if (salesRole === 'admin' && execGrade === 'S') {
+            salesPayout = 0; // HQ keeps sales
+            hqMargin = p.base_margin - abs(p.customer_payback) - abs(p.exec_leader_master_override);
+        }
+        // 9 본사영업 (직접방문) / 마스터팀장진행 : 본사정산(100) - 고객정산(10) - 마스터팀장(20) = 본사마진(70)
+        else if (salesRole === 'admin' && execGrade === 'Master') {
+            salesPayout = 0; // HQ keeps sales
+            hqMargin = p.base_margin - abs(p.customer_payback) - abs(p.exec_leader_master_direct);
+        }
+        // Default Fallback
         else {
-            if (execGrade === 'Master') {
-                // 9
-                baseContent.sales_payout = 0;
-                remaining -= abs(p.exec_leader_master_direct); // 20만
-            } else {
-                // 8
-                baseContent.sales_payout = 0;
-                remaining -= abs(p.exec_leader_master_override); // 10만
-            }
+            hqMargin = p.base_margin - abs(p.customer_payback);
+            salesPayout = 0;
         }
 
-        baseContent.hq = remaining;
+        baseContent.sales_payout = salesPayout;
+        baseContent.hq = hqMargin;
         return baseContent;
     };
 
