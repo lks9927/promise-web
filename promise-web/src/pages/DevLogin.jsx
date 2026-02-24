@@ -84,8 +84,8 @@ export default function DevLogin() {
         { id: 4, title: '마스터 대시보드 (지점 및 하위 파트너 관리)', completed: true },
         { id: 5, title: '장례 전역 권한 (Global Case) 배정 흐름 적용', completed: true },
         { id: 6, title: '개인 정보 및 프로필 사진 최적화 업로드 기능', completed: true },
-        { id: 7, title: '정산 로직 및 수익금 계산 표시', completed: false },
-        { id: 8, title: '최종 QA 및 운영 환경 연동 검증', completed: false },
+        { id: 7, title: '정산 로직 및 수익금 계산 표시 (관리자 수수료율 설정)', completed: true },
+        { id: 8, title: '최종 QA 및 운영 환경 검증', completed: true },
     ];
     const completedTasksCount = projectTasks.filter(t => t.completed).length;
     const progressPercentage = Math.round((completedTasksCount / projectTasks.length) * 100);
