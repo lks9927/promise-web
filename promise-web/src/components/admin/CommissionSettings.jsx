@@ -176,14 +176,43 @@ export default function CommissionSettings({ supabase }) {
                 </h3>
                 {(() => {
                     const abs = (val) => policy.is_percentage ? (policy.base_margin * val / 100) : val;
+                    const createSim = (title, payouts) => {
+                        const totalPayout = payouts.reduce((sum, p) => sum + p.amount, 0);
+                        const margin = policy.base_margin - totalPayout;
+                        return <SimRow title={title} margin={margin} payouts={payouts} />;
+                    };
+
                     return (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-mono">
-                            <SimRow title="1. 일반딜러 영업 / 일반팀장 진행" margin={policy.base_margin - abs(policy.customer_payback) - abs(policy.sales_dealer_regular) - abs(policy.sales_dealer_master_override) - abs(policy.exec_leader_master_override)} />
-                            <SimRow title="2. 일반딜러 영업 / 마스터팀장 진행" margin={policy.base_margin - abs(policy.customer_payback) - abs(policy.sales_dealer_regular) - abs(policy.exec_leader_master_direct)} />
-                            <SimRow title="3. 마스터딜러 영업 / 일반팀장 진행" margin={policy.base_margin - abs(policy.customer_payback) - abs(policy.sales_dealer_master_direct) - abs(policy.exec_leader_master_override)} />
-                            <SimRow title="4. 마스터팀장 영업 / 일반팀장 진행" margin={policy.base_margin - abs(policy.customer_payback) - abs(policy.sales_leader_master_direct)} />
-                            <SimRow title="6. 일반팀장 영업 / 일반팀장 진행" margin={policy.base_margin - abs(policy.customer_payback) - abs(policy.sales_leader_regular) - abs(policy.exec_leader_master_override)} />
-                            <SimRow title="8. 본사 영업 / 일반팀장 진행" margin={policy.base_margin - abs(policy.customer_payback) - abs(policy.exec_leader_master_override)} />
+                            {createSim("1. 일반딜러 영업 / 일반팀장 진행", [
+                                { label: '상주 페이백', amount: abs(policy.customer_payback) },
+                                { label: '일반딜러 수수료', amount: abs(policy.sales_dealer_regular) },
+                                { label: '오버라이드(마스터딜러)', amount: abs(policy.sales_dealer_master_override) },
+                                { label: '오버라이드(상위팀장)', amount: abs(policy.exec_leader_master_override) }
+                            ])}
+                            {createSim("2. 일반딜러 영업 / 마스터팀장 진행", [
+                                { label: '상주 페이백', amount: abs(policy.customer_payback) },
+                                { label: '일반딜러 수수료', amount: abs(policy.sales_dealer_regular) },
+                                { label: '마스터 진행 (직접)', amount: abs(policy.exec_leader_master_direct) }
+                            ])}
+                            {createSim("3. 마스터딜러 영업 / 일반팀장 진행", [
+                                { label: '상주 페이백', amount: abs(policy.customer_payback) },
+                                { label: '마스터딜러 수수료', amount: abs(policy.sales_dealer_master_direct) },
+                                { label: '오버라이드(상위팀장)', amount: abs(policy.exec_leader_master_override) }
+                            ])}
+                            {createSim("4. 마스터팀장 영업 / 일반팀장 진행", [
+                                { label: '상주 페이백', amount: abs(policy.customer_payback) },
+                                { label: '마스터팀장 영업', amount: abs(policy.sales_leader_master_direct) }
+                            ])}
+                            {createSim("6. 일반팀장 영업 / 일반팀장 진행", [
+                                { label: '상주 페이백', amount: abs(policy.customer_payback) },
+                                { label: '일반팀장 수수료', amount: abs(policy.sales_leader_regular) },
+                                { label: '오버라이드(상위팀장)', amount: abs(policy.exec_leader_master_override) }
+                            ])}
+                            {createSim("8. 본사 영업 / 일반팀장 진행", [
+                                { label: '상주 페이백', amount: abs(policy.customer_payback) },
+                                { label: '오버라이드(상위팀장)', amount: abs(policy.exec_leader_master_override) }
+                            ])}
                         </div>
                     );
                 })()}
@@ -213,13 +242,24 @@ function InputField({ label, name, value, onChange, helperText, isPercentage }) 
     );
 }
 
-function SimRow({ title, margin }) {
+function SimRow({ title, margin, payouts }) {
     return (
-        <div className="flex justify-between items-center py-2 border-b border-gray-800">
-            <span className="text-gray-400">{title}</span>
-            <span className={`font-bold ${margin < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                본사입금: {margin.toLocaleString()} 원
-            </span>
+        <div className="flex flex-col py-3 border-b border-gray-800">
+            <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-300 font-bold">{title}</span>
+                <span className={`font-bold ${margin < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    본사입금: {margin.toLocaleString()} 원
+                </span>
+            </div>
+            {payouts && payouts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 text-xs">
+                    {payouts.map((p, i) => (
+                        <span key={i} className="bg-gray-800 border border-gray-700 text-gray-400 px-2 py-1 rounded">
+                            {p.label}: -{p.amount.toLocaleString()}
+                        </span>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
