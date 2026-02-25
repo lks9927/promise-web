@@ -118,7 +118,7 @@ const ProjectStatus = () => {
                             <StatusCard
                                 title="마스터 딜러 (Master Dealer)"
                                 percent={80}
-                                desc="일반 딜러 투입 및 관리, 영업 지원"
+                                desc="딜러 투입 및 관리, 영업 지원"
                                 icon={UserCheck}
                                 path="/dealer?role=master"
                                 color="#2563EB" // Blue
@@ -141,7 +141,7 @@ const ProjectStatus = () => {
                             <StatusCard
                                 title="마스터 팀장"
                                 percent={50}
-                                desc="일반 팀장 등록/투입 및 전체 실적 관리"
+                                desc="팀장 등록/투입 및 전체 실적 관리"
                                 icon={Users}
                                 path="/leader?role=master"
                                 color="#059669" // Emerald

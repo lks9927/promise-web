@@ -1,8 +1,12 @@
 -- 기존 데이터를 삭제하고 새로 시작하려면 아래 주석을 풀고 실행하세요
-DROP TABLE IF EXISTS settlements;
-DROP TABLE IF EXISTS funeral_cases;
-DROP TABLE IF EXISTS partners;
-DROP TABLE IF EXISTS profiles;
+DROP TABLE IF EXISTS system_config CASCADE;
+DROP TABLE IF EXISTS coupons CASCADE;
+DROP TABLE IF EXISTS funeral_progress_reports CASCADE;
+DROP TABLE IF EXISTS flower_orders CASCADE;
+DROP TABLE IF EXISTS settlements CASCADE;
+DROP TABLE IF EXISTS funeral_cases CASCADE;
+DROP TABLE IF EXISTS partners CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
 
 -- 1. UUID 확장 기능 활성화
 create extension if not exists "uuid-ossp";
@@ -15,6 +19,9 @@ create table profiles (
   admin_level text check (admin_level in ('super', 'operating')) default 'super', -- Added admin_level
   name text,
   phone text,
+  password text, -- Added for dummy login
+  introduction text, -- 프로필 모달용 소개글 (마스터/팀장 등)
+  experience_years integer default 0, -- 경력 년수
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -36,6 +43,8 @@ create table funeral_cases (
   customer_id uuid references profiles(id),
   dealer_id uuid references profiles(id),
   team_leader_id uuid references profiles(id), -- Added team_leader_id
+  funnel_type text, -- 유입 경로 (partner_referral, organic_search 등)
+  coupon_code text, -- 사용된 쿠폰 코드
   status text check (status in ('requested', 'assigned', 'in_progress', 'team_settling', 'hq_check', 'completed', 'cancelled')) default 'requested',
   location text,
   package_name text,
@@ -57,6 +66,28 @@ create table settlements (
   status text check (status in ('pending', 'paid')) default 'pending',
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+-- 5-1. 장례 진행 단계별 보고서 (funeral_progress_reports)
+create table funeral_progress_reports (
+  id uuid default uuid_generate_v4() primary key,
+  case_id uuid references funeral_cases(id) on delete cascade,
+  author_id uuid references profiles(id) on delete cascade,
+  author_name text not null,
+  author_grade text,
+  stage_number integer not null check (stage_number >= 1 and stage_number <= 6),
+  stage_name text not null,
+  content text,
+  image_url text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 보고서 RLS 정책
+alter table funeral_progress_reports enable row level security;
+create policy "보고서는 누구나 열람 가능" on funeral_progress_reports for select using (true);
+create policy "보고서는 팀장 이상 작성 가능" on funeral_progress_reports for insert
+  with check (exists (select 1 from profiles where profiles.id = author_id and profiles.role in ('leader', 'admin', 'master')));
+create policy "보고서는 작성자만 수정 가능" on funeral_progress_reports for update using (auth.uid() = author_id);
+create policy "보고서는 작성자만 삭제 가능" on funeral_progress_reports for delete using (auth.uid() = author_id);
 
 -- 6. 테스트용 가짜 데이터 입력
 -- (참고: 실제 앱에서는 회원가입 시 ID가 생성되므로, 여기서는 테스트를 위해 임의의 ID를 직접 지정해 넣습니다)
@@ -101,3 +132,20 @@ insert into system_config (key, value, description) values
 insert into settlements (case_id, recipient_id, amount, type, is_pre_paid, status) values
   ('f1eebc99-9c0b-4ef8-bb6d-6bb9bd380a20', 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13', 300000, 'dealer_commission', false, 'pending'),
   ('f2eebc99-9c0b-4ef8-bb6d-6bb9bd380a21', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14', 100000, 'customer_cashback', true, 'pending');
+
+-- 8. 스토리지 버킷 'reports' 생성 (단계별 사진 업로드용)
+insert into storage.buckets (id, name, public) 
+values ('reports', 'reports', true)
+on conflict (id) do nothing;
+
+drop policy if exists "Public Access to reports" on storage.objects;
+create policy "Public Access to reports" on storage.objects for select using ( bucket_id = 'reports' );
+
+drop policy if exists "Users can upload reports" on storage.objects;
+create policy "Users can upload reports" on storage.objects for insert with check ( bucket_id = 'reports' and auth.role() = 'authenticated' );
+
+drop policy if exists "Users can update their reports" on storage.objects;
+create policy "Users can update their reports" on storage.objects for update using ( bucket_id = 'reports' and auth.uid() = owner );
+
+drop policy if exists "Users can delete their reports" on storage.objects;
+create policy "Users can delete their reports" on storage.objects for delete using ( bucket_id = 'reports' and auth.uid() = owner );

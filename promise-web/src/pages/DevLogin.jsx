@@ -66,9 +66,9 @@ export default function DevLogin() {
             '관리자 (Admin)': profiles.filter(p => p.role === 'admin'),
             '고객 (Customer)': profiles.filter(p => p.role === 'customer'),
             '마스터 팀장 (Master Leader)': profiles.filter(p => p.role === 'leader' && ['Master', 'S'].includes(getGrade(p))),
-            '일반 팀장 (Team Leader)': profiles.filter(p => p.role === 'leader' && !['Master', 'S'].includes(getGrade(p))),
+            '팀장 (Team Leader)': profiles.filter(p => p.role === 'leader' && !['Master', 'S'].includes(getGrade(p))),
             '마스터 딜러 (Master Dealer)': profiles.filter(p => p.role === 'master' || (['dealer', 'morning', 'meal'].includes(p.role) && ['Master', 'S'].includes(getGrade(p)))),
-            '일반 딜러 (Dealer)': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && !['Master', 'S'].includes(getGrade(p))),
+            '딜러 (Dealer)': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && !['Master', 'S'].includes(getGrade(p))),
             '기타 (Others)': profiles.filter(p => !['admin', 'master', 'leader', 'dealer', 'morning', 'meal', 'customer'].includes(p.role))
         };
         return groups;

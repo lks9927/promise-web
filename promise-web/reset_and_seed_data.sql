@@ -1,13 +1,3 @@
--- ==========================================
--- 기존 데이터 초기화 (어드민 제외)
--- ==========================================
-DELETE FROM funeral_progress_reports;
-DELETE FROM settlements;
-DELETE FROM notifications;
-DELETE FROM funeral_cases;
-DELETE FROM partners;
--- 어드민 계정은 유지하고 나머지 모두 삭제
-DELETE FROM profiles WHERE role != 'admin';
 
 -- ==========================================
 -- 테스트용 스토리지 RLS 정책 수정 (프로토타입용 익명 업로드 허용)
@@ -24,14 +14,18 @@ USING ( bucket_id = 'reports' );
 
 -- ==========================================
 -- 테스트용 실제 데이터 생성
--- 관리자: 마스터관리자, 매니저 (기존 admin 외 추가 생성)
+-- 관리자: 최고관리자, 운영관리자 (총 2명)
 -- 고객: 정치인 10명
--- 팀장: 연예인 10명 (마스터 3, 일반 7)
--- 딜러: 스포츠스타 10명 (마스터 3, 일반 7)
+-- 팀장: 연예인 10명 (마스터 3, 딜러 7)
+-- 딜러: 스포츠스타 10명 (마스터 3, 딜러 7)
 -- ==========================================
 
 DO $$
 DECLARE
+    -- 관리자 UUIDs
+    ad01 UUID := '11000000-0000-0000-0000-000000000001';
+    ad02 UUID := '11000000-0000-0000-0000-000000000002';
+
     -- 팀장 (연예인) UUIDs
     tl01 UUID := '21000000-0000-0000-0000-000000000001';
     tl02 UUID := '21000000-0000-0000-0000-000000000002';
@@ -69,14 +63,14 @@ DECLARE
     cu10 UUID := '51000000-0000-0000-0000-000000000010';
 BEGIN
 
-    -- 0. 관리자 (어드민 추가 2명)
-    INSERT INTO profiles (id, email, role, name, phone, password)
+    -- 0. 관리자 (총 2명으로 제한)
+    INSERT INTO profiles (id, email, role, admin_level, name, phone, password)
     VALUES 
-    -- 기존 admin은 유지되지만, 별도 접속용 계정 생성
-    (gen_random_uuid(), 'masteradmin@test.com', 'admin', '마스터 관리자', '010-0000-0001', '1234'),
-    (gen_random_uuid(), 'manager@test.com', 'admin', '매니저', '010-0000-0002', '1234');
+    (ad01, 'masteradmin@test.com', 'admin', 'super', '최고관리자', '010-0000-0001', '1234'),
+    (ad02, 'manager@test.com', 'admin', 'operating', '운영관리자', '010-0000-0002', '1234');
 
     -- 1. 팀장 (연예인 10명) 
+
     INSERT INTO profiles (id, email, role, name, phone, password, introduction, experience_years)
     VALUES 
     -- 마스터 팀장 (3명)
@@ -152,13 +146,13 @@ BEGIN
     (cu10, 'cu10@test.com', 'customer', '김종인 (상주)', '010-3000-0010', '1234');
 
     -- 4. 샘플 접수 건 생성
-    INSERT INTO funeral_cases (id, customer_id, dealer_id, team_leader_id, status, location, package_name, final_price)
+    INSERT INTO funeral_cases (id, customer_id, dealer_id, team_leader_id, status, location, package_name, final_price, funnel_type, coupon_code)
     VALUES 
     -- 1. 이재명 고객 (하정우 마스터팀장 담당, 손흥민 마스터딜러 모집)
-    (gen_random_uuid(), cu01, dl01, tl01, 'in_progress', '서울아산병원 장례식장', '프리미엄 3일장', 4500000),
-    -- 2. 한동훈 고객 (황정민 마스터팀장 담당, 딜러 없음/본사유입)
-    (gen_random_uuid(), cu02, NULL, tl02, 'team_settling', '삼성서울병원 장례식장', '노블레스 3일장', 6800000),
-    -- 3. 조국 고객 (송강호 일반팀장 담당, 김연아 সাধারণ딜러 모집)
-    (gen_random_uuid(), cu03, dl04, tl04, 'completed', '세브란스병원 장례식장', '기본형 3일장', 3200000);
+    (gen_random_uuid(), cu01, dl01, tl01, 'in_progress', '서울아산병원 장례식장', '프리미엄 3일장', 4500000, 'partner_referral', 'WELCOME10'),
+    -- 2. 한동훈 고객 (황정민 마스터팀장 담당, 본사유입)
+    (gen_random_uuid(), cu02, NULL, tl02, 'team_settling', '삼성서울병원 장례식장', '노블레스 3일장', 6800000, 'organic_search', NULL),
+    -- 3. 조국 고객 (송강호 팀장 담당, 김연아 딜러 모집)
+    (gen_random_uuid(), cu03, dl04, tl04, 'completed', '세브란스병원 장례식장', '기본형 3일장', 3200000, 'partner_referral', NULL);
 
 END $$;

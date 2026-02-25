@@ -148,10 +148,10 @@ export default function CommissionSettings({ supabase }) {
                         <h3 className="font-bold text-gray-800">영업(Sales) 수수료 설정</h3>
                     </div>
                     <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-6">
-                        <InputField label={`일반 딜러 직접 영업 (${policy.is_percentage ? '%' : '원'})`} name="sales_dealer_regular" value={policy.sales_dealer_regular} onChange={handleChange} helperText="일반 딜러 직접 영업 수수료" isPercentage={policy.is_percentage} />
+                        <InputField label={`딜러 직접 영업 (${policy.is_percentage ? '%' : '원'})`} name="sales_dealer_regular" value={policy.sales_dealer_regular} onChange={handleChange} helperText="딜러 직접 영업 수수료" isPercentage={policy.is_percentage} />
                         <InputField label={`마스터 딜러 하위영업 오버라이드 (${policy.is_percentage ? '%' : '원'})`} name="sales_dealer_master_override" value={policy.sales_dealer_master_override} onChange={handleChange} helperText="하위 딜러 영업 시 마스터 딜러 추가 수익" isPercentage={policy.is_percentage} />
                         <InputField label={`마스터 딜러 직접 영업 (${policy.is_percentage ? '%' : '원'})`} name="sales_dealer_master_direct" value={policy.sales_dealer_master_direct} onChange={handleChange} helperText="마스터 딜러 직접 영업 수수료" isPercentage={policy.is_percentage} />
-                        <InputField label={`일반 팀장 직접 영업 (${policy.is_percentage ? '%' : '원'})`} name="sales_leader_regular" value={policy.sales_leader_regular} onChange={handleChange} helperText="일반 팀장이 영업 시 수수료" isPercentage={policy.is_percentage} />
+                        <InputField label={`팀장 직접 영업 (${policy.is_percentage ? '%' : '원'})`} name="sales_leader_regular" value={policy.sales_leader_regular} onChange={handleChange} helperText="팀장 직접 영업 수수료" isPercentage={policy.is_percentage} />
                         <InputField label={`마스터 팀장 직접 영업 (${policy.is_percentage ? '%' : '원'})`} name="sales_leader_master_direct" value={policy.sales_leader_master_direct} onChange={handleChange} helperText="마스터 팀장이 영업 시 수수료" isPercentage={policy.is_percentage} />
                     </div>
                 </div>

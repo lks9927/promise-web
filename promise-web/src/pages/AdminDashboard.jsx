@@ -194,10 +194,10 @@ export default function AdminDashboard() {
 
     const getRoleDisplayName = (role, grade) => {
         if (role === 'leader') {
-            return (grade === 'S' || grade === 'Master') ? '마스터 팀장' : '일반 팀장';
+            return (grade === 'S' || grade === 'Master') ? '마스터 팀장' : '팀장';
         }
         if (['dealer', 'morning', 'meal', '아침', '식사'].includes(role)) {
-            return (grade === 'S' || grade === 'Master') ? '마스터 딜러' : '일반 딜러';
+            return (grade === 'S' || grade === 'Master') ? '마스터 딜러' : '딜러';
         }
         if (role === 'master') return '마스터 딜러';
         return role;

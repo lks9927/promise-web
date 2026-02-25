@@ -79,7 +79,7 @@ export default function DealerDashboard() {
                         {activeTab === 'profile' && '내 기본 정보'}
                     </h1>
                     <p className="text-sm text-gray-500">
-                        {user.name} {user.role === 'leader' ? (user.grade === 'Master' || user.grade === 'S' ? '마스터 팀장' : '일반 팀장') : (user.grade === 'Master' || user.grade === 'S' ? '마스터 딜러' : '일반 딜러')}님
+                        {user.name} 님
                     </p>
                 </div>
                 <div className="flex items-center gap-3">

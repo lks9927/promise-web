@@ -298,7 +298,7 @@ export default function TeamLeaderDashboard() {
                 </div>
                 <div className="flex justify-between items-center bg-gray-50 rounded-lg p-2 relative">
                     <div className="flex items-center gap-2 pl-1">
-                        <div className="text-sm font-bold text-gray-700">{user.name} 팀장</div>
+                        <div className="text-sm font-bold text-gray-700">{user.name}</div>
                         <div className={`text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1.5 ${myStatusInfo.color}`}>
                             <span className={`w-2 h-2 rounded-full ${myStatusInfo.icon} ${myStatus === 'waiting' ? 'animate-pulse' : ''}`}></span>
                             {myStatusInfo.label}
