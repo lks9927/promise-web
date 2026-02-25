@@ -9,8 +9,11 @@ import {
     Star,
     Heart,
     LogOut,
-    Gift // New: Gift Icon
+    Gift,
+    ChevronRight
 } from 'lucide-react';
+import TeamLeaderProfileModal from '../components/common/TeamLeaderProfileModal';
+import TimelineView from '../components/common/TimelineView';
 
 export default function CustomerStatus() {
     const navigate = useNavigate();
@@ -18,6 +21,7 @@ export default function CustomerStatus() {
     const [myCase, setMyCase] = useState(null);
     const [loading, setLoading] = useState(true);
     const [couponCode, setCouponCode] = useState(''); // New: Coupon Code State
+    const [profileModalOpen, setProfileModalOpen] = useState(false);
 
     useEffect(() => {
         checkSession();
@@ -54,6 +58,10 @@ export default function CustomerStatus() {
                     dealer:dealer_id (
                         *,
                         profiles:user_id (name, phone)
+                    ),
+                    team_leader:team_leader_id (
+                        *,
+                        profiles:user_id (name, phone, role, grade, avatar_url, experience_years, introduction)
                     )
                 `)
                 .eq('customer_id', userId)
@@ -250,24 +258,39 @@ export default function CustomerStatus() {
                 </div>
 
                 {/* Assigned Leader Card */}
-                {myCase.dealer ? (
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center gap-4">
-                        <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center text-3xl overflow-hidden">
-                            🧔🏻
+                {myCase.team_leader ? (
+                    <div
+                        onClick={() => setProfileModalOpen(true)}
+                        className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center gap-4 cursor-pointer hover:border-indigo-200 transition-colors group"
+                    >
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+                            {myCase.team_leader.profiles?.avatar_url ? (
+                                <img src={myCase.team_leader.profiles.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <User className="w-8 h-8 text-gray-300" />
+                            )}
                         </div>
                         <div className="flex-1">
-                            <div className="text-sm text-gray-400 font-medium">담당 팀장</div>
-                            <div className="text-lg font-bold text-gray-900">{myCase.dealer.profiles?.name || '정보 없음'}</div>
-                            <div className="text-indigo-600 text-sm font-medium">{myCase.dealer.profiles?.phone || ''}</div>
+                            <div className="text-sm text-gray-400 font-medium">담당 본부장/팀장</div>
+                            <div className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                                {myCase.team_leader.profiles?.name || '정보 없음'}
+                            </div>
+                            <div className="text-gray-500 text-sm flex items-center gap-1 mt-0.5">
+                                프로필 보기 <ChevronRight className="w-3 h-3" />
+                            </div>
                         </div>
-                        <a href={`tel:${myCase.dealer.profiles?.phone}`} className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 hover:bg-green-200 transition-colors shadow-sm">
+                        <a
+                            href={`tel:${myCase.team_leader.profiles?.phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 hover:bg-green-200 transition-colors shadow-sm"
+                        >
                             <Phone className="w-5 h-5" />
                         </a>
                     </div>
                 ) : (
                     <div className="bg-gray-50 rounded-2xl p-6 text-center text-gray-500 text-sm border border-dashed border-gray-300">
-                        아직 담당 팀장이 배정되지 않았습니다.<br />
-                        곧 배정 후 연락드리겠습니다.
+                        아직 담당 본부장/팀장이 배정되지 않았습니다.<br />
+                        곧 최적의 전문가를 배정해드리겠습니다.
                     </div>
                 )}
 
@@ -290,7 +313,18 @@ export default function CustomerStatus() {
                     </div>
                 </div>
 
+                {/* 6-Stage Progress Timeline */}
+                <TimelineView caseId={myCase.id} />
+
             </main>
+
+            {myCase.team_leader && (
+                <TeamLeaderProfileModal
+                    isOpen={profileModalOpen}
+                    onClose={() => setProfileModalOpen(false)}
+                    leaderProfile={myCase.team_leader.profiles}
+                />
+            )}
         </div>
     );
 }

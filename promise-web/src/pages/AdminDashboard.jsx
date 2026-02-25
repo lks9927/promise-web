@@ -22,6 +22,7 @@ import SettlementManager from '../components/admin/SettlementManager';
 import CommissionSettings from '../components/admin/CommissionSettings';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
+import TimelineView from '../components/common/TimelineView';
 
 export default function AdminDashboard() {
     const { showToast, sendNotification, unreadCount } = useNotification();
@@ -35,6 +36,7 @@ export default function AdminDashboard() {
     const [config, setConfig] = useState({});
     const [loading, setLoading] = useState(true);
     const [isNotifOpen, setIsNotifOpen] = useState(false);
+    const [expandedCaseId, setExpandedCaseId] = useState(null);
 
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -63,7 +65,11 @@ export default function AdminDashboard() {
                 .from('funeral_cases')
                 .select(`
                     *,
-                    profiles:customer_id (name, phone)
+                    profiles:customer_id (name, phone),
+                    team_leader:team_leader_id (
+                        *,
+                        profiles:user_id (name, phone)
+                    )
                 `)
                 .order('created_at', { ascending: false });
             if (caseData) setCases(caseData);
@@ -188,13 +194,13 @@ export default function AdminDashboard() {
 
     const getRoleDisplayName = (role, grade) => {
         if (role === 'leader') {
-            return (grade === 'S' || grade === 'Master') ? '마스터팀장' : '팀장';
+            return (grade === 'S' || grade === 'Master') ? '마스터 팀장' : '일반 팀장';
         }
         if (['dealer', 'morning', 'meal', '아침', '식사'].includes(role)) {
-            return (grade === 'S' || grade === 'Master') ? '마스터딜러' : '딜러';
+            return (grade === 'S' || grade === 'Master') ? '마스터 딜러' : '일반 딜러';
         }
-        if (role === 'master') return '마스터딜러';
-        return role === 'assistant' ? '상례사' : role;
+        if (role === 'master') return '마스터 딜러';
+        return role;
     };
 
     const [gradeModal, setGradeModal] = useState({ isOpen: false, partnerId: null, currentGrade: '', name: '' });
@@ -414,61 +420,81 @@ export default function AdminDashboard() {
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {loading ? (
-                                            <tr><td colSpan="5" className="px-6 py-4 text-center">데이터를 불러오는 중...</td></tr>
+                                            <tr><td colSpan="7" className="px-6 py-4 text-center">데이터를 불러오는 중...</td></tr>
                                         ) : activeTab === 'cases' ? (
                                             cases.map(item => (
-                                                <tr key={item.id} className="hover:bg-gray-50">
-                                                    <td className="px-6 py-4 font-mono text-gray-500 text-xs">{item.id.substring(0, 8)}...</td>
-                                                    <td className="px-6 py-4 font-bold text-gray-900">
-                                                        {item.profiles?.name} <span className="text-gray-400 font-normal">({item.profiles?.phone})</span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-gray-600">{item.location}</td>
-                                                    <td className="px-6 py-4 text-gray-600">{item.package_name}</td>
-                                                    <td className="px-6 py-4">
-                                                        {(() => {
-                                                            if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
-                                                            const p = partners.find(p => p.user_id === item.team_leader_id);
-                                                            return p ? (
-                                                                <div>
-                                                                    <div className="font-bold text-gray-900">{p.profiles?.name}</div>
-                                                                    <div className="text-xs text-indigo-500">{p.grade}</div>
+                                                <React.Fragment key={item.id}>
+                                                    <tr className="hover:bg-gray-50">
+                                                        <td className="px-6 py-4 font-mono text-gray-500 text-xs">{item.id.substring(0, 8)}...</td>
+                                                        <td className="px-6 py-4 font-bold text-gray-900">
+                                                            {item.profiles?.name} <span className="text-gray-400 font-normal">({item.profiles?.phone})</span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-gray-600">{item.location}</td>
+                                                        <td className="px-6 py-4 text-gray-600">{item.package_name}</td>
+                                                        <td className="px-6 py-4">
+                                                            {(() => {
+                                                                if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
+                                                                const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                                return p ? (
+                                                                    <div>
+                                                                        <div className="font-bold text-gray-900">{p.profiles?.name}</div>
+                                                                        <div className="text-xs text-indigo-500">{p.grade}</div>
+                                                                    </div>
+                                                                ) : <span className="text-gray-400">정보 없음</span>;
+                                                            })()}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            {(() => {
+                                                                if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
+                                                                const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                                if (!p) return '-';
+                                                                if (p.grade === 'Master') return <span className="text-xs  bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">본인 (Master)</span>;
+                                                                if (p.master_id) {
+                                                                    const m = partners.find(mp => mp.user_id === p.master_id);
+                                                                    return m ? <span className="font-medium text-gray-700">{m.profiles?.name}</span> : <span className="text-red-400 text-xs">마스터 정보 없음</span>;
+                                                                }
+                                                                return <span className="text-gray-400 text-xs">-</span>;
+                                                            })()}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center">
+                                                            {(() => {
+                                                                const statusMap = {
+                                                                    'requested': { label: '🚨 접수 대기', class: 'bg-red-100 text-red-700 animate-pulse' },
+                                                                    'assigned': { label: '🟡 팀장 배정', class: 'bg-yellow-100 text-yellow-700' },
+                                                                    'consulting': { label: '🗣️ 상담 중', class: 'bg-orange-100 text-orange-700' },
+                                                                    'in_progress': { label: '🔵 서비스 진행', class: 'bg-blue-100 text-blue-700' },
+                                                                    'team_settling': { label: '🟢 정산 대기', class: 'bg-green-100 text-green-700' },
+                                                                    'hq_check': { label: '🟢 정산 검토 중', class: 'bg-green-100 text-green-700' },
+                                                                    'completed': { label: '⚪ 완료됨', class: 'bg-gray-100 text-gray-600' }
+                                                                };
+                                                                const status = statusMap[item.status] || { label: item.status, class: 'bg-gray-100 text-gray-600' };
+                                                                return (
+                                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${status.class}`}>
+                                                                        {status.label}
+                                                                    </span>
+                                                                );
+                                                            })()}
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setExpandedCaseId(expandedCaseId === item.id ? null : item.id);
+                                                                }}
+                                                                className="ml-2 mt-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold hover:bg-indigo-100 block mx-auto"
+                                                            >
+                                                                진행 이력
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {expandedCaseId === item.id && (
+                                                        <tr className="bg-gray-50/50">
+                                                            <td colSpan="7" className="px-6 py-4">
+                                                                <div className="max-w-4xl mx-auto border border-gray-100 rounded-xl bg-white animate-fadeIn">
+                                                                    <TimelineView caseId={item.id} />
                                                                 </div>
-                                                            ) : <span className="text-gray-400">정보 없음</span>;
-                                                        })()}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        {(() => {
-                                                            if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
-                                                            const p = partners.find(p => p.user_id === item.team_leader_id);
-                                                            if (!p) return '-';
-                                                            if (p.grade === 'Master') return <span className="text-xs  bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">본인 (Master)</span>;
-                                                            if (p.master_id) {
-                                                                const m = partners.find(mp => mp.user_id === p.master_id);
-                                                                return m ? <span className="font-medium text-gray-700">{m.profiles?.name}</span> : <span className="text-red-400 text-xs">마스터 정보 없음</span>;
-                                                            }
-                                                            return <span className="text-gray-400 text-xs">-</span>;
-                                                        })()}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-center">
-                                                        {(() => {
-                                                            const statusMap = {
-                                                                'requested': { label: '🚨 접수 대기', class: 'bg-red-100 text-red-700 animate-pulse' },
-                                                                'assigned': { label: '🟡 팀장 배정', class: 'bg-yellow-100 text-yellow-700' },
-                                                                'consulting': { label: '🗣️ 상담 중', class: 'bg-orange-100 text-orange-700' },
-                                                                'in_progress': { label: '🔵 서비스 진행', class: 'bg-blue-100 text-blue-700' },
-                                                                'team_settling': { label: '🟢 정산 대기', class: 'bg-green-100 text-green-700' },
-                                                                'hq_check': { label: '🟢 정산 검토 중', class: 'bg-green-100 text-green-700' },
-                                                                'completed': { label: '⚪ 완료됨', class: 'bg-gray-100 text-gray-600' }
-                                                            };
-                                                            const status = statusMap[item.status] || { label: item.status, class: 'bg-gray-100 text-gray-600' };
-                                                            return (
-                                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${status.class}`}>
-                                                                    {status.label}
-                                                                </span>
-                                                            );
-                                                        })()}
-                                                    </td>
-                                                </tr>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
                                             ))
                                         ) : activeTab === 'settlement' ? (
                                             <tr>

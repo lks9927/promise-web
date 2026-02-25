@@ -21,7 +21,6 @@ const Login = () => {
                 case 'master': navigate('/master'); break;
                 case 'leader': navigate('/leader'); break;
                 case 'dealer': navigate('/dealer'); break;
-                case 'assistant': navigate('/leader'); break;
                 case 'customer': navigate('/mypage'); break;
                 default: navigate('/');
             }
@@ -86,9 +85,6 @@ const Login = () => {
                         break;
                     case 'dealer':
                         navigate('/dealer');
-                        break;
-                    case 'assistant':
-                        navigate('/leader'); // Assistants use leader dashboard for now
                         break;
                     case 'customer':
                         navigate('/mypage');

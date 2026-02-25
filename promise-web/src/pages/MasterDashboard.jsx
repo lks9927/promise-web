@@ -39,7 +39,13 @@ export default function MasterDashboard() {
 
             if (partnerData) {
                 setCandidates(partnerData.filter(p => p.status === 'pending'));
-                setMyTeam(partnerData.filter(p => p.status === 'approved'));
+                // Master Dealers (Role 'master') should only see 'leader's (마스터 팀장, 일반 팀장) in their team
+                const filteredTeam = partnerData.filter(p => p.status === 'approved');
+                if (user.role === 'master') {
+                    setMyTeam(filteredTeam.filter(p => p.profiles?.role === 'leader'));
+                } else {
+                    setMyTeam(filteredTeam);
+                }
             }
 
             // 2. Fetch My Earnings (Master Fees)
@@ -249,7 +255,8 @@ export default function MasterDashboard() {
                                             <td className="px-6 py-4 font-bold text-gray-900">{p.profiles?.name}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`text-xs px-2 py-1 rounded-full border ${p.profiles?.role === 'leader' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
-                                                    {p.profiles?.role === 'leader' ? '팀장' : '상례사'}
+                                                    {p.profiles?.role === 'leader' ? (p.grade === 'Master' || p.grade === 'S' ? '마스터 팀장' : '일반 팀장') : ''}
+                                                    {['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) ? (p.grade === 'Master' || p.grade === 'S' ? '마스터 딜러' : '일반 딜러') : ''}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-gray-600">{p.profiles?.phone}</td>

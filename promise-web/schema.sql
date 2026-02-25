@@ -11,7 +11,7 @@ create extension if not exists "uuid-ossp";
 create table profiles (
   id uuid primary key, -- Here modified: temporarily removed auth.users check
   email text,
-  role text check (role in ('admin', 'master', 'leader', 'assistant', 'dealer', 'customer')) default 'customer',
+  role text check (role in ('admin', 'master', 'leader', 'dealer', 'customer')) default 'customer',
   admin_level text check (admin_level in ('super', 'operating')) default 'super', -- Added admin_level
   name text,
   phone text,

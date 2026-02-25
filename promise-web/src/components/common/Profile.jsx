@@ -12,6 +12,10 @@ export default function Profile({ user, onUpdate }) {
     const [bankInfo, setBankInfo] = useState({ bank_name: '', account_number: '' });
     const [savingBank, setSavingBank] = useState(false);
 
+    // Additional Profile Details
+    const [profileDetails, setProfileDetails] = useState({ introduction: '', experience_years: 0 });
+    const [savingDetails, setSavingDetails] = useState(false);
+
     useEffect(() => {
         if (user) fetchProfile();
     }, [user]);
@@ -27,6 +31,10 @@ export default function Profile({ user, onUpdate }) {
             if (error) throw error;
             setProfileData(data);
             setBankInfo({ bank_name: data.bank_name || '', account_number: data.account_number || '' });
+            setProfileDetails({
+                introduction: data.introduction || '',
+                experience_years: data.experience_years || 0
+            });
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
@@ -123,6 +131,26 @@ export default function Profile({ user, onUpdate }) {
         }
     };
 
+    const handleSaveProfileDetails = async () => {
+        try {
+            setSavingDetails(true);
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    introduction: profileDetails.introduction,
+                    experience_years: parseInt(profileDetails.experience_years) || 0
+                })
+                .eq('id', user.id);
+            if (error) throw error;
+            showToast('success', '저장 완료', '프로필 상세 정보가 저장되었습니다.');
+        } catch (error) {
+            console.error(error);
+            showToast('error', '저장 실패', '정보 저장 중 오류가 발생했습니다.');
+        } finally {
+            setSavingDetails(false);
+        }
+    };
+
     if (loading) return <div className="p-8 text-center text-gray-400">로딩 중...</div>;
 
     return (
@@ -176,6 +204,48 @@ export default function Profile({ user, onUpdate }) {
             </div>
 
             <div className="space-y-6 mt-6">
+                {/* Team Leader specific details */}
+                {['leader', 'admin', 'master'].includes(user.role) && (
+                    <div className="bg-indigo-50/50 rounded-xl border border-indigo-100 p-5">
+                        <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
+                            <User className="w-5 h-5 text-indigo-600" /> 팀장 프로필 정보 (고객에게 노출됨)
+                        </h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-1">경력 (년)</label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={profileDetails.experience_years}
+                                        onChange={(e) => setProfileDetails({ ...profileDetails, experience_years: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium pr-10"
+                                    />
+                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">년</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-1">인사말 / 소개글</label>
+                                <textarea
+                                    value={profileDetails.introduction}
+                                    onChange={(e) => setProfileDetails({ ...profileDetails, introduction: e.target.value })}
+                                    rows="3"
+                                    placeholder="고객 및 딜러에게 보여질 짧은 소개글을 작성해주세요."
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium resize-none"
+                                />
+                            </div>
+                            <button
+                                onClick={handleSaveProfileDetails}
+                                disabled={savingDetails}
+                                className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors mt-2"
+                            >
+                                {savingDetails ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                프로필 정보 저장
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-gray-50 rounded-xl border border-gray-100 p-5">
                     <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
                         <CreditCard className="w-5 h-5 text-indigo-600" /> 정산 계좌 관리

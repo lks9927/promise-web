@@ -25,6 +25,7 @@ import TeamManagement from '../components/team/TeamManagement';
 import Profile from '../components/common/Profile';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
+import ProgressReportModal from '../components/teamleader/ProgressReportModal';
 
 export default function TeamLeaderDashboard() {
     const { showToast, sendNotification, unreadCount } = useNotification();
@@ -38,6 +39,7 @@ export default function TeamLeaderDashboard() {
     const [myStatus, setMyStatus] = useState('waiting');
     const [statusMenuOpen, setStatusMenuOpen] = useState(false);
     const [assignModal, setAssignModal] = useState({ isOpen: false, caseId: null });
+    const [reportModal, setReportModal] = useState({ isOpen: false, caseItem: null });
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const navigate = useNavigate();
 
@@ -331,7 +333,13 @@ export default function TeamLeaderDashboard() {
                 {loading ? <div className="text-center py-10 text-gray-400">데이터를 불러오는 중...</div> : activeTab === 'available' ? (
                     <AvailableList cases={availableCases} onBid={handleBid} isMaster={isMaster} onOpenAssignModal={(caseId) => setAssignModal({ isOpen: true, caseId })} />
                 ) : activeTab === 'my_cases' ? (
-                    <MyCaseList cases={myCases} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={handleStatusUpdate} onOrderFlower={handleOrderFlower} />
+                    <MyCaseList
+                        cases={myCases}
+                        isFlowerOrderRequired={isFlowerOrderRequired}
+                        onUpdate={handleStatusUpdate}
+                        onOrderFlower={handleOrderFlower}
+                        onOpenReport={(item) => setReportModal({ isOpen: true, caseItem: item })}
+                    />
                 ) : activeTab === 'team' ? (
                     <TeamManagement user={user} />
                 ) : activeTab === 'wallet' ? (
@@ -392,6 +400,14 @@ export default function TeamLeaderDashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Stage Progress Report Modal */}
+            <ProgressReportModal
+                isOpen={reportModal.isOpen}
+                onClose={() => setReportModal({ isOpen: false, caseItem: null })}
+                caseItem={reportModal.caseItem}
+                user={user}
+            />
         </div>
     );
 }
@@ -412,12 +428,12 @@ function AvailableList({ cases, onBid, isMaster, onOpenAssignModal }) {
     );
 }
 
-function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower }) {
+function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport }) {
     if (cases.length === 0) return <div className="bg-white rounded-xl p-10 text-center border border-gray-200 mt-8"><p className="text-gray-500">현재 진행 중인 건이 없습니다.</p></div>;
-    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} />);
+    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} onOpenReport={onOpenReport} />);
 }
 
-function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower }) {
+function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport }) {
     const { id, profiles, location, package_name, status, flower_orders } = item;
     const hasOrderedFlower = flower_orders && flower_orders.length > 0;
 
@@ -438,29 +454,42 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower }) {
             <div className="p-5 border-b border-gray-50 flex justify-between items-start bg-gray-50/30"><div><div className="flex items-center gap-2 mb-2">{getStatusBadge(status)}</div><h4 className="font-bold text-lg text-gray-900">{profiles?.name || '고객'} 님 장례</h4><div className="flex items-center text-gray-500 text-sm mt-1"><MapPin className="w-3.5 h-3.5 mr-1" />{location}</div></div></div>
             <div className="p-4 bg-white border-t border-gray-100 space-y-2">
                 {status === 'assigned' && (
-                    <button onClick={() => onUpdate(id, 'consulting')} className="w-full bg-orange-50 text-orange-700 border border-orange-200 font-bold py-3.5 rounded-xl hover:bg-orange-100 transition-colors flex items-center justify-center gap-2">
-                        <span>다음 단계:</span> <span>🗣️ 상담 시작</span>
-                    </button>
+                    <div className="space-y-2">
+                        <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2">
+                            <span>📷 실시간 6단계 진행 보고 작성</span>
+                        </button>
+                        <button onClick={() => onUpdate(id, 'consulting')} className="w-full bg-orange-50 text-orange-700 border border-orange-200 font-bold py-3.5 rounded-xl hover:bg-orange-100 transition-colors flex items-center justify-center gap-2">
+                            <span>다음 단계:</span> <span>🗣️ 상담 시작</span>
+                        </button>
+                    </div>
                 )}
                 {status === 'consulting' && (
-                    <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => onUpdate(id, 'in_progress')} className="bg-blue-50 text-blue-700 border border-blue-200 font-bold py-3.5 rounded-xl hover:bg-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
-                            <span>🔵 빈소 설치</span>
+                    <div className="space-y-2">
+                        <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2">
+                            <span>📷 실시간 6단계 진행 보고 작성</span>
                         </button>
-                        <button
-                            onClick={() => {
-                                if (confirm('상담을 취소하시겠습니까?\n배정이 취소되어 다시 전체 공고로 올라갑니다.')) {
-                                    onUpdate(id, 'requested', { team_leader_id: null });
-                                }
-                            }}
-                            className="bg-red-50 text-red-600 border border-red-100 font-bold py-3.5 rounded-xl hover:bg-red-100 transition-all active:scale-95 flex items-center justify-center gap-2"
-                        >
-                            <span>❌ 상담 취소</span>
-                        </button>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button onClick={() => onUpdate(id, 'in_progress')} className="bg-blue-50 text-blue-700 border border-blue-200 font-bold py-3.5 rounded-xl hover:bg-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
+                                <span>🔵 빈소 설치</span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (confirm('상담을 취소하시겠습니까?\n배정이 취소되어 다시 전체 공고로 올라갑니다.')) {
+                                        onUpdate(id, 'requested', { team_leader_id: null });
+                                    }
+                                }}
+                                className="bg-red-50 text-red-600 border border-red-100 font-bold py-3.5 rounded-xl hover:bg-red-100 transition-all active:scale-95 flex items-center justify-center gap-2"
+                            >
+                                <span>❌ 상담 취소</span>
+                            </button>
+                        </div>
                     </div>
                 )}
                 {status === 'in_progress' && (
                     <div className="space-y-2">
+                        <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 mb-2">
+                            <span>📷 실시간 6단계 진행 보고 작성</span>
+                        </button>
                         {isFlowerOrderRequired && !hasOrderedFlower && (
                             <button onClick={() => onOrderFlower(id)} className="w-full bg-pink-50 text-pink-700 border border-pink-200 font-bold py-3.5 rounded-xl hover:bg-pink-100 transition-colors flex items-center justify-center gap-2 animate-pulse">
                                 ✿ 하늘꽃 발주 (필수)

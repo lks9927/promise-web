@@ -71,7 +71,6 @@ export default function Home() {
             case 'master': return '/master';
             case 'leader': return '/leader';
             case 'dealer': return '/dealer';
-            case 'assistant': return '/leader';
             case 'customer': return '/mypage';
             default: return '/';
         }

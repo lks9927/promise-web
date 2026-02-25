@@ -56,15 +56,15 @@ export default function TeamManagement({ user }) {
             // 1. Generate UUID v4 for the new user profile
             const newUserId = crypto.randomUUID();
 
-            // 2. Insert into profiles (as assistant)
+            // 2. Insert into profiles (as leader)
             const { error: profileError } = await supabase
                 .from('profiles')
                 .insert({
                     id: newUserId,
-                    role: 'assistant',
+                    role: 'leader',
                     name: formData.name,
                     phone: formData.phone,
-                    email: `assistant_${Date.now()}@test.com` // Temporary dummy email
+                    email: `leader_${Date.now()}@test.com` // Temporary dummy email
                 });
             if (profileError) throw profileError;
 

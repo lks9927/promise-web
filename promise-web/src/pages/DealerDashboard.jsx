@@ -22,6 +22,8 @@ import BranchManagement from '../components/dealer/BranchManagement';
 import Profile from '../components/common/Profile';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
+import TeamLeaderProfileModal from '../components/common/TeamLeaderProfileModal';
+import TimelineView from '../components/common/TimelineView';
 
 export default function DealerDashboard() {
     const { showToast, unreadCount } = useNotification();
@@ -77,8 +79,7 @@ export default function DealerDashboard() {
                         {activeTab === 'profile' && '내 기본 정보'}
                     </h1>
                     <p className="text-sm text-gray-500">
-                        {user.name} {user.role === 'dealer' ? '딜러' : '파트너'}님
-                        {user.grade === 'Master' ? ' (Master)' : ''}
+                        {user.name} {user.role === 'leader' ? (user.grade === 'Master' || user.grade === 'S' ? '마스터 팀장' : '일반 팀장') : (user.grade === 'Master' || user.grade === 'S' ? '마스터 딜러' : '일반 딜러')}님
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -390,6 +391,8 @@ function RegisterTab({ user, onSuccess }) {
 function StatusTab({ user }) {
     const [myCases, setMyCases] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [profileModalOpen, setProfileModalOpen] = useState(false);
+    const [selectedLeader, setSelectedLeader] = useState(null);
 
     useEffect(() => {
         fetchMyCases();
@@ -413,7 +416,13 @@ function StatusTab({ user }) {
 
         const { data } = await supabase
             .from('funeral_cases')
-            .select('*')
+            .select(`
+                *,
+                team_leader:team_leader_id (
+                    *,
+                    profiles:user_id (name, phone, role, grade, avatar_url, experience_years, introduction)
+                )
+            `)
             .in('customer_id', targetIds)
             .order('created_at', { ascending: false });
 
@@ -432,6 +441,8 @@ function StatusTab({ user }) {
         'completed': { label: '⚪ 완료됨', color: 'bg-gray-100 text-gray-600' }
     };
 
+    const [expandedCaseId, setExpandedCaseId] = useState(null);
+
     return (
         <div className="space-y-4">
             <h2 className="font-bold text-gray-800 px-1">접수 현황 ({myCases.length}건)</h2>
@@ -443,22 +454,76 @@ function StatusTab({ user }) {
                 myCases.map(item => {
                     const status = statusMap[item.status] || { label: item.status, color: 'bg-gray-100 text-gray-500' };
                     return (
-                        <div key={item.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-                            <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${status.color}`}>
-                                        {status.label}
-                                    </span>
-                                    <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>
+                        <div key={item.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-3 hover:border-indigo-100 transition-colors">
+                            <div className="flex justify-between items-start mb-3">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${status.color}`}>
+                                            {status.label}
+                                        </span>
+                                        <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>
+                                    </div>
+                                    <div className="font-bold text-gray-800 text-lg">{item.location}</div>
+                                    <div className="text-sm text-gray-500">{item.package_name}</div>
                                 </div>
-                                <div className="font-bold text-gray-800 text-lg">{item.location}</div>
-                                <div className="text-sm text-gray-500">{item.package_name}</div>
                             </div>
-                            <ChevronRight className="w-5 h-5 text-gray-300" />
+
+                            {/* Team Leader Info */}
+                            {item.team_leader && (
+                                <div
+                                    onClick={() => {
+                                        setSelectedLeader(item.team_leader.profiles);
+                                        setProfileModalOpen(true);
+                                    }}
+                                    className="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between cursor-pointer group"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center overflow-hidden">
+                                            {item.team_leader.profiles?.avatar_url ? (
+                                                <img src={item.team_leader.profiles.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <User className="w-4 h-4 text-gray-400" />
+                                            )}
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-gray-400">담당 팀장</div>
+                                            <div className="text-sm font-bold text-gray-800 group-hover:text-indigo-600 transition-colors">
+                                                {item.team_leader.profiles?.name}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-400" />
+                                </div>
+                            )}
+
+                            {/* View Progress Button */}
+                            <button
+                                onClick={() => setExpandedCaseId(expandedCaseId === item.id ? null : item.id)}
+                                className="w-full mt-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-bold rounded-xl transition-colors"
+                            >
+                                {expandedCaseId === item.id ? '진행 상황 닫기' : '실시간 장례 진행 상황 보기'}
+                            </button>
+
+                            {/* Expanded Timeline */}
+                            {expandedCaseId === item.id && (
+                                <div className="mt-4 border-t border-gray-100 pt-4 animate-fadeIn">
+                                    <TimelineView caseId={item.id} />
+                                </div>
+                            )}
                         </div>
                     );
                 })
             )}
+
+            {/* Modal */}
+            <TeamLeaderProfileModal
+                isOpen={profileModalOpen}
+                onClose={() => {
+                    setProfileModalOpen(false);
+                    setSelectedLeader(null);
+                }}
+                leaderProfile={selectedLeader}
+            />
         </div>
     );
 }
