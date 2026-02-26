@@ -1,7 +1,7 @@
 import React from 'react';
 import { User, XCircle, Award, Briefcase, Phone } from 'lucide-react';
 
-export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile }) {
+export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile, isMasked = false }) {
     if (!isOpen || !leaderProfile) return null;
 
     const {
@@ -13,6 +13,10 @@ export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile 
         introduction,
         phone
     } = leaderProfile;
+
+    const maskName = (n) => n ? (n.length <= 2 ? n[0] + '*' : n[0] + '*'.repeat(n.length - 2) + n[n.length - 1]) : '';
+    const displayName = isMasked ? maskName(name) : name;
+    const maskedPhone = isMasked && phone ? phone.replace(/(\d{3})-?(\d{3,4})-?(\d{4})/, '$1-****-****') : phone;
 
     const getRoleBadge = () => {
         if (role === 'admin' || role === 'master') return <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-1 rounded">본사 마스터</span>;
@@ -45,7 +49,7 @@ export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile 
 
                     <div className="text-center mb-6">
                         <h3 className="text-2xl font-bold text-gray-900 mb-1 flex justify-center items-center gap-2">
-                            {name}
+                            {displayName}
                         </h3>
                         <div className="flex justify-center mb-3">
                             {getRoleBadge()}
@@ -69,9 +73,16 @@ export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile 
                             </p>
                         </div>
 
-                        <a href={`tel:${phone}`} className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-black text-white py-3.5 rounded-xl font-bold transition-all shadow-md active:scale-95">
-                            <Phone className="w-5 h-5" /> 직접 전화 걸기
-                        </a>
+                        {isMasked ? (
+                            <div className="w-full flex flex-col items-center justify-center gap-1 bg-gray-100 text-gray-500 py-3 rounded-xl font-bold border border-gray-200 cursor-not-allowed">
+                                <span className="flex items-center gap-2"><Phone className="w-4 h-4" /> 안심번호 ({maskedPhone})</span>
+                                <span className="text-xs font-normal text-gray-400">직접 연락은 불가능하며 앱을 통한 소통만 가능합니다.</span>
+                            </div>
+                        ) : (
+                            <a href={`tel:${phone}`} className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-black text-white py-3.5 rounded-xl font-bold transition-all shadow-md active:scale-95">
+                                <Phone className="w-5 h-5" /> 직접 전화 걸기
+                            </a>
+                        )}
                     </div>
                 </div>
             </div>

@@ -430,6 +430,8 @@ function StatusTab({ user }) {
         setLoading(false);
     };
 
+    const maskName = (n) => n ? (n.length <= 2 ? n[0] + '*' : n[0] + '*'.repeat(n.length - 2) + n[n.length - 1]) : '';
+
     const statusMap = {
         'requested': { label: '🚨 접수 대기', color: 'bg-red-100 text-red-700' },
         'assigned': { label: '🟡 팀장 배정', color: 'bg-yellow-100 text-yellow-700' },
@@ -488,7 +490,7 @@ function StatusTab({ user }) {
                                         <div>
                                             <div className="text-xs text-gray-400">담당 팀장</div>
                                             <div className="text-sm font-bold text-gray-800 group-hover:text-indigo-600 transition-colors">
-                                                {item.team_leader.profiles?.name}
+                                                {maskName(item.team_leader.profiles?.name)}
                                             </div>
                                         </div>
                                     </div>
@@ -523,6 +525,7 @@ function StatusTab({ user }) {
                     setSelectedLeader(null);
                 }}
                 leaderProfile={selectedLeader}
+                isMasked={true}
             />
         </div>
     );
