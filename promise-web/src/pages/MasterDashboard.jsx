@@ -39,10 +39,14 @@ export default function MasterDashboard() {
 
             if (partnerData) {
                 setCandidates(partnerData.filter(p => p.status === 'pending'));
-                // Master Dealers (Role 'master') should only see 'leader's (마스터 팀장, 일반 팀장) in their team
-                const filteredTeam = partnerData.filter(p => p.status === 'approved');
-                if (user.role === 'master') {
+                // Master Leaders should see 'leader's. Master Dealers should see 'dealer's/helpers.
+                const filteredTeam = partnerData.filter(p => p.status === 'approved' && p.master_id === CURRENT_MASTER_ID);
+                if (user.role === 'leader' || user.role === 'master') {
+                    // Admin or Master Leader can see Leaders
                     setMyTeam(filteredTeam.filter(p => p.profiles?.role === 'leader'));
+                } else if (['dealer', 'morning', 'meal'].includes(user.role)) {
+                    // Master Dealer can only see dealers/morning/meal
+                    setMyTeam(filteredTeam.filter(p => ['dealer', 'morning', 'meal'].includes(p.profiles?.role)));
                 } else {
                     setMyTeam(filteredTeam);
                 }
@@ -66,10 +70,21 @@ export default function MasterDashboard() {
             if (settlementData) setEarnings(settlementData);
 
             // 3. Fetch Completed Cases needing Rating
+            let caseFilterIds = [CURRENT_MASTER_ID];
+            if (myTeam.length > 0) {
+                // Determine relevant dealer/customer IDs. For Master Dealer, it's their sub-dealers.
+                caseFilterIds = [...caseFilterIds, ...myTeam.map(t => t.user_id)];
+            }
+
             const { data: caseData, error: caseError } = await supabase
                 .from('funeral_cases')
-                .select(`*, profiles:customer_id (name)`)
+                .select(`
+                    *,
+                    profiles:customer_id (name),
+                    team_leader:team_leader_id (name)
+                `)
                 .in('status', ['hq_check', 'completed'])
+                .or(`customer_id.in.(${caseFilterIds.join(',')}),dealer_id.in.(${caseFilterIds.join(',')}),team_leader_id.in.(${caseFilterIds.join(',')})`)
                 .order('created_at', { ascending: false });
 
             if (caseError) throw caseError;
@@ -299,7 +314,9 @@ export default function MasterDashboard() {
                                             <div className="font-bold text-gray-900">{c.profiles?.name || '고객'}님 장례</div>
                                             <div className="text-xs text-gray-500">{c.location}</div>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600">박영웅 팀장 (Leader)</td>
+                                        <td className="px-6 py-4 text-gray-600">
+                                            {c.team_leader?.name ? `${c.team_leader.name} 팀장` : '미배정'}
+                                        </td>
                                         <td className="px-6 py-4">
                                             {c.master_rating ? (
                                                 <div className="flex text-amber-500">
