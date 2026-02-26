@@ -324,7 +324,7 @@ function RegisterTab({ user, onSuccess }) {
                         type="text"
                         required
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="홍길동"
+                        placeholder="이름"
                         value={formData.customerName}
                         onChange={e => setFormData({ ...formData, customerName: e.target.value })}
                     />

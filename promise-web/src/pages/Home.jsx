@@ -370,7 +370,7 @@ export default function Home() {
                                     required
                                     type="text"
                                     className="w-full px-4 py-3.5 rounded-xl border border-[#D4C5A9]/50 bg-white focus:ring-2 focus:ring-[#8E806A] focus:border-[#8E806A] outline-none transition-all placeholder:text-gray-300"
-                                    placeholder="홍길동"
+                                    placeholder="이름"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />

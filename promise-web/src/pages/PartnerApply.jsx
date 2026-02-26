@@ -132,7 +132,7 @@ export default function PartnerApply() {
                                 type="text"
                                 required
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                                placeholder="실명 입력"
+                                placeholder="이름"
                                 value={formData.name}
                                 onChange={e => setFormData({ ...formData, name: e.target.value })}
                             />
