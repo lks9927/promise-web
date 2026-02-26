@@ -186,22 +186,22 @@ export default function MasterDashboard() {
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-500">
                                     <tr>
-                                        <th className="px-6 py-3">이름/역할</th>
-                                        <th className="px-6 py-3">활동 지역</th>
-                                        <th className="px-6 py-3">연락처</th>
-                                        <th className="px-6 py-3 text-right">승인 여부</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">이름/역할</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">활동 지역</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">연락처</th>
+                                        <th className="px-6 py-3 text-right whitespace-nowrap">승인 여부</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {candidates.map(p => (
                                         <tr key={p.user_id} className="hover:bg-indigo-50/30">
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="font-bold text-gray-900">{p.profiles?.name}</div>
                                                 <div className="text-xs text-indigo-600 font-medium uppercase">{p.profiles?.role}</div>
                                             </td>
-                                            <td className="px-6 py-4 text-gray-600">{p.region}</td>
-                                            <td className="px-6 py-4 text-gray-600">{p.profiles?.phone}</td>
-                                            <td className="px-6 py-4 text-right space-x-2">
+                                            <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{p.region}</td>
+                                            <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{p.profiles?.phone}</td>
+                                            <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                                                 <button
                                                     onClick={() => handleApproval(p.user_id, 'approved')}
                                                     className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
@@ -240,11 +240,11 @@ export default function MasterDashboard() {
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-500">
                                     <tr>
-                                        <th className="px-6 py-3">이름</th>
-                                        <th className="px-6 py-3">역할</th>
-                                        <th className="px-6 py-3">연락처</th>
-                                        <th className="px-6 py-3">등급</th>
-                                        <th className="px-6 py-3">상태</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">이름</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">역할</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">연락처</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">등급</th>
+                                        <th className="px-6 py-3 whitespace-nowrap">상태</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -252,16 +252,16 @@ export default function MasterDashboard() {
                                         <tr><td colSpan="5" className="p-10 text-center text-gray-500">등록된 팀원이 없습니다.</td></tr>
                                     ) : myTeam.map(p => (
                                         <tr key={p.user_id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 font-bold text-gray-900">{p.profiles?.name}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`text-xs px-2 py-1 rounded-full border ${p.profiles?.role === 'leader' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
+                                            <td className="px-6 py-4 font-bold text-gray-900 whitespace-nowrap">{p.profiles?.name}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap min-w-[max-content]">
+                                                <span className={`text-xs px-2 py-1 rounded-full border inline-block whitespace-nowrap ${p.profiles?.role === 'leader' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
                                                     {p.profiles?.role === 'leader' ? (p.grade === 'Master' || p.grade === 'S' ? '마스터 팀장' : '팀장') : ''}
                                                     {['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) ? (p.grade === 'Master' || p.grade === 'S' ? '마스터 딜러' : '딜러') : ''}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-gray-600">{p.profiles?.phone}</td>
-                                            <td className="px-6 py-4 text-gray-600">{p.grade}</td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{p.profiles?.phone}</td>
+                                            <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{p.grade}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
                                                 <span className="flex items-center gap-1 text-green-600 font-bold text-xs">
                                                     <CheckCircle className="w-3 h-3" /> 정상 활동 중
                                                 </span>
