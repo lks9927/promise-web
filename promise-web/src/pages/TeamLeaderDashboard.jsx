@@ -17,7 +17,8 @@ import {
     Power,
     XCircle,
     MoreVertical,
-    Activity
+    Activity,
+    Phone
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
@@ -34,6 +35,7 @@ export default function TeamLeaderDashboard() {
     const [myCases, setMyCases] = useState([]);
     const [myTeam, setMyTeam] = useState([]);
     const [isFlowerOrderRequired, setIsFlowerOrderRequired] = useState(false);
+    const [showTopMenu, setShowTopMenu] = useState(true);
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState(null);
     const [myStatus, setMyStatus] = useState('waiting');
@@ -67,11 +69,12 @@ export default function TeamLeaderDashboard() {
     }, [user, activeTab]);
 
     const fetchSystemConfig = async () => {
-        const { data } = await supabase.from('system_config').select('*').eq('key', 'flower_order_required').single();
-        if (data && data.value === 'true') {
-            setIsFlowerOrderRequired(true);
-        } else {
-            setIsFlowerOrderRequired(false);
+        const { data } = await supabase.from('system_config').select('*').in('key', ['flower_order_required', 'show_top_menu']);
+        if (data) {
+            const flowerConfig = data.find(c => c.key === 'flower_order_required');
+            setIsFlowerOrderRequired(flowerConfig?.value === 'true');
+            const topMenuConfig = data.find(c => c.key === 'show_top_menu');
+            setShowTopMenu(topMenuConfig?.value !== 'false');
         }
     };
 
@@ -320,15 +323,17 @@ export default function TeamLeaderDashboard() {
             </header>
 
             <main className="p-4 max-w-lg mx-auto space-y-4 pb-24">
-                <div className="flex bg-white rounded-xl p-1 border border-gray-200 mb-4 shadow-sm sticky top-[7.5rem] z-20 overflow-x-auto">
-                    <button onClick={() => setActiveTab('available')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'available' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Briefcase className="w-4 h-4" />입찰가능</button>
-                    <button onClick={() => setActiveTab('my_cases')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'my_cases' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />내 현황</button>
-                    <button onClick={() => setActiveTab('wallet')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><DollarSign className="w-4 h-4" />지갑</button>
-                    {user?.grade === 'Master' && (
-                        <button onClick={() => setActiveTab('team')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'team' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Users className="w-4 h-4" />팀 관리</button>
-                    )}
-                    <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />프로필</button>
-                </div>
+                {showTopMenu && (
+                    <div className="flex bg-white rounded-xl p-1 border border-gray-200 mb-4 shadow-sm sticky top-[7.5rem] z-20 overflow-x-auto">
+                        <button onClick={() => setActiveTab('available')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'available' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Briefcase className="w-4 h-4" />입찰가능</button>
+                        <button onClick={() => setActiveTab('my_cases')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'my_cases' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />내 현황</button>
+                        <button onClick={() => setActiveTab('wallet')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><DollarSign className="w-4 h-4" />지갑</button>
+                        {user?.grade === 'Master' && (
+                            <button onClick={() => setActiveTab('team')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'team' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Users className="w-4 h-4" />팀 관리</button>
+                        )}
+                        <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />프로필</button>
+                    </div>
+                )}
 
                 {loading ? <div className="text-center py-10 text-gray-400">데이터를 불러오는 중...</div> : activeTab === 'available' ? (
                     <AvailableList cases={availableCases} onBid={handleBid} isMaster={isMaster} onOpenAssignModal={(caseId) => setAssignModal({ isOpen: true, caseId })} />
@@ -451,7 +456,20 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4 transition-all hover:shadow-md">
-            <div className="p-5 border-b border-gray-50 flex justify-between items-start bg-gray-50/30"><div><div className="flex items-center gap-2 mb-2">{getStatusBadge(status)}</div><h4 className="font-bold text-lg text-gray-900">{profiles?.name || '고객'} 님 장례</h4><div className="flex items-center text-gray-500 text-sm mt-1"><MapPin className="w-3.5 h-3.5 mr-1" />{location}</div></div></div>
+            <div className="p-5 border-b border-gray-50 flex justify-between items-start bg-gray-50/30">
+                <div>
+                    <div className="flex items-center gap-2 mb-2">{getStatusBadge(status)}</div>
+                    <h4 className="font-bold text-lg text-gray-900">{profiles?.name || '고객'} 님 장례</h4>
+                    <div className="flex items-center text-gray-500 text-sm mt-1">
+                        <MapPin className="w-3.5 h-3.5 mr-1" />{location}
+                    </div>
+                </div>
+                {profiles?.phone && (
+                    <a href={`tel:${profiles.phone}`} className="flex-shrink-0 w-10 h-10 bg-green-50 text-green-600 rounded-full flex items-center justify-center hover:bg-green-100 transition-colors shadow-sm ml-2">
+                        <Phone className="w-5 h-5" />
+                    </a>
+                )}
+            </div>
             <div className="p-4 bg-white border-t border-gray-100 space-y-2">
                 {status === 'assigned' && (
                     <div className="space-y-2">

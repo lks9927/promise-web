@@ -313,28 +313,30 @@ function RegisterTab({ user, onSuccess }) {
     };
 
     return (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-1">장례 긴급 접수</h2>
-            <p className="text-sm text-gray-500 mb-6">고객님의 정보를 입력해주시면 상황실로 즉시 전송됩니다.</p>
+        <div className="bg-white px-5 py-8 rounded-2xl shadow-md border border-gray-200">
+            <h2 className="text-2xl font-black text-red-600 mb-2 flex items-center gap-2">🚨 긴급 장례 접수</h2>
+            <p className="text-base text-gray-700 mb-8 font-medium leading-relaxed bg-red-50 p-4 rounded-xl border border-red-100">
+                상주님의 정보를 입력하고 <strong className="text-red-600 text-lg">접수하기</strong> 버튼을 누르시면, 본사 상황실로 <strong className="text-red-600">즉시 전송</strong>되어 10년 경력의 마스터가 배정됩니다.
+            </p>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">고객명 (상주)</label>
+                    <label className="block text-base font-bold text-gray-900 mb-2">고객명 (상주)</label>
                     <input
                         type="text"
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="이름"
+                        className="w-full px-5 py-4 text-lg border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-red-500/20 focus:border-red-500 bg-gray-50 font-bold text-gray-900"
+                        placeholder="이름을 입력하세요"
                         value={formData.customerName}
                         onChange={e => setFormData({ ...formData, customerName: e.target.value })}
                     />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">연락처</label>
+                    <label className="block text-base font-bold text-gray-900 mb-2">연락처</label>
                     <input
                         type="tel"
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-5 py-4 text-lg border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-red-500/20 focus:border-red-500 bg-gray-50 font-bold text-gray-900 tracking-wider"
                         placeholder="010-1234-5678"
                         value={formData.customerPhone}
                         onChange={e => {
@@ -347,24 +349,24 @@ function RegisterTab({ user, onSuccess }) {
                     />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">장례식장 (선택)</label>
+                    <label className="block text-base font-bold text-gray-900 mb-2">장례식장 위치 (선택)</label>
                     <div className="relative">
-                        <MapPin className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+                        <MapPin className="absolute left-4 top-4 w-6 h-6 text-gray-400" />
                         <input
                             type="text"
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="서울대병원 장례식장"
+                            className="w-full pl-14 pr-5 py-4 text-lg border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-red-500/20 focus:border-red-500 bg-gray-50 font-bold text-gray-900"
+                            placeholder="예: 서울대병원 장례식장"
                             value={formData.location}
                             onChange={e => setFormData({ ...formData, location: e.target.value })}
                         />
                     </div>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">희망 상품 (선택)</label>
+                    <label className="block text-base font-bold text-gray-900 mb-2">희망 상품 (선택)</label>
                     <div className="relative">
-                        <Package className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+                        <Package className="absolute left-4 top-4 w-6 h-6 text-gray-400" />
                         <select
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none bg-white"
+                            className="w-full pl-14 pr-10 py-4 text-lg border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-red-500/20 focus:border-red-500 appearance-none bg-gray-50 font-bold text-gray-900"
                             value={formData.packageName}
                             onChange={e => setFormData({ ...formData, packageName: e.target.value })}
                         >
@@ -379,9 +381,9 @@ function RegisterTab({ user, onSuccess }) {
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
+                    className="w-full bg-red-600 text-white font-black text-2xl py-6 rounded-2xl shadow-xl hover:bg-red-700 transition-all active:scale-95 disabled:opacity-50 mt-4 border-b-4 border-red-800"
                 >
-                    {loading ? '접수 중...' : '접수 완료'}
+                    {loading ? '접수 처리 중...' : '🔴 긴급 접수하기'}
                 </button>
             </form>
         </div>

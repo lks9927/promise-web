@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
-import { Camera, User, Loader2, CreditCard, Save } from 'lucide-react';
+import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck } from 'lucide-react';
+import SendMessageModal from './SendMessageModal';
 
 export default function Profile({ user, onUpdate }) {
     const { showToast } = useNotification();
@@ -15,6 +16,9 @@ export default function Profile({ user, onUpdate }) {
     // Additional Profile Details
     const [profileDetails, setProfileDetails] = useState({ introduction: '', experience_years: 0 });
     const [savingDetails, setSavingDetails] = useState(false);
+
+    const [masterInfo, setMasterInfo] = useState(null);
+    const [messageModal, setMessageModal] = useState({ isOpen: false, recipientId: '', recipientName: '', recipientRoleClass: '' });
 
     useEffect(() => {
         if (user) fetchProfile();
@@ -35,6 +39,15 @@ export default function Profile({ user, onUpdate }) {
                 introduction: data.introduction || '',
                 experience_years: data.experience_years || 0
             });
+
+            if (['leader', 'dealer', 'morning', 'meal', '아침', '식사'].includes(user.role) && user.grade !== 'Master') {
+                const { data: pData } = await supabase.from('partners').select('master_id').eq('user_id', user.id).single();
+                if (pData?.master_id) {
+                    const { data: mData } = await supabase.from('profiles').select('id, name, phone, role').eq('id', pData.master_id).single();
+                    if (mData) setMasterInfo(mData);
+                }
+            }
+
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
@@ -246,6 +259,33 @@ export default function Profile({ user, onUpdate }) {
                     </div>
                 )}
 
+                {/* Master Info Section for regular Team Leaders / Dealers */}
+                {masterInfo && (
+                    <div className="bg-orange-50/50 rounded-xl border border-orange-100 p-5">
+                        <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
+                            <ShieldCheck className="w-5 h-5 text-orange-600" /> 소속 본부 (마스터) 정보
+                        </h3>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="font-bold text-gray-900">{masterInfo.name} 마스터</p>
+                                <p className="text-sm text-gray-500">{masterInfo.phone}</p>
+                            </div>
+                            <button
+                                onClick={() => setMessageModal({
+                                    isOpen: true,
+                                    recipientId: masterInfo.id,
+                                    recipientName: masterInfo.name,
+                                    recipientRoleClass: '마스터'
+                                })}
+                                className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 py-2 border-orange-200 px-4 rounded-lg font-bold hover:bg-orange-50 hover:text-orange-700 transition-colors shadow-sm"
+                            >
+                                <Send className="w-4 h-4 text-orange-500" />
+                                메시지 보내기
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-gray-50 rounded-xl border border-gray-100 p-5">
                     <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
                         <CreditCard className="w-5 h-5 text-indigo-600" /> 정산 계좌 관리
@@ -289,6 +329,14 @@ export default function Profile({ user, onUpdate }) {
                     </p>
                 </div>
             </div>
+
+            <SendMessageModal
+                isOpen={messageModal.isOpen}
+                onClose={() => setMessageModal({ isOpen: false, recipientId: '', recipientName: '', recipientRoleClass: '' })}
+                recipientId={messageModal.recipientId}
+                recipientName={messageModal.recipientName}
+                recipientRoleClass={messageModal.recipientRoleClass}
+            />
         </div>
     );
 }

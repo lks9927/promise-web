@@ -15,11 +15,13 @@ import {
     DollarSign,
     LogOut,
     Lock,
-    Download
+    Download,
+    Send
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import SettlementManager from '../components/admin/SettlementManager';
 import CommissionSettings from '../components/admin/CommissionSettings';
+import AdminMessageTab from '../components/admin/AdminMessageTab';
 import { useNotification } from '../contexts/NotificationContext';
 import NotificationCenter from '../components/common/NotificationCenter';
 import TimelineView from '../components/common/TimelineView';
@@ -278,6 +280,12 @@ export default function AdminDashboard() {
                         active={activeTab === 'coupons'}
                         onClick={() => setActiveTab('coupons')}
                     />
+                    <NavItem
+                        icon={<Send />}
+                        label="메시지 발송"
+                        active={activeTab === 'messages'}
+                        onClick={() => setActiveTab('messages')}
+                    />
                     {CURRENT_ADMIN_LEVEL === 'super' && (
                         <NavItem
                             icon={<DollarSign />}
@@ -384,175 +392,286 @@ export default function AdminDashboard() {
                             <CommissionSettings supabase={supabase} />
                         ) : activeTab === 'coupons' ? (
                             <CouponPanel coupons={coupons} onUpdate={fetchData} supabase={supabase} />
+                        ) : activeTab === 'messages' ? (
+                            <AdminMessageTab partners={partners} />
                         ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50 text-gray-500 font-medium">
-                                        <tr>
-                                            {activeTab === 'cases' ? (
-                                                <>
-                                                    <th className="px-6 py-4">접수번호</th>
-                                                    <th className="px-6 py-4">상주 성함 (연락처)</th>
-                                                    <th className="px-6 py-4">장소</th>
-                                                    <th className="px-6 py-4">상품</th>
-                                                    <th className="px-6 py-4">담당 팀장</th>
-                                                    <th className="px-6 py-4">소속 마스터</th>
-                                                    <th className="px-6 py-4 text-center">상태</th>
-                                                </>
-                                            ) : activeTab === 'settlement' ? (
-                                                <>
-                                                    <th className="px-6 py-4">접수번호</th>
-                                                    <th className="px-6 py-4">대상자 (역할)</th>
-                                                    <th className="px-6 py-4">금액</th>
-                                                    <th className="px-6 py-4">유형</th>
-                                                    <th className="px-6 py-4 text-center">상태</th>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <th className="px-6 py-4">이름 (역할)</th>
-                                                    <th className="px-6 py-4">연락처</th>
-                                                    <th className="px-6 py-4">활동 지역</th>
-                                                    <th className="px-6 py-4">등급</th>
-                                                    <th className="px-6 py-4 text-center">상태 관리</th>
-                                                </>
-                                            )}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {loading ? (
-                                            <tr><td colSpan="7" className="px-6 py-4 text-center">데이터를 불러오는 중...</td></tr>
-                                        ) : activeTab === 'cases' ? (
-                                            cases.map(item => (
-                                                <React.Fragment key={item.id}>
-                                                    <tr className="hover:bg-gray-50">
-                                                        <td className="px-6 py-4 font-mono text-gray-500 text-xs">{item.id.substring(0, 8)}...</td>
-                                                        <td className="px-6 py-4 font-bold text-gray-900">
-                                                            {item.profiles?.name} <span className="text-gray-400 font-normal">({item.profiles?.phone})</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-gray-600">{item.location}</td>
-                                                        <td className="px-6 py-4 text-gray-600">{item.package_name}</td>
-                                                        <td className="px-6 py-4">
-                                                            {(() => {
-                                                                if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
-                                                                const p = partners.find(p => p.user_id === item.team_leader_id);
-                                                                return p ? (
-                                                                    <div>
-                                                                        <div className="font-bold text-gray-900">{p.profiles?.name}</div>
-                                                                        <div className="text-xs text-indigo-500">{p.grade}</div>
-                                                                    </div>
-                                                                ) : <span className="text-gray-400">정보 없음</span>;
-                                                            })()}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            {(() => {
-                                                                if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
-                                                                const p = partners.find(p => p.user_id === item.team_leader_id);
-                                                                if (!p) return '-';
-                                                                if (p.grade === 'Master') return <span className="text-xs  bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">본인 (Master)</span>;
-                                                                if (p.master_id) {
-                                                                    const m = partners.find(mp => mp.user_id === p.master_id);
-                                                                    return m ? <span className="font-medium text-gray-700">{m.profiles?.name}</span> : <span className="text-red-400 text-xs">마스터 정보 없음</span>;
-                                                                }
-                                                                return <span className="text-gray-400 text-xs">-</span>;
-                                                            })()}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-center">
-                                                            {(() => {
-                                                                const statusMap = {
-                                                                    'requested': { label: '🚨 접수 대기', class: 'bg-red-100 text-red-700 animate-pulse' },
-                                                                    'assigned': { label: '🟡 팀장 배정', class: 'bg-yellow-100 text-yellow-700' },
-                                                                    'consulting': { label: '🗣️ 상담 중', class: 'bg-orange-100 text-orange-700' },
-                                                                    'in_progress': { label: '🔵 서비스 진행', class: 'bg-blue-100 text-blue-700' },
-                                                                    'team_settling': { label: '🟢 정산 대기', class: 'bg-green-100 text-green-700' },
-                                                                    'hq_check': { label: '🟢 정산 검토 중', class: 'bg-green-100 text-green-700' },
-                                                                    'completed': { label: '⚪ 완료됨', class: 'bg-gray-100 text-gray-600' }
-                                                                };
-                                                                const status = statusMap[item.status] || { label: item.status, class: 'bg-gray-100 text-gray-600' };
-                                                                return (
-                                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${status.class}`}>
-                                                                        {status.label}
-                                                                    </span>
-                                                                );
-                                                            })()}
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setExpandedCaseId(expandedCaseId === item.id ? null : item.id);
-                                                                }}
-                                                                className="ml-2 mt-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold hover:bg-indigo-100 block mx-auto"
-                                                            >
-                                                                진행 이력
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                    {expandedCaseId === item.id && (
-                                                        <tr className="bg-gray-50/50">
-                                                            <td colSpan="7" className="px-6 py-4">
-                                                                <div className="max-w-4xl mx-auto border border-gray-100 rounded-xl bg-white animate-fadeIn">
-                                                                    <TimelineView caseId={item.id} />
-                                                                </div>
+                            <>
+                                {/* Desktop View */}
+                                <div className="hidden md:block overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-500 font-medium">
+                                            <tr>
+                                                {activeTab === 'cases' ? (
+                                                    <>
+                                                        <th className="px-6 py-4">접수번호</th>
+                                                        <th className="px-6 py-4">상주 성함 (연락처)</th>
+                                                        <th className="px-6 py-4">장소</th>
+                                                        <th className="px-6 py-4">상품</th>
+                                                        <th className="px-6 py-4">담당 팀장</th>
+                                                        <th className="px-6 py-4">소속 마스터</th>
+                                                        <th className="px-6 py-4 text-center">상태</th>
+                                                    </>
+                                                ) : activeTab === 'settlement' ? (
+                                                    <>
+                                                        <th className="px-6 py-4">접수번호</th>
+                                                        <th className="px-6 py-4">대상자 (역할)</th>
+                                                        <th className="px-6 py-4">금액</th>
+                                                        <th className="px-6 py-4">유형</th>
+                                                        <th className="px-6 py-4 text-center">상태</th>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <th className="px-6 py-4">이름 (역할)</th>
+                                                        <th className="px-6 py-4">연락처</th>
+                                                        <th className="px-6 py-4">활동 지역</th>
+                                                        <th className="px-6 py-4">등급</th>
+                                                        <th className="px-6 py-4 text-center">상태 관리</th>
+                                                    </>
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {loading ? (
+                                                <tr><td colSpan="7" className="px-6 py-4 text-center">데이터를 불러오는 중...</td></tr>
+                                            ) : activeTab === 'cases' ? (
+                                                cases.map(item => (
+                                                    <React.Fragment key={item.id}>
+                                                        <tr className="hover:bg-gray-50">
+                                                            <td className="px-6 py-4 font-mono text-gray-500 text-xs">{item.id.substring(0, 8)}...</td>
+                                                            <td className="px-6 py-4 font-bold text-gray-900">
+                                                                {item.profiles?.name} <span className="text-gray-400 font-normal">({item.profiles?.phone})</span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-gray-600">{item.location}</td>
+                                                            <td className="px-6 py-4 text-gray-600">{item.package_name}</td>
+                                                            <td className="px-6 py-4">
+                                                                {(() => {
+                                                                    if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
+                                                                    const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                                    return p ? (
+                                                                        <div>
+                                                                            <div className="font-bold text-gray-900">{p.profiles?.name}</div>
+                                                                            <div className="text-xs text-indigo-500">{p.grade}</div>
+                                                                        </div>
+                                                                    ) : <span className="text-gray-400">정보 없음</span>;
+                                                                })()}
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                {(() => {
+                                                                    if (!item.team_leader_id) return <span className="text-gray-400 text-xs">-</span>;
+                                                                    const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                                    if (!p) return '-';
+                                                                    if (p.grade === 'Master') return <span className="text-xs  bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">본인 (Master)</span>;
+                                                                    if (p.master_id) {
+                                                                        const m = partners.find(mp => mp.user_id === p.master_id);
+                                                                        return m ? <span className="font-medium text-gray-700">{m.profiles?.name}</span> : <span className="text-red-400 text-xs">마스터 정보 없음</span>;
+                                                                    }
+                                                                    return <span className="text-gray-400 text-xs">-</span>;
+                                                                })()}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-center">
+                                                                {(() => {
+                                                                    const statusMap = {
+                                                                        'requested': { label: '🚨 접수 대기', class: 'bg-red-100 text-red-700 animate-pulse' },
+                                                                        'assigned': { label: '🟡 팀장 배정', class: 'bg-yellow-100 text-yellow-700' },
+                                                                        'consulting': { label: '🗣️ 상담 중', class: 'bg-orange-100 text-orange-700' },
+                                                                        'in_progress': { label: '🔵 서비스 진행', class: 'bg-blue-100 text-blue-700' },
+                                                                        'team_settling': { label: '🟢 정산 대기', class: 'bg-green-100 text-green-700' },
+                                                                        'hq_check': { label: '🟢 정산 검토 중', class: 'bg-green-100 text-green-700' },
+                                                                        'completed': { label: '⚪ 완료됨', class: 'bg-gray-100 text-gray-600' }
+                                                                    };
+                                                                    const status = statusMap[item.status] || { label: item.status, class: 'bg-gray-100 text-gray-600' };
+                                                                    return (
+                                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${status.class}`}>
+                                                                            {status.label}
+                                                                        </span>
+                                                                    );
+                                                                })()}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setExpandedCaseId(expandedCaseId === item.id ? null : item.id);
+                                                                    }}
+                                                                    className="ml-2 mt-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-xs font-bold hover:bg-indigo-100 block mx-auto"
+                                                                >
+                                                                    진행 이력
+                                                                </button>
                                                             </td>
                                                         </tr>
-                                                    )}
-                                                </React.Fragment>
-                                            ))
-                                        ) : activeTab === 'settlement' ? (
-                                            <tr>
-                                                <td colSpan="5" className="p-0">
-                                                    <div className="p-6">
-                                                        <SettlementManager />
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            partners
-                                                .filter(p => partnerFilter === 'all' || p.profiles?.role === partnerFilter)
-                                                .filter(p => {
-                                                    if (partnerFilter === 'all') return true;
-                                                    if (partnerFilter === 'leader') return p.profiles?.role === 'leader';
-                                                    if (partnerFilter === 'dealer') return ['dealer', 'master', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role);
-                                                    return true;
-                                                })
-                                                .map((partner) => (
-                                                    <tr key={partner.user_id} className={`hover:bg-gray-50 transition-colors ${partner.status === 'suspended' ? 'bg-red-50' : ''}`}>
-                                                        <td className="px-6 py-4">
-                                                            <span className={`font-bold ${partner.status === 'suspended' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{partner.profiles?.name}</span>
-                                                            <span className="ml-2 bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded-full border border-indigo-100">
-                                                                {getRoleDisplayName(partner.profiles?.role, partner.grade)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-gray-600">{partner.profiles?.phone}</td>
-                                                        <td className="px-6 py-4 text-gray-600">{partner.region}</td>
-                                                        <td className="px-6 py-4">
-                                                            <button
-                                                                onClick={() => openGradeModal(partner.user_id, partner.grade, partner.profiles?.name)}
-                                                                className="bg-purple-100 text-purple-700 font-bold px-2 py-1 rounded text-xs hover:bg-purple-200 transition-colors cursor-pointer border border-purple-200"
-                                                                title="클릭하여 등급 변경"
-                                                            >
-                                                                {partner.grade || 'N/A'} ✏️
-                                                            </button>
-                                                        </td>
-                                                        <td className="px-6 py-4 font-mono text-gray-500 text-xs flex items-center gap-2">
-                                                            <button
-                                                                onClick={() => togglePartnerStatus(partner.user_id, partner.status, partner.profiles?.role)}
-                                                                className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${partner.status === 'approved' ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' : 'bg-gray-200 text-gray-500 hover:bg-green-100 hover:text-green-700'}`}
-                                                            >
-                                                                {partner.status === 'approved' ? '정상 승인' : partner.status === 'suspended' ? '활동 정지' : partner.status}
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handlePasswordReset(partner.user_id, partner.profiles?.name)}
-                                                                className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
-                                                                title="비밀번호 변경"
-                                                            >
-                                                                <Lock className="w-4 h-4" />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
+                                                        {expandedCaseId === item.id && (
+                                                            <tr className="bg-gray-50/50">
+                                                                <td colSpan="7" className="px-6 py-4">
+                                                                    <div className="max-w-4xl mx-auto border border-gray-100 rounded-xl bg-white animate-fadeIn">
+                                                                        <TimelineView caseId={item.id} />
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 ))
-                                        )}
-                                    </tbody>
-                                </table >
-                            </div>
+                                            ) : activeTab === 'settlement' ? (
+                                                <tr>
+                                                    <td colSpan="5" className="p-0">
+                                                        <div className="p-6">
+                                                            <SettlementManager />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                partners
+                                                    .filter(p => partnerFilter === 'all' || p.profiles?.role === partnerFilter)
+                                                    .filter(p => {
+                                                        if (partnerFilter === 'all') return true;
+                                                        if (partnerFilter === 'leader') return p.profiles?.role === 'leader';
+                                                        if (partnerFilter === 'dealer') return ['dealer', 'master', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role);
+                                                        return true;
+                                                    })
+                                                    .map((partner) => (
+                                                        <tr key={partner.user_id} className={`hover:bg-gray-50 transition-colors ${partner.status === 'suspended' ? 'bg-red-50' : ''}`}>
+                                                            <td className="px-6 py-4">
+                                                                <span className={`font-bold ${partner.status === 'suspended' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{partner.profiles?.name}</span>
+                                                                <span className="ml-2 bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded-full border border-indigo-100">
+                                                                    {getRoleDisplayName(partner.profiles?.role, partner.grade)}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-gray-600">{partner.profiles?.phone}</td>
+                                                            <td className="px-6 py-4 text-gray-600">{partner.region}</td>
+                                                            <td className="px-6 py-4">
+                                                                <button
+                                                                    onClick={() => openGradeModal(partner.user_id, partner.grade, partner.profiles?.name)}
+                                                                    className="bg-purple-100 text-purple-700 font-bold px-2 py-1 rounded text-xs hover:bg-purple-200 transition-colors cursor-pointer border border-purple-200"
+                                                                    title="클릭하여 등급 변경"
+                                                                >
+                                                                    {partner.grade || 'N/A'} ✏️
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-6 py-4 font-mono text-gray-500 text-xs flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => togglePartnerStatus(partner.user_id, partner.status, partner.profiles?.role)}
+                                                                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${partner.status === 'approved' ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' : 'bg-gray-200 text-gray-500 hover:bg-green-100 hover:text-green-700'}`}
+                                                                >
+                                                                    {partner.status === 'approved' ? '정상 승인' : partner.status === 'suspended' ? '활동 정지' : partner.status}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handlePasswordReset(partner.user_id, partner.profiles?.name)}
+                                                                    className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
+                                                                    title="비밀번호 변경"
+                                                                >
+                                                                    <Lock className="w-4 h-4" />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                            )}
+                                        </tbody>
+                                    </table >
+                                </div>
+                                {/* Mobile View */}
+                                <div className="md:hidden flex flex-col p-4 bg-gray-50/50 min-h-screen">
+                                    {loading ? (
+                                        <div className="text-center py-10 text-gray-500 font-bold">데이터를 불러오는 중...</div>
+                                    ) : activeTab === 'cases' ? (
+                                        cases.map(item => {
+                                            const statusMap = {
+                                                'requested': { label: '🚨 접수 대기', class: 'text-red-700 bg-red-100 animate-pulse' },
+                                                'assigned': { label: '🟡 팀 배정', class: 'text-yellow-700 bg-yellow-100' },
+                                                'consulting': { label: '🗣️ 상담 중', class: 'text-orange-700 bg-orange-100' },
+                                                'in_progress': { label: '🔵 서비스 진행', class: 'text-blue-700 bg-blue-100' },
+                                                'team_settling': { label: '🟢 정산 대기', class: 'text-green-700 bg-green-100' },
+                                                'hq_check': { label: '🟢 정산 검토', class: 'text-green-700 bg-green-100' },
+                                                'completed': { label: '⚪ 완료됨', class: 'text-gray-600 bg-gray-100' }
+                                            };
+                                            const status = statusMap[item.status] || { label: item.status, class: 'text-gray-600 bg-gray-100' };
+                                            return (
+                                                <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-3">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div>
+                                                            <div className="text-xs text-gray-400 font-mono mb-1">{item.id.substring(0, 8)}...</div>
+                                                            <div className="font-bold text-gray-900 text-lg">{item.profiles?.name} <span className="text-sm font-normal text-gray-500">({item.profiles?.phone})</span></div>
+                                                            <div className="text-sm text-gray-600 mt-1">{item.location} • {item.package_name}</div>
+                                                        </div>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${status.class}`}>{status.label}</span>
+                                                    </div>
+                                                    <div className="pt-3 mt-3 border-t border-gray-50 text-sm space-y-1">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-500">담당:</span>
+                                                            <span className="font-medium text-gray-900">
+                                                                {(() => {
+                                                                    if (!item.team_leader_id) return '-';
+                                                                    const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                                    return p ? `${p.profiles?.name} (${p.grade})` : '정보 없음';
+                                                                })()}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-500">마스터:</span>
+                                                            <span className="font-medium text-gray-900">
+                                                                {(() => {
+                                                                    if (!item.team_leader_id) return '-';
+                                                                    const p = partners.find(p => p.user_id === item.team_leader_id);
+                                                                    if (!p) return '-';
+                                                                    if (p.grade === 'Master') return '본인(Master)';
+                                                                    if (p.master_id) {
+                                                                        const m = partners.find(mp => mp.user_id === p.master_id);
+                                                                        return m ? m.profiles?.name : '없음';
+                                                                    }
+                                                                    return '-';
+                                                                })()}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={() => setExpandedCaseId(expandedCaseId === item.id ? null : item.id)} className="w-full mt-3 py-2 bg-indigo-50 text-indigo-700 font-bold rounded-lg text-sm transition-all active:scale-95">
+                                                        {expandedCaseId === item.id ? '이력 닫기' : '이력 보기'}
+                                                    </button>
+                                                    {expandedCaseId === item.id && (
+                                                        <div className="mt-3 pt-3 border-t border-gray-100 animate-fadeIn bg-gray-50/50 rounded-xl p-2">
+                                                            <TimelineView caseId={item.id} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    ) : activeTab === 'settlement' ? (
+                                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                            <SettlementManager />
+                                        </div>
+                                    ) : (
+                                        partners.filter(p => partnerFilter === 'all' || p.profiles?.role === partnerFilter).filter(p => {
+                                            if (partnerFilter === 'all') return true;
+                                            if (partnerFilter === 'leader') return p.profiles?.role === 'leader';
+                                            if (partnerFilter === 'dealer') return ['dealer', 'master', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role);
+                                            return true;
+                                        }).map(partner => (
+                                            <div key={partner.user_id} className={`bg-white p-4 rounded-xl shadow-sm mb-3 border ${partner.status === 'suspended' ? 'bg-red-50 border-red-200' : 'border-gray-200'}`}>
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <div className={`font-bold text-lg ${partner.status === 'suspended' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{partner.profiles?.name}</div>
+                                                        <span className={`text-xs px-2 py-0.5 rounded-full border mt-1 inline-block font-bold ${partner.profiles?.role === 'leader' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
+                                                            {getRoleDisplayName(partner.profiles?.role, partner.grade)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-right text-sm">
+                                                        <div className="text-gray-900 font-bold">{partner.profiles?.phone}</div>
+                                                        <div className="text-gray-500 mt-1">{partner.region}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="pt-4 mt-3 border-t border-gray-50 flex justify-between items-center">
+                                                    <button onClick={() => openGradeModal(partner.user_id, partner.grade, partner.profiles?.name)} className="bg-purple-100 text-purple-700 font-bold px-3 py-2 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition-transform">
+                                                        {partner.grade || 'N/A'} <span className="opacity-50">✏️</span>
+                                                    </button>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => togglePartnerStatus(partner.user_id, partner.status, partner.profiles?.role)} className={`px-4 py-2 rounded-lg text-sm font-bold active:scale-95 transition-transform ${partner.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                                                            {partner.status === 'approved' ? '정상' : partner.status === 'suspended' ? '정지' : partner.status}
+                                                        </button>
+                                                        <button onClick={() => handlePasswordReset(partner.user_id, partner.profiles?.name)} className="p-2 bg-gray-100 text-gray-600 rounded-lg active:scale-95 transition-transform">
+                                                            <Lock className="w-5 h-5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>
@@ -706,6 +825,19 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
                         className={`w-14 h-8 rounded-full transition-colors relative ${config.global_settlement_enabled === 'true' ? 'bg-green-600' : 'bg-gray-200'}`}
                     >
                         <span className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full transition-transform ${config.global_settlement_enabled === 'true' ? 'translate-x-6' : 'translate-x-0'}`} />
+                    </button>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <h4 className="font-bold text-indigo-900 mb-1">상단 스크롤 메뉴 표시 (팀원/마스터/딜러)</h4>
+                        <p className="text-sm text-gray-500">대시보드 상단의 탭 메뉴(입찰가능 등)를 표시하거나 숨깁니다.</p>
+                    </div>
+                    <button
+                        onClick={() => toggleConfig('show_top_menu', config.show_top_menu || 'true')}
+                        className={`w-14 h-8 rounded-full transition-colors relative ${config.show_top_menu !== 'false' ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                    >
+                        <span className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full transition-transform ${config.show_top_menu !== 'false' ? 'translate-x-6' : 'translate-x-0'}`} />
                     </button>
                 </div>
 

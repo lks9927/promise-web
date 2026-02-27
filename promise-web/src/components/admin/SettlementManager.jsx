@@ -33,7 +33,7 @@ export default function SettlementManager() {
                         name,
                         role,
                         phone,
-                        bank_account
+                        partners:partners!partners_user_id_fkey(bank_account)
                     )
                 `)
                 .order('created_at', { ascending: false });
@@ -140,8 +140,8 @@ export default function SettlementManager() {
                             key={status}
                             onClick={() => setFilterStatus(status)}
                             className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${filterStatus === status
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                                 }`}
                         >
                             {status === 'all' ? '전체' : status === 'pending' ? '대기' : status === 'paid' ? '지급됨' : '완료'}
@@ -193,15 +193,15 @@ export default function SettlementManager() {
                                                 {item.profiles?.role}
                                                 {item.recipient_id === item.funeral_cases?.team_leader_id && <span className="bg-indigo-100 px-1 rounded">담당팀장</span>}
                                             </div>
-                                            {item.profiles?.bank_account && (
-                                                <div className="text-xs text-gray-400 mt-1">{item.profiles.bank_account}</div>
+                                            {item.profiles?.partners?.bank_account && (
+                                                <div className="text-xs text-gray-400 mt-1">{item.profiles.partners.bank_account}</div>
                                             )}
                                         </td>
 
                                         <td className="px-6 py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-medium ${item.type.includes('remittance')
-                                                    ? 'bg-blue-50 text-blue-700'
-                                                    : 'bg-orange-50 text-orange-700'
+                                                ? 'bg-blue-50 text-blue-700'
+                                                : 'bg-orange-50 text-orange-700'
                                                 }`}>
                                                 {getTypeLabel(item.type)}
                                             </span>
@@ -237,8 +237,8 @@ export default function SettlementManager() {
 
                                         <td className="px-6 py-4 text-center">
                                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${item.status === 'completed' || item.status === 'paid'
-                                                    ? 'bg-green-100 text-green-700'
-                                                    : 'bg-yellow-100 text-yellow-700'
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-yellow-100 text-yellow-700'
                                                 }`}>
                                                 {item.status === 'pending' ? '대기' :
                                                     item.status === 'paid' ? '지급완료' : '처리완료'}

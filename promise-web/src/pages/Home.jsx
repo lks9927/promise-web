@@ -358,30 +358,30 @@ export default function Home() {
             {isModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#433831]/60 backdrop-blur-sm animate-in fade-in">
                     <div className="bg-[#FDFBF7] w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-white/50">
-                        <div className="px-8 py-6 border-b border-[#EAE5D9] flex justify-between items-center bg-white/50">
-                            <h3 className="font-serif font-bold text-xl text-[#433831]">긴급 장례 접수</h3>
+                        <div className="px-8 py-6 border-b border-[#EAE5D9] flex justify-between items-center bg-red-50">
+                            <h3 className="font-serif font-black text-2xl text-red-600 flex items-center gap-2">🚨 긴급 장례 접수</h3>
                             <button onClick={() => setIsModalOpen(false)} className="text-[#8E806A] hover:text-[#433831] text-2xl leading-none">&times;</button>
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-8 space-y-5">
                             <div>
-                                <label className="block text-sm font-bold text-[#5D5C61] mb-2">상주님 성함</label>
+                                <label className="block text-base font-black text-gray-900 mb-2">상주님 성함</label>
                                 <input
                                     required
                                     type="text"
-                                    className="w-full px-4 py-3.5 rounded-xl border border-[#D4C5A9]/50 bg-white focus:ring-2 focus:ring-[#8E806A] focus:border-[#8E806A] outline-none transition-all placeholder:text-gray-300"
-                                    placeholder="이름"
+                                    className="w-full px-5 py-4 text-xl font-bold rounded-xl border-2 border-[#D4C5A9] bg-white focus:ring-4 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all placeholder:text-gray-300"
+                                    placeholder="상주 성함을 입력하세요"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-bold text-[#5D5C61] mb-2">연락처</label>
+                                <label className="block text-base font-black text-gray-900 mb-2">연락처</label>
                                 <input
                                     required
                                     type="tel"
-                                    className="w-full px-4 py-3.5 rounded-xl border border-[#D4C5A9]/50 bg-white focus:ring-2 focus:ring-[#8E806A] focus:border-[#8E806A] outline-none transition-all placeholder:text-gray-300"
+                                    className="w-full px-5 py-4 text-xl font-bold tracking-wider rounded-xl border-2 border-[#D4C5A9] bg-white focus:ring-4 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all placeholder:text-gray-300"
                                     placeholder="010-1234-5678"
                                     value={formData.phone}
                                     maxLength={13}
@@ -403,12 +403,12 @@ export default function Home() {
                             </div>
 
                             <div className="relative">
-                                <label className="block text-sm font-bold text-[#5D5C61] mb-2">현재 위치 (장례식장)</label>
+                                <label className="block text-base font-black text-gray-900 mb-2">현재 위치 (장례식장)</label>
                                 <input
                                     required
                                     type="text"
-                                    className="w-full px-4 py-3.5 rounded-xl border border-[#D4C5A9]/50 bg-white focus:ring-2 focus:ring-[#8E806A] focus:border-[#8E806A] outline-none transition-all placeholder:text-gray-300"
-                                    placeholder="장례식장 이름 (초성 검색 가능, 예: ㅅㅇㅅㅁ)"
+                                    className="w-full px-5 py-4 text-xl font-bold rounded-xl border-2 border-[#D4C5A9] bg-white focus:ring-4 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all placeholder:text-gray-300"
+                                    placeholder="예: 서울대병원 장례식장"
                                     value={formData.location}
                                     onChange={e => {
                                         const value = e.target.value;
@@ -442,13 +442,13 @@ export default function Home() {
                                 )}
                             </div>
 
-                            <div className="pt-2">
+                            <div className="pt-4">
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="w-full bg-[#433831] hover:bg-[#2C241E] text-[#FDFBF7] font-bold py-4 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
+                                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-5 rounded-2xl shadow-xl border-b-4 border-red-800 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-2xl flex items-center justify-center"
                                 >
-                                    {loading ? '접수 중...' : '상담 신청하기'}
+                                    {loading ? '접수 처리 중...' : '🔴 즉시 출동 요청하기'}
                                 </button>
                                 <p className="text-center text-xs text-[#8E806A] mt-4 font-medium">
                                     접수 즉시 전문 장례지도사가 연락드립니다.
