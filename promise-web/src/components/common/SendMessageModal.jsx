@@ -33,7 +33,27 @@ export default function SendMessageModal({ isOpen, onClose, recipientId, recipie
 
             if (error) throw error;
 
-            showToast('success', '발송 완료', '메시지가 성공적으로 전송되었습니다.');
+            // Attempt to send Kakao/SMS via Solapi API
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('phone')
+                .eq('id', recipientId)
+                .single();
+
+            if (profile && profile.phone) {
+                // Send SMS asynchronously 
+                fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: profile.phone,
+                        subject: `[10년의 약속 알림] ${title}`,
+                        text: message
+                    })
+                }).catch(err => console.error("SMS Request Error:", err));
+            }
+
+            showToast('success', '발송 완료', '메시지 및 알림이 성공적으로 전송되었습니다.');
             onClose();
             setTitle('');
             setMessage('');

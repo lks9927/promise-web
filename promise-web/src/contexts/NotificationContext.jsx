@@ -158,8 +158,27 @@ export function NotificationProvider({ children }) {
             await supabase.from('notifications').insert([
                 { user_id: targetUserId, type, title, message, link }
             ]);
+
+            // Attempt to send Kakao/SMS via Solapi API
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('phone')
+                .eq('id', targetUserId)
+                .single();
+
+            if (profile && profile.phone) {
+                await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: profile.phone,
+                        subject: `[10년의 약속 알림] ${title}`,
+                        text: message
+                    })
+                });
+            }
         } catch (error) {
-            console.error('Failed to send notification:', error);
+            console.error('Failed to send notification or SMS:', error);
         }
     };
 

@@ -67,7 +67,29 @@ export default function AdminMessageTab({ partners }) {
 
             if (error) throw error;
 
-            showToast('success', '발송 완료', `총 ${targetUserIds.length}명에게 메시지를 성공적으로 발송했습니다.`);
+            // Attempt to send Kakao/SMS via Solapi API
+            const targetPhones = targetUserIds
+                .map(id => partners.find(p => p.user_id === id)?.profiles?.phone)
+                .filter(phone => phone); // filter out falsy values
+
+            if (targetPhones.length > 0) {
+                // Send SMS asynchronously to avoid blocking UI for too long, max batch logic or individual
+                Promise.allSettled(
+                    targetPhones.map(phone =>
+                        fetch('/api/send-message', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                to: phone,
+                                subject: `[10년의 약속 알림] ${messageTitle}`,
+                                text: messageContent
+                            })
+                        })
+                    )
+                ).catch(err => console.error("Bulk SMS Error:", err));
+            }
+
+            showToast('success', '발송 완료', `총 ${targetUserIds.length}명에게 메시지 및 SMS(조건부)를 성공적으로 발송했습니다.`);
 
             // Reset form
             setMessageTitle('');
