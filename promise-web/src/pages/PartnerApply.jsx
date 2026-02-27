@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase'; // Ensure consistent import
+import { formatPhoneNumber } from '../utils/formatters';
 import { useNavigate } from 'react-router-dom';
 import { UserPlus, CheckCircle, Store, Briefcase, User } from 'lucide-react';
 
@@ -146,7 +147,7 @@ export default function PartnerApply() {
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                 placeholder="010-1234-5678"
                                 value={formData.phone}
-                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                onChange={e => setFormData({ ...formData, phone: formatPhoneNumber(e.target.value) })}
                             />
                         </div>
 

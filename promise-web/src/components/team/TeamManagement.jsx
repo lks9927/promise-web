@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Users, Plus, Star, MapPin, Loader2, Award, Briefcase } from 'lucide-react';
+import { Users, UserPlus, Phone, MapPin, Award, Trash2 } from 'lucide-react';
 import { useNotification } from '../../contexts/NotificationContext';
+import { formatPhoneNumber } from '../../utils/formatters';
 
 export default function TeamManagement({ user }) {
     const { showToast } = useNotification();
@@ -179,13 +180,7 @@ export default function TeamManagement({ user }) {
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                                     placeholder="010-XXXX-XXXX"
                                     value={formData.phone}
-                                    onChange={e => {
-                                        // Auto-format phone
-                                        let val = e.target.value.replace(/[^0-9]/g, '');
-                                        if (val.length > 3 && val.length <= 7) val = val.replace(/(\d{3})(\d+)/, '$1-$2');
-                                        else if (val.length > 7) val = val.replace(/(\d{3})(\d{4})(\d+)/, '$1-$2-$3');
-                                        setFormData({ ...formData, phone: val.slice(0, 13) });
-                                    }}
+                                    onChange={e => setFormData({ ...formData, phone: formatPhoneNumber(e.target.value) })}
                                 />
                             </div>
                             <div>

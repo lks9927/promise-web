@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { formatPhoneNumber } from '../utils/formatters';
 import {
     BarChart3,
     Users,
@@ -1028,7 +1029,7 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                                 placeholder="010-0000-0000"
                                 className="w-full px-4 py-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                                 value={phone}
-                                onChange={e => setPhone(e.target.value)}
+                                onChange={e => setPhone(formatPhoneNumber(e.target.value))}
                                 required
                             />
                         </div>
