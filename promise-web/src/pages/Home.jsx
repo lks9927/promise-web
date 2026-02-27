@@ -3,18 +3,11 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
     Phone,
-    Heart,
-    Shield,
-    Clock,
-    CheckCircle2,
-    ArrowRight,
-    Sparkles,
-    Calendar,
-    Users,
-    Activity // New Icon
+    PhoneCall, HeartHandshake, ShieldCheck, Activity, UserPlus
 } from 'lucide-react';
 import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES } from '../data/funeralHomes';
+import { formatPhoneNumber } from '../utils/formatters';
 
 export default function Home() {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -385,20 +378,7 @@ export default function Home() {
                                     placeholder="010-1234-5678"
                                     value={formData.phone}
                                     maxLength={13}
-                                    onChange={e => {
-                                        const value = e.target.value.replace(/[^0-9]/g, '');
-                                        let formatted = value;
-                                        if (value.length < 4) {
-                                            formatted = value;
-                                        } else if (value.length < 7) {
-                                            formatted = `${value.slice(0, 3)}-${value.slice(3)}`;
-                                        } else if (value.length < 11) {
-                                            formatted = `${value.slice(0, 3)}-${value.slice(3, 6)}-${value.slice(6)}`;
-                                        } else {
-                                            formatted = `${value.slice(0, 3)}-${value.slice(3, 7)}-${value.slice(7, 11)}`;
-                                        }
-                                        setFormData({ ...formData, phone: formatted });
-                                    }}
+                                    onChange={e => setFormData({ ...formData, phone: formatPhoneNumber(e.target.value) })}
                                 />
                             </div>
 
