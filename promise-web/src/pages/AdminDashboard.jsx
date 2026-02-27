@@ -69,8 +69,8 @@ export default function AdminDashboard() {
                     *,
                     profiles:customer_id (name, phone),
                     team_leader:team_leader_id (
-                        *,
-                        profiles:user_id (name, phone)
+                        name,
+                        phone
                     )
                 `)
                 .order('created_at', { ascending: false });

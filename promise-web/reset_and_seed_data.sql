@@ -1,5 +1,10 @@
 
 -- ==========================================
+-- 누락된 테이블/컬럼 패치
+-- ==========================================
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS password_reset_requested BOOLEAN DEFAULT false;
+
+-- ==========================================
 -- notifications 테이블 재설계 (참조 오류 수정)
 -- ==========================================
 DROP TABLE IF EXISTS notifications CASCADE;

@@ -421,8 +421,12 @@ function StatusTab({ user }) {
             .select(`
                 *,
                 team_leader:team_leader_id (
-                    *,
-                    profiles:user_id (name, phone, role, grade, avatar_url, experience_years, introduction)
+                    name,
+                    phone,
+                    role,
+                    avatar_url,
+                    experience_years,
+                    introduction
                 )
             `)
             .in('customer_id', targetIds)
