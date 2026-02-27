@@ -3,6 +3,7 @@
 -- 누락된 테이블/컬럼 패치
 -- ==========================================
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS password_reset_requested BOOLEAN DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS certificate_url TEXT;
 
 -- ==========================================
 -- notifications 테이블 재설계 (참조 오류 수정)

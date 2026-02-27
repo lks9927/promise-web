@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
-import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck } from 'lucide-react';
+import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck, FileBadge } from 'lucide-react';
 import SendMessageModal from './SendMessageModal';
+import ImageBlurEditor from './ImageBlurEditor';
 
 export default function Profile({ user, onUpdate }) {
     const { showToast } = useNotification();
@@ -17,12 +18,69 @@ export default function Profile({ user, onUpdate }) {
     const [profileDetails, setProfileDetails] = useState({ introduction: '', experience_years: 0 });
     const [savingDetails, setSavingDetails] = useState(false);
 
+    const [certUploading, setCertUploading] = useState(false);
+    const [pendingCertImage, setPendingCertImage] = useState(null);
+
     const [masterInfo, setMasterInfo] = useState(null);
     const [messageModal, setMessageModal] = useState({ isOpen: false, recipientId: '', recipientName: '', recipientRoleClass: '' });
 
     useEffect(() => {
         if (user) fetchProfile();
     }, [user]);
+
+    const handleCertFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            setPendingCertImage(event.target.result);
+        };
+        reader.readAsDataURL(file);
+        e.target.value = null;
+    };
+
+    const handleCertSave = async (blurredBlob) => {
+        setPendingCertImage(null);
+        if (!blurredBlob) return;
+
+        try {
+            setCertUploading(true);
+            showToast('info', '업로드 중...', '이미지를 안전하게 저장하고 있습니다.');
+
+            const fileExt = 'jpeg';
+            const fileName = `cert-${user.id}-${Date.now()}.${fileExt}`;
+            const filePath = `certificates/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('profiles')
+                .upload(filePath, blurredBlob, { upsert: true, contentType: 'image/jpeg' });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('profiles')
+                .getPublicUrl(filePath);
+
+            const timestampedUrl = `${publicUrl}?t=${Date.now()}`;
+
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({ certificate_url: timestampedUrl })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
+            setProfileData(prev => ({ ...prev, certificate_url: timestampedUrl }));
+            showToast('success', '업로드 완료', '모자이크 처리된 이미지가 저장되었습니다.');
+
+        } catch (error) {
+            console.error('Cert upload error:', error);
+            showToast('error', '업로드 실패', '이미지 업로드 중 오류가 발생했습니다.');
+        } finally {
+            setCertUploading(false);
+        }
+    };
 
     const fetchProfile = async () => {
         try {
@@ -224,6 +282,34 @@ export default function Profile({ user, onUpdate }) {
                             <User className="w-5 h-5 text-indigo-600" /> 팀장 프로필 정보 (고객에게 노출됨)
                         </h3>
                         <div className="space-y-4">
+                            {/* Certificate Upload Area */}
+                            <div className="bg-white p-4 rounded-lg border border-indigo-100">
+                                <label className="block text-xs font-bold text-gray-800 mb-2 flex items-center gap-2">
+                                    <FileBadge className="w-4 h-4 text-indigo-500" /> 상례지도사 자격증 / 사업자등록증
+                                </label>
+                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">자격증을 업로드하여 고객 신뢰도를 높여주세요. 업로드 과정에서 <strong>주민번호 뒷자리 등을 블러(모자이크) 처리</strong>할 수 있습니다.</p>
+
+                                {profileData?.certificate_url ? (
+                                    <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 mb-2">
+                                        <img src={profileData.certificate_url} alt="자격증" className="w-full h-auto max-h-48 object-contain" />
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                                            <label className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg text-sm font-bold shadow-lg hover:bg-gray-100 transition-colors">
+                                                다시 업로드하기
+                                                <input type="file" accept="image/*" onChange={handleCertFileSelect} className="hidden" disabled={certUploading} />
+                                            </label>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <label className={`block w-full text-center py-6 border-2 border-dashed border-indigo-200 rounded-lg cursor-pointer hover:bg-indigo-50 hover:border-indigo-400 transition-colors ${certUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        <div className="flex flex-col items-center justify-center text-indigo-500">
+                                            {certUploading ? <Loader2 className="w-6 h-6 animate-spin mb-2" /> : <Camera className="w-6 h-6 mb-2" />}
+                                            <span className="text-sm font-bold">{certUploading ? '처리 중...' : '터치하여 사진 업로드'}</span>
+                                        </div>
+                                        <input type="file" accept="image/*" onChange={handleCertFileSelect} className="hidden" disabled={certUploading} />
+                                    </label>
+                                )}
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-600 mb-1">경력 (년)</label>
                                 <div className="relative">
@@ -337,6 +423,13 @@ export default function Profile({ user, onUpdate }) {
                 recipientName={messageModal.recipientName}
                 recipientRoleClass={messageModal.recipientRoleClass}
             />
+            {pendingCertImage && (
+                <ImageBlurEditor
+                    imageUrl={pendingCertImage}
+                    onSave={handleCertSave}
+                    onCancel={() => setPendingCertImage(null)}
+                />
+            )}
         </div>
     );
 }

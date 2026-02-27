@@ -22,6 +22,7 @@ create table profiles (
   password text, -- Added for dummy login
   introduction text, -- 프로필 모달용 소개글 (마스터/팀장 등)
   experience_years integer default 0, -- 경력 년수
+  certificate_url text, -- 팀장 자격증/사업자등록증 이미지 URL
   password_reset_requested boolean default false, -- 비밀번호 초기화 요청 상태
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
