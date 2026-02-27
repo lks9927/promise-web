@@ -1,5 +1,24 @@
 
 -- ==========================================
+-- notifications 테이블 재설계 (참조 오류 수정)
+-- ==========================================
+DROP TABLE IF EXISTS notifications CASCADE;
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- ==========================================
+-- 실시간 발송(Realtime) 강제 활성화 (매우 중요)
+-- ==========================================
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+
+-- ==========================================
 -- 테스트용 스토리지 RLS 정책 수정 (프로토타입용 익명 업로드 허용)
 -- ==========================================
 DROP POLICY IF EXISTS "Users can upload reports" ON storage.objects;
@@ -67,7 +86,14 @@ BEGIN
     INSERT INTO profiles (id, email, role, admin_level, name, phone, password)
     VALUES 
     (ad01, 'masteradmin@test.com', 'admin', 'super', '최고관리자', '010-0000-0001', '1234'),
-    (ad02, 'manager@test.com', 'admin', 'operating', '운영관리자', '010-0000-0002', '1234');
+    (ad02, 'manager@test.com', 'admin', 'operating', '운영관리자', '010-0000-0002', '1234')
+    ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        role = EXCLUDED.role,
+        admin_level = EXCLUDED.admin_level,
+        name = EXCLUDED.name,
+        phone = EXCLUDED.phone,
+        password = EXCLUDED.password;
 
     -- 1. 팀장 (연예인 10명) 
 
@@ -84,7 +110,15 @@ BEGIN
     (tl07, 'tl7@test.com', 'leader', '공유 팀장', '010-1000-0007', '1234', '정확하고 투명하게 진행합니다.', 5),
     (tl08, 'tl8@test.com', 'leader', '현빈 팀장', '010-1000-0008', '1234', '빈틈없는 장례 서비스.', 4),
     (tl09, 'tl9@test.com', 'leader', '박서준 팀장', '010-1000-0009', '1234', '끝까지 곁을 지키겠습니다.', 3),
-    (tl10, 'tl10@test.com', 'leader', '김수현 팀장', '010-1000-0010', '1234', '정성껏 모시겠습니다.', 2);
+    (tl10, 'tl10@test.com', 'leader', '김수현 팀장', '010-1000-0010', '1234', '정성껏 모시겠습니다.', 2)
+    ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        role = EXCLUDED.role,
+        name = EXCLUDED.name,
+        phone = EXCLUDED.phone,
+        password = EXCLUDED.password,
+        introduction = EXCLUDED.introduction,
+        experience_years = EXCLUDED.experience_years;
     
     INSERT INTO partners (user_id, master_id, region, grade, bank_account, status)
     VALUES 
@@ -99,7 +133,13 @@ BEGIN
     (tl07, tl02, '광주/서구', 'B', '우리은행 777-777-777', 'approved'),
     (tl08, tl03, '대전/유성구', 'B', '기업은행 888-888-888', 'approved'),
     (tl09, tl03, '울산/남구', 'C', '케이뱅크 999-999-999', 'approved'),
-    (tl10, tl01, '경기/성남시', 'C', '외환은행 000-000-000', 'approved');
+    (tl10, tl01, '경기/성남시', 'C', '외환은행 000-000-000', 'approved')
+    ON CONFLICT (user_id) DO UPDATE SET
+        master_id = EXCLUDED.master_id,
+        region = EXCLUDED.region,
+        grade = EXCLUDED.grade,
+        bank_account = EXCLUDED.bank_account,
+        status = EXCLUDED.status;
 
     -- 2. 딜러 (스포츠스타 10명)
     -- 손석구, 마동석은 특별히 요청하셨으므로 딜러에 포함
@@ -116,7 +156,13 @@ BEGIN
     (dl07, 'dl7@test.com', 'dealer', '김민재 딜러', '010-2000-0007', '1234'),
     (dl08, 'dl8@test.com', 'dealer', '박지성 딜러', '010-2000-0008', '1234'),
     (dl09, 'dl9@test.com', 'dealer', '추신수 딜러', '010-2000-0009', '1234'),
-    (dl10, 'dl10@test.com', 'dealer', '페이커 딜러', '010-2000-0010', '1234');
+    (dl10, 'dl10@test.com', 'dealer', '페이커 딜러', '010-2000-0010', '1234')
+    ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        role = EXCLUDED.role,
+        name = EXCLUDED.name,
+        phone = EXCLUDED.phone,
+        password = EXCLUDED.password;
     
     INSERT INTO partners (user_id, master_id, region, grade, bank_account, status)
     VALUES 
@@ -129,7 +175,13 @@ BEGIN
     (dl07, dl02, '대구/동구', 'B', '수협 444-555', 'approved'),
     (dl08, dl02, '광주/북구', 'B', '새마을 666-777', 'approved'),
     (dl09, dl02, '울산/중구', 'B', '우체국 888-999', 'approved'),
-    (dl10, dl01, '제주/서귀포시', 'C', '신협 000-111', 'approved');
+    (dl10, dl01, '제주/서귀포시', 'C', '신협 000-111', 'approved')
+    ON CONFLICT (user_id) DO UPDATE SET
+        master_id = EXCLUDED.master_id,
+        region = EXCLUDED.region,
+        grade = EXCLUDED.grade,
+        bank_account = EXCLUDED.bank_account,
+        status = EXCLUDED.status;
 
     -- 3. 고객 (정치인 10명)
     INSERT INTO profiles (id, email, role, name, phone, password)
@@ -143,16 +195,32 @@ BEGIN
     (cu07, 'cu7@test.com', 'customer', '안철수 (상주)', '010-3000-0007', '1234'),
     (cu08, 'cu8@test.com', 'customer', '유승민 (상주)', '010-3000-0008', '1234'),
     (cu09, 'cu9@test.com', 'customer', '김동연 (상주)', '010-3000-0009', '1234'),
-    (cu10, 'cu10@test.com', 'customer', '김종인 (상주)', '010-3000-0010', '1234');
+    (cu10, 'cu10@test.com', 'customer', '김종인 (상주)', '010-3000-0010', '1234')
+    ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        role = EXCLUDED.role,
+        name = EXCLUDED.name,
+        phone = EXCLUDED.phone,
+        password = EXCLUDED.password;
 
     -- 4. 샘플 접수 건 생성
     INSERT INTO funeral_cases (id, customer_id, dealer_id, team_leader_id, status, location, package_name, final_price, funnel_type, coupon_code)
     VALUES 
     -- 1. 이재명 고객 (하정우 마스터팀장 담당, 손흥민 마스터딜러 모집)
-    (gen_random_uuid(), cu01, dl01, tl01, 'in_progress', '서울아산병원 장례식장', '프리미엄 3일장', 4500000, 'partner_referral', 'WELCOME10'),
+    ('f1eebc99-9c0b-4ef8-bb6d-6bb9bd380a20', cu01, dl01, tl01, 'in_progress', '서울아산병원 장례식장', '프리미엄 3일장', 4500000, 'partner_referral', 'WELCOME10'),
     -- 2. 한동훈 고객 (황정민 마스터팀장 담당, 본사유입)
-    (gen_random_uuid(), cu02, NULL, tl02, 'team_settling', '삼성서울병원 장례식장', '노블레스 3일장', 6800000, 'organic_search', NULL),
+    ('f2eebc99-9c0b-4ef8-bb6d-6bb9bd380a21', cu02, NULL, tl02, 'team_settling', '삼성서울병원 장례식장', '노블레스 3일장', 6800000, 'organic_search', NULL),
     -- 3. 조국 고객 (송강호 팀장 담당, 김연아 딜러 모집)
-    (gen_random_uuid(), cu03, dl04, tl04, 'completed', '세브란스병원 장례식장', '기본형 3일장', 3200000, 'partner_referral', NULL);
+    ('f3eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', cu03, dl04, tl04, 'completed', '세브란스병원 장례식장', '기본형 3일장', 3200000, 'partner_referral', NULL)
+    ON CONFLICT (id) DO UPDATE SET
+        customer_id = EXCLUDED.customer_id,
+        dealer_id = EXCLUDED.dealer_id,
+        team_leader_id = EXCLUDED.team_leader_id,
+        status = EXCLUDED.status,
+        location = EXCLUDED.location,
+        package_name = EXCLUDED.package_name,
+        final_price = EXCLUDED.final_price,
+        funnel_type = EXCLUDED.funnel_type,
+        coupon_code = EXCLUDED.coupon_code;
 
 END $$;
