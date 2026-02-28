@@ -8,7 +8,9 @@ import {
 } from 'lucide-react';
 
 const BUSINESS_TYPE_LABELS = {
+    all: '🌟 종합 (장례용품/입관꽃/화환)',
     flowers: '🌸 입관꽃',
+    wreaths: '💐 근조화환',
     goods: '📦 장례용품',
     burial: '🌿 장지업체',
     other: '🏢 기타',

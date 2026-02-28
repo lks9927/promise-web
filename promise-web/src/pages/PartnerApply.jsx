@@ -248,7 +248,9 @@ export default function PartnerApply() {
                                         onChange={e => setFormData({ ...formData, businessType: e.target.value })}
                                     >
                                         <option value="">선택하세요</option>
+                                        <option value="all">종합 (장례용품/입관꽃/화환)</option>
                                         <option value="flowers">입관꽃 (하늘꽃)</option>
+                                        <option value="wreaths">근조화환</option>
                                         <option value="goods">장례 용품</option>
                                         <option value="burial">장지 업체 (납골당 등)</option>
                                         <option value="other">기타</option>

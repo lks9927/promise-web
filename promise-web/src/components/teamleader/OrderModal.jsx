@@ -4,7 +4,9 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { X, ShoppingCart, Plus, Minus, Trash2, FileText, Truck, Package, Flower, Building } from 'lucide-react';
 
 const BUSINESS_TYPE_LABELS = {
+    all: { label: '종합 (용품/입관꽃/화환)', icon: '🌟', color: 'indigo' },
     flowers: { label: '입관꽃', icon: '🌸', color: 'pink' },
+    wreaths: { label: '근조화환', icon: '💐', color: 'emerald' },
     goods: { label: '장례용품', icon: '📦', color: 'amber' },
     burial: { label: '장지(납골당/수목장)', icon: '🌿', color: 'green' },
     other: { label: '기타', icon: '🏢', color: 'gray' },
@@ -152,7 +154,7 @@ export default function OrderModal({ isOpen, onClose, caseData, teamLeaderId }) 
                 <div className="flex px-5 pt-3 gap-2">
                     {['vendor', 'products', 'confirm'].map((s, i) => (
                         <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${step === s || (step === 'confirm' && i < 2) || (step === 'products' && i < 1)
-                                ? 'bg-blue-500' : 'bg-gray-100'
+                            ? 'bg-blue-500' : 'bg-gray-100'
                             }`} />
                     ))}
                 </div>
