@@ -46,6 +46,7 @@ export default function DevLogin() {
         if (user.role === 'admin') navigate('/admin');
         else if (user.role === 'master') navigate('/master');
         else if (user.role === 'leader') navigate('/leader');
+        else if (user.role === 'vendor') navigate('/vendor');
         else if (['dealer', 'morning', 'meal'].includes(user.role)) navigate('/dealer');
         else navigate('/');
     };
@@ -60,6 +61,7 @@ export default function DevLogin() {
         if (['dealer', 'morning', 'meal'].includes(role) && grade === 'Master') return <Award className="w-4 h-4 text-pink-500" />;
         // Dealer (role=dealer/morning/meal without Master grade)
         if (['dealer', 'morning', 'meal'].includes(role)) return <Briefcase className="w-4 h-4 text-orange-500" />;
+        if (role === 'vendor') return <Briefcase className="w-4 h-4 text-gray-700" />;
         if (role === 'customer') return <Users className="w-4 h-4 text-green-500" />;
         return <User className="w-4 h-4 text-gray-500" />;
     };
@@ -73,7 +75,8 @@ export default function DevLogin() {
             '팀장 (Team Leader)': profiles.filter(p => p.role === 'leader' && getGrade(p) !== 'Master'),
             '마스터 딜러 (Master Dealer)': profiles.filter(p => p.role === 'master' || (['dealer', 'morning', 'meal'].includes(p.role) && getGrade(p) === 'Master')),
             '딜러 (Dealer)': profiles.filter(p => ['dealer', 'morning', 'meal'].includes(p.role) && getGrade(p) !== 'Master'),
-            '기타 (Others)': profiles.filter(p => !['admin', 'master', 'leader', 'dealer', 'morning', 'meal', 'customer'].includes(p.role))
+            '외주업체 (Vendor)': profiles.filter(p => p.role === 'vendor'),
+            '기타 (Others)': profiles.filter(p => !['admin', 'master', 'leader', 'dealer', 'vendor', 'morning', 'meal', 'customer'].includes(p.role))
         };
         return groups;
     };

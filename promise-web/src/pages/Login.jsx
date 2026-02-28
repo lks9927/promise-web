@@ -21,6 +21,7 @@ const Login = () => {
                 case 'master': navigate('/master'); break;
                 case 'leader': navigate('/leader'); break;
                 case 'dealer': navigate('/dealer'); break;
+                case 'vendor': navigate('/vendor'); break;
                 case 'customer': navigate('/mypage'); break;
                 default: navigate('/');
             }
@@ -48,19 +49,42 @@ const Login = () => {
                     throw new Error('비밀번호가 일치하지 않습니다.');
                 }
 
-                // 🔹 New: Check Partner Status (Approval)
-                const { data: partnerData } = await supabase
-                    .from('partners')
-                    .select('status')
-                    .eq('user_id', data.id)
-                    .single();
+                // 🔹 Check Partner Status (Approval)
+                if (data.role === 'leader' || data.role === 'dealer' || data.role === 'master') {
+                    const { data: partnerData } = await supabase
+                        .from('partners')
+                        .select('status')
+                        .eq('user_id', data.id)
+                        .single();
 
-                if (partnerData) {
-                    if (partnerData.status === 'pending') {
-                        throw new Error('마스터 승인 대기 중인 계정입니다.');
+                    if (partnerData) {
+                        if (partnerData.status === 'pending') {
+                            throw new Error('마스터 승인 대기 중인 계정입니다.');
+                        }
+                        if (partnerData.status === 'suspended') {
+                            throw new Error('활동이 정지된 계정입니다. 관리자에게 문의하세요.');
+                        }
                     }
-                    if (partnerData.status === 'suspended') {
-                        throw new Error('활동이 정지된 계정입니다. 관리자에게 문의하세요.');
+                }
+
+                // 🔹 Check Vendor Status (Approval)
+                if (data.role === 'vendor') {
+                    const { data: vendorData } = await supabase
+                        .from('vendors')
+                        .select('status')
+                        .eq('user_id', data.id)
+                        .single();
+
+                    if (vendorData) {
+                        if (vendorData.status === 'pending') {
+                            throw new Error('관리자 승인 대기 중인 외주업체 계정입니다.');
+                        }
+                        if (vendorData.status === 'suspended') {
+                            throw new Error('활동이 정지된 외주업체입니다. 관리자에게 문의하세요.');
+                        }
+                        if (vendorData.status === 'rejected') {
+                            throw new Error('가입이 반려된 외주업체입니다.');
+                        }
                     }
                 }
 
@@ -85,6 +109,9 @@ const Login = () => {
                         break;
                     case 'dealer':
                         navigate('/dealer');
+                        break;
+                    case 'vendor':
+                        navigate('/vendor');
                         break;
                     case 'customer':
                         navigate('/mypage');
