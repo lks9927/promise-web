@@ -524,14 +524,18 @@ function RegisterTab({ user, onSuccess }) {
                 const { data: coupon, error: couponError } = await supabase
                     .from('coupons')
                     .select('*')
-                    .eq('code', formData.couponCode.trim())
+                    .eq('code', formData.couponCode.trim().toUpperCase())
                     .single();
 
                 if (couponError || !coupon) {
                     throw new Error('유효하지 않은 쿠폰 번호입니다.');
                 }
-                if (coupon.status === 'used') {
-                    throw new Error('이미 사용된 쿠폰입니다.');
+                // ✅ 수정: 'issued' 또는 'active' 상태만 사용 가능
+                if (coupon.status !== 'issued' && coupon.status !== 'active') {
+                    throw new Error('이미 사용되었거나 유효하지 않은 쿠폰입니다.');
+                }
+                if (coupon.case_id) {
+                    throw new Error('이미 다른 접수에 사용된 쿠폰입니다.');
                 }
                 linkedCoupon = coupon;
             }
@@ -539,21 +543,22 @@ function RegisterTab({ user, onSuccess }) {
             const { data: newCase, error: caseError } = await supabase
                 .from('funeral_cases')
                 .insert({
-                    customer_id: user.id, // The dealer is the requester
+                    customer_id: user.id, // dealer as customer/requester
+                    dealer_id: user.id,   // ✅ 딜러 ID 별도 저장
                     location: formData.location || '미정',
                     package_name: formData.packageName,
-                    status: 'requested' // 🚨 긴급 접수
+                    status: 'requested'
                 })
                 .select()
                 .single();
 
             if (caseError) throw caseError;
 
-            // Link coupon if exists
+            // ✅ 수정: 쿠폰 연결 + 상태 'used'로 업데이트
             if (linkedCoupon) {
                 await supabase
                     .from('coupons')
-                    .update({ case_id: newCase.id })
+                    .update({ case_id: newCase.id, status: 'used' })
                     .eq('id', linkedCoupon.id);
             }
 
@@ -720,7 +725,24 @@ function StatusTab({ user }) {
             }
         }
 
-        const { data } = await supabase
+        // ✅ dealer_id 컬럼으로 먼저 조회 (없으면 customer_id fallback)
+        const { data: byDealer } = await supabase
+            .from('funeral_cases')
+            .select(`
+                *,
+                team_leader:team_leader_id (
+                    name,
+                    phone,
+                    role,
+                    avatar_url,
+                    experience_years,
+                    introduction
+                )
+            `)
+            .in('dealer_id', targetIds)
+            .order('created_at', { ascending: false });
+
+        const { data: byCustomer } = await supabase
             .from('funeral_cases')
             .select(`
                 *,
@@ -736,7 +758,12 @@ function StatusTab({ user }) {
             .in('customer_id', targetIds)
             .order('created_at', { ascending: false });
 
-        if (data) setMyCases(data);
+        // 중복 제거 후 합치기
+        const allCases = [...(byDealer || []), ...(byCustomer || [])];
+        const uniqueCases = allCases.filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
+        uniqueCases.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        setMyCases(uniqueCases);
         setLoading(false);
     };
 
