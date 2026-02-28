@@ -31,6 +31,7 @@ import MessageInbox from '../components/common/MessageInbox';
 import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import ProgressReportModal from '../components/teamleader/ProgressReportModal';
+import OrderModal from '../components/teamleader/OrderModal';
 
 export default function TeamLeaderDashboard() {
     const { showToast, sendNotification, unreadCount } = useNotification();
@@ -58,6 +59,7 @@ export default function TeamLeaderDashboard() {
         location: '',
         suggestions: []
     });
+    const [orderModal, setOrderModal] = useState({ isOpen: false, caseData: null });
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -412,6 +414,7 @@ export default function TeamLeaderDashboard() {
                         onUpdate={handleStatusUpdate}
                         onOrderFlower={handleOrderFlower}
                         onOpenReport={(item) => setReportModal({ isOpen: true, caseItem: item })}
+                        onOpenOrder={(item) => setOrderModal({ isOpen: true, caseData: item })}
                         onOpenCoupon={(item) => {
                             const coupon = item.coupons?.[0];
                             if (coupon) setCouponModal({ isOpen: true, coupon, caseId: item.id });
@@ -460,6 +463,14 @@ export default function TeamLeaderDashboard() {
                     <span className="text-xs font-bold">프로필</span>
                 </button>
             </nav>
+
+            {/* 외주 발주 모달 */}
+            <OrderModal
+                isOpen={orderModal.isOpen}
+                onClose={() => setOrderModal({ isOpen: false, caseData: null })}
+                caseData={orderModal.caseData}
+                teamLeaderId={user?.id}
+            />
 
             {assignModal.isOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
@@ -680,12 +691,12 @@ function AvailableList({ cases, onBid, isMaster, onOpenAssignModal }) {
     );
 }
 
-function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail }) {
+function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail, onOpenOrder }) {
     if (cases.length === 0) return <div className="bg-white rounded-xl p-10 text-center border border-gray-200 mt-8"><p className="text-gray-500">현재 진행 중인 건이 없습니다.</p></div>;
-    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} onOpenReport={onOpenReport} onOpenCoupon={onOpenCoupon} onOpenDetail={onOpenDetail} />);
+    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} onOpenReport={onOpenReport} onOpenCoupon={onOpenCoupon} onOpenDetail={onOpenDetail} onOpenOrder={onOpenOrder} />);
 }
 
-function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail }) {
+function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail, onOpenOrder }) {
     const { id, profiles, location, package_name, status, flower_orders, coupons, deceased_name, room_number, encoffinment_time, funeral_end_time } = item;
     const hasOrderedFlower = flower_orders && flower_orders.length > 0;
     const linkedCoupon = coupons?.[0];
@@ -788,6 +799,10 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                     <div className="space-y-2">
                         <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 mb-2">
                             <span>📷 실시간 6단계 진행 보고 작성</span>
+                        </button>
+                        {/* 외주 발주 버튼 */}
+                        <button onClick={() => onOpenOrder(item)} className="w-full bg-sky-50 text-sky-700 border border-sky-200 font-bold py-3.5 rounded-xl hover:bg-sky-100 transition-colors flex items-center justify-center gap-2">
+                            <span>📦 외주 발주서 작성</span>
                         </button>
                         {isFlowerOrderRequired && !hasOrderedFlower && (
                             <button onClick={() => onOrderFlower(id)} className="w-full bg-pink-50 text-pink-700 border border-pink-200 font-bold py-3.5 rounded-xl hover:bg-pink-100 transition-colors flex items-center justify-center gap-2 animate-pulse">
