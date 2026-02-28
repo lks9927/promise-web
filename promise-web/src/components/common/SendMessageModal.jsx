@@ -3,7 +3,7 @@ import { Send, X } from 'lucide-react';
 import { useNotification } from '../../contexts/NotificationContext';
 import { supabase } from '../../lib/supabase';
 
-export default function SendMessageModal({ isOpen, onClose, recipientId, recipientName, recipientRoleClass }) {
+export default function SendMessageModal({ isOpen, onClose, recipientId, recipientName, recipientRoleClass, currentUserId }) {
     const { showToast } = useNotification();
     const [title, setTitle] = useState('');
     const [message, setMessage] = useState('');
@@ -24,8 +24,35 @@ export default function SendMessageModal({ isOpen, onClose, recipientId, recipie
         setIsSending(true);
 
         try {
+            let actualRecipientId = recipientId;
+            let recipientPhone = null;
+
+            if (recipientId === 'admin') {
+                const { data: adminProfile } = await supabase
+                    .from('profiles')
+                    .select('id, phone')
+                    .eq('role', 'admin')
+                    .limit(1)
+                    .single();
+
+                if (adminProfile) {
+                    actualRecipientId = adminProfile.id;
+                    recipientPhone = adminProfile.phone;
+                } else {
+                    throw new Error('관리자를 찾을 수 없습니다.');
+                }
+            } else {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('phone')
+                    .eq('id', recipientId)
+                    .single();
+                if (profile) recipientPhone = profile.phone;
+            }
+
             const { error } = await supabase.from('notifications').insert([{
-                user_id: recipientId,
+                user_id: actualRecipientId,
+                sender_id: currentUserId, // Log the sender
                 type: 'info',
                 title: title,
                 message: message
@@ -34,19 +61,13 @@ export default function SendMessageModal({ isOpen, onClose, recipientId, recipie
             if (error) throw error;
 
             // Attempt to send Kakao/SMS via Solapi API
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('phone')
-                .eq('id', recipientId)
-                .single();
-
-            if (profile && profile.phone) {
+            if (recipientPhone) {
                 // Send SMS asynchronously 
                 fetch('/api/send-message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        to: profile.phone,
+                        to: recipientPhone,
                         subject: `[10년의 약속 알림] ${title}`,
                         text: message
                     })

@@ -18,14 +18,17 @@ import {
     XCircle,
     MoreVertical,
     Activity,
-    Phone
+    Phone,
+    Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
 import TeamManagement from '../components/team/TeamManagement';
 import Profile from '../components/common/Profile';
 import { useNotification } from '../contexts/NotificationContext';
-import NotificationCenter from '../components/common/NotificationCenter';
+import MessageInbox from '../components/common/MessageInbox';
+import { matchHangul } from '../lib/hangul';
+import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import ProgressReportModal from '../components/teamleader/ProgressReportModal';
 
 export default function TeamLeaderDashboard() {
@@ -43,6 +46,17 @@ export default function TeamLeaderDashboard() {
     const [assignModal, setAssignModal] = useState({ isOpen: false, caseId: null });
     const [reportModal, setReportModal] = useState({ isOpen: false, caseItem: null });
     const [isNotifOpen, setIsNotifOpen] = useState(false);
+    const [couponModal, setCouponModal] = useState({ isOpen: false, coupon: null, caseId: null });
+    const [consultModal, setConsultModal] = useState({
+        isOpen: false,
+        caseId: null,
+        deceased_name: '',
+        room_number: '',
+        encoffinment_time: '',
+        funeral_end_time: '',
+        location: '',
+        suggestions: []
+    });
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -224,7 +238,6 @@ export default function TeamLeaderDashboard() {
             showToast('error', '배정 실패', error.message);
         }
     };
-
     const handleStatusUpdate = async (caseId, newStatus, extraData = {}) => {
         try {
             const { error } = await supabase
@@ -242,6 +255,60 @@ export default function TeamLeaderDashboard() {
             }
         } catch (error) {
             showToast('error', '업데이트 실패', error.message);
+        }
+    };
+
+    const handleCouponUsage = async (couponId, usedFor, caseId) => {
+        try {
+            const { error } = await supabase
+                .from('coupons')
+                .update({ status: 'used', used_for: usedFor })
+                .eq('id', couponId);
+            if (error) throw error;
+
+            showToast('success', '쿠폰 사용 처리', '쿠폰이 성공적으로 사용 처리되었습니다.');
+            setCouponModal({ isOpen: false, coupon: null, caseId: null });
+
+            // After coupon usage, open the consultation detail modal to complete the transition to in_progress
+            const caseItem = myCases.find(c => c.id === caseId);
+            setConsultModal({
+                isOpen: true,
+                caseId: caseId,
+                deceased_name: caseItem?.deceased_name || '',
+                room_number: caseItem?.room_number || '',
+                location: caseItem?.location || '',
+                encoffinment_time: caseItem?.encoffinment_time ? new Date(caseItem.encoffinment_time).toISOString().slice(0, 16) : '',
+                funeral_end_time: caseItem?.funeral_end_time ? new Date(caseItem.funeral_end_time).toISOString().slice(0, 16) : '',
+                suggestions: []
+            });
+
+        } catch (error) {
+            showToast('error', '처리 실패', error.message);
+        }
+    };
+
+    const handleSaveConsultation = async (e) => {
+        e.preventDefault();
+        try {
+            const { error } = await supabase
+                .from('funeral_cases')
+                .update({
+                    deceased_name: consultModal.deceased_name,
+                    room_number: consultModal.room_number,
+                    location: consultModal.location,
+                    encoffinment_time: consultModal.encoffinment_time || null,
+                    funeral_end_time: consultModal.funeral_end_time || null,
+                    status: 'in_progress'
+                })
+                .eq('id', consultModal.caseId);
+
+            if (error) throw error;
+
+            showToast('success', '상담 상세 정보 저장', '정보가 성공적으로 반영되어 실시간 진행 상태로 전환되었습니다.');
+            setConsultModal({ isOpen: false, caseId: null, deceased_name: '', room_number: '', location: '', encoffinment_time: '', funeral_end_time: '', suggestions: [] });
+            fetchData();
+        } catch (error) {
+            showToast('error', '저장 실패', error.message);
         }
     };
 
@@ -292,7 +359,7 @@ export default function TeamLeaderDashboard() {
                                     </span>
                                 )}
                             </button>
-                            {isNotifOpen && <NotificationCenter onClose={() => setIsNotifOpen(false)} />}
+                            <MessageInbox isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} user={user} />
                         </div>
                         <button onClick={() => { if (confirm('로그아웃 하시겠습니까?')) { localStorage.removeItem('user'); navigate('/login'); } }} className="text-gray-400 hover:text-red-500 transition-colors">
                             <LogOut className="w-6 h-6" />
@@ -344,6 +411,20 @@ export default function TeamLeaderDashboard() {
                         onUpdate={handleStatusUpdate}
                         onOrderFlower={handleOrderFlower}
                         onOpenReport={(item) => setReportModal({ isOpen: true, caseItem: item })}
+                        onOpenCoupon={(item) => {
+                            const coupon = item.coupons?.[0];
+                            if (coupon) setCouponModal({ isOpen: true, coupon, caseId: item.id });
+                        }}
+                        onOpenDetail={(item) => setConsultModal({
+                            isOpen: true,
+                            caseId: item.id,
+                            deceased_name: item.deceased_name || '',
+                            room_number: item.room_number || '',
+                            location: item.location || '',
+                            encoffinment_time: item.encoffinment_time ? new Date(item.encoffinment_time).toISOString().slice(0, 16) : '',
+                            funeral_end_time: item.funeral_end_time ? new Date(item.funeral_end_time).toISOString().slice(0, 16) : '',
+                            suggestions: []
+                        })}
                     />
                 ) : activeTab === 'team' ? (
                     <TeamManagement user={user} />
@@ -409,10 +490,158 @@ export default function TeamLeaderDashboard() {
             {/* Stage Progress Report Modal */}
             <ProgressReportModal
                 isOpen={reportModal.isOpen}
-                onClose={() => setReportModal({ isOpen: false, caseItem: null })}
+                onClose={() => setReportModal({ ...reportModal, isOpen: false })}
                 caseItem={reportModal.caseItem}
                 user={user}
             />
+
+            {couponModal.isOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] animate-fadeIn p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+                        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-indigo-50">
+                            <div>
+                                <h3 className="font-bold text-lg text-indigo-900">쿠폰 사용 확인</h3>
+                                <p className="text-xs text-indigo-600">상담이 완료되어 쿠폰을 사용합니다.</p>
+                            </div>
+                            <button onClick={() => setCouponModal({ isOpen: false, coupon: null, caseId: null })} className="text-gray-400 hover:text-gray-600"><XCircle className="w-6 h-6" /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                <div className="text-xs text-gray-500 mb-1">적용 쿠폰</div>
+                                <div className="font-bold text-gray-900 text-lg">{couponModal.coupon?.code}</div>
+                                <div className="text-indigo-600 font-black">₩ {couponModal.coupon?.amount?.toLocaleString()}</div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="block text-sm font-bold text-gray-700">사용 용도 선택</label>
+                                {['현금지급', '화환사용', '입관꽃사용', '수동입력'].map(type => (
+                                    <button
+                                        key={type}
+                                        onClick={() => handleCouponUsage(couponModal.coupon.id, type, couponModal.caseId)}
+                                        className="w-full p-4 rounded-xl border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 text-left font-bold text-gray-700 transition-all active:scale-[0.98]"
+                                    >
+                                        {type}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Consultation Detail Input Modal */}
+            {consultModal.isOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] animate-fadeIn p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative">
+                        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-blue-50 sticky top-0 z-10">
+                            <div>
+                                <h3 className="font-bold text-lg text-blue-900">장례 상세 정보 입력</h3>
+                                <p className="text-xs text-blue-600">상담 완료 및 진행을 위한 상세 정보를 입력하세요.</p>
+                            </div>
+                            <button onClick={() => setConsultModal({ ...consultModal, isOpen: false })} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-white rounded-full transition-colors"><XCircle className="w-6 h-6" /></button>
+                        </div>
+                        <form onSubmit={handleSaveConsultation} className="p-6 space-y-4">
+                            <div className="space-y-4">
+                                <div className="relative">
+                                    <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                                        <MapPin className="w-3 h-3 text-blue-500" /> 장례식장 (장소)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={consultModal.location}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            const filtered = val.trim().length > 0
+                                                ? FUNERAL_HOMES_FULL.filter(h => matchHangul(h.name, val) || matchHangul(h.address, val)).slice(0, 10)
+                                                : [];
+                                            setConsultModal({ ...consultModal, location: val, suggestions: filtered });
+                                        }}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold placeholder:text-gray-300"
+                                        placeholder="장례식장 이름 검색 (예: 서울아산)"
+                                    />
+                                    {consultModal.suggestions.length > 0 && (
+                                        <ul className="absolute z-50 w-full bg-white border border-gray-100 rounded-xl shadow-xl mt-1 max-h-48 overflow-y-auto border-t-0 p-1">
+                                            {consultModal.suggestions.map((h, i) => (
+                                                <li
+                                                    key={i}
+                                                    onClick={() => setConsultModal({ ...consultModal, location: h.name, suggestions: [] })}
+                                                    className="px-3 py-2.5 hover:bg-blue-50 cursor-pointer rounded-lg border-b border-gray-50 last:border-none transition-colors"
+                                                >
+                                                    <div className="font-bold text-gray-800 text-sm">{h.name}</div>
+                                                    <div className="text-[10px] text-gray-500 truncate">{h.address}</div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">고인명</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={consultModal.deceased_name}
+                                            onChange={e => setConsultModal({ ...consultModal, deceased_name: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold"
+                                            placeholder="성함 입력"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">호실 (빈소)</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={consultModal.room_number}
+                                            onChange={e => setConsultModal({ ...consultModal, room_number: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold"
+                                            placeholder="예: 201호"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-blue-500" /> 입관 일시
+                                    </label>
+                                    <input
+                                        type="datetime-local"
+                                        value={consultModal.encoffinment_time}
+                                        onChange={e => setConsultModal({ ...consultModal, encoffinment_time: e.target.value })}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                                        <Calendar className="w-3 h-3 text-blue-500" /> 발인 일시
+                                    </label>
+                                    <input
+                                        type="datetime-local"
+                                        value={consultModal.funeral_end_time}
+                                        onChange={e => setConsultModal({ ...consultModal, funeral_end_time: e.target.value })}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-2">
+                                <button
+                                    type="submit"
+                                    className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle className="w-5 h-5" />
+                                    <span>상담 완료 및 서비스 시작</span>
+                                </button>
+                                <p className="text-center text-[10px] text-gray-400 mt-4">
+                                    저장 시 고객 및 본사로 진행 알림이 전송됩니다.
+                                </p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -433,14 +662,16 @@ function AvailableList({ cases, onBid, isMaster, onOpenAssignModal }) {
     );
 }
 
-function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport }) {
+function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail }) {
     if (cases.length === 0) return <div className="bg-white rounded-xl p-10 text-center border border-gray-200 mt-8"><p className="text-gray-500">현재 진행 중인 건이 없습니다.</p></div>;
-    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} onOpenReport={onOpenReport} />);
+    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} onOpenReport={onOpenReport} onOpenCoupon={onOpenCoupon} onOpenDetail={onOpenDetail} />);
 }
 
-function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport }) {
-    const { id, profiles, location, package_name, status, flower_orders } = item;
+function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail }) {
+    const { id, profiles, location, package_name, status, flower_orders, coupons, deceased_name, room_number, encoffinment_time, funeral_end_time } = item;
     const hasOrderedFlower = flower_orders && flower_orders.length > 0;
+    const linkedCoupon = coupons?.[0];
+    const isCouponUsed = linkedCoupon?.status === 'used';
 
     const getStatusBadge = (s) => {
         switch (s) {
@@ -461,8 +692,40 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                     <div className="flex items-center gap-2 mb-2">{getStatusBadge(status)}</div>
                     <h4 className="font-bold text-lg text-gray-900">{profiles?.name || '고객'} 님 장례</h4>
                     <div className="flex items-center text-gray-500 text-sm mt-1">
-                        <MapPin className="w-3.5 h-3.5 mr-1" />{location}
+                        <MapPin className="w-3.5 h-3.5 mr-1" />{location} {room_number && <span className="text-indigo-600 font-bold ml-1">({room_number})</span>}
                     </div>
+                    {deceased_name && (
+                        <div className="text-sm font-bold text-gray-700 mt-1">
+                            🥀 고인명: {deceased_name}
+                        </div>
+                    )}
+                    {(encoffinment_time || funeral_end_time) && (
+                        <div className="flex flex-wrap gap-2 mt-1">
+                            {encoffinment_time && (
+                                <span className="text-[10px] text-gray-500 flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded">
+                                    <Clock className="w-3 h-3" /> 입관: {new Date(encoffinment_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            )}
+                            {funeral_end_time && (
+                                <span className="text-[10px] text-gray-500 flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded">
+                                    <Calendar className="w-3 h-3" /> 발인: {new Date(funeral_end_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    {linkedCoupon && (
+                        <div className="mt-2 flex items-center gap-2">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isCouponUsed ? 'bg-gray-100 text-gray-500' : 'bg-indigo-100 text-indigo-700 animate-pulse'}`}>
+                                <Tag className="w-3 h-3 inline mr-1" />
+                                쿠폰: {linkedCoupon.code} ({linkedCoupon.amount.toLocaleString()}원)
+                            </span>
+                            {isCouponUsed && (
+                                <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
+                                    사용됨: {linkedCoupon.used_for}
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
                 {profiles?.phone && (
                     <a href={`tel:${profiles.phone}`} className="flex-shrink-0 w-10 h-10 bg-green-50 text-green-600 rounded-full flex items-center justify-center hover:bg-green-100 transition-colors shadow-sm ml-2">
@@ -473,9 +736,6 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
             <div className="p-4 bg-white border-t border-gray-100 space-y-2">
                 {status === 'assigned' && (
                     <div className="space-y-2">
-                        <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2">
-                            <span>📷 실시간 6단계 진행 보고 작성</span>
-                        </button>
                         <button onClick={() => onUpdate(id, 'consulting')} className="w-full bg-orange-50 text-orange-700 border border-orange-200 font-bold py-3.5 rounded-xl hover:bg-orange-100 transition-colors flex items-center justify-center gap-2">
                             <span>다음 단계:</span> <span>🗣️ 상담 시작</span>
                         </button>
@@ -483,20 +743,23 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                 )}
                 {status === 'consulting' && (
                     <div className="space-y-2">
-                        <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2">
-                            <span>📷 실시간 6단계 진행 보고 작성</span>
-                        </button>
                         <div className="grid grid-cols-2 gap-3">
-                            <button onClick={() => onUpdate(id, 'in_progress')} className="bg-blue-50 text-blue-700 border border-blue-200 font-bold py-3.5 rounded-xl hover:bg-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
-                                <span>🔵 빈소 설치</span>
-                            </button>
+                            {linkedCoupon && !isCouponUsed ? (
+                                <button onClick={() => onOpenCoupon(item)} className="col-span-2 bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2">
+                                    <Tag className="w-5 h-5" /> <span>쿠폰 사용 & 빈소 설치</span>
+                                </button>
+                            ) : (
+                                <button onClick={() => onOpenDetail(item)} className="bg-blue-50 text-blue-700 border border-blue-200 font-bold py-3.5 rounded-xl hover:bg-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
+                                    <span>🔵 빈소 설치 (상담 완료)</span>
+                                </button>
+                            )}
                             <button
                                 onClick={() => {
                                     if (confirm('상담을 취소하시겠습니까?\n배정이 취소되어 다시 전체 공고로 올라갑니다.')) {
                                         onUpdate(id, 'requested', { team_leader_id: null });
                                     }
                                 }}
-                                className="bg-red-50 text-red-600 border border-red-100 font-bold py-3.5 rounded-xl hover:bg-red-100 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                className={`bg-red-50 text-red-600 border border-red-100 font-bold py-3.5 rounded-xl hover:bg-red-100 transition-all active:scale-95 flex items-center justify-center gap-2 ${linkedCoupon && !isCouponUsed ? 'col-span-2' : ''}`}
                             >
                                 <span>❌ 상담 취소</span>
                             </button>

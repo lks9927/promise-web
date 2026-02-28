@@ -205,7 +205,18 @@ export default function SettlementManager() {
                                                 }`}>
                                                 {getTypeLabel(item.type)}
                                             </span>
-                                            {item.package_name && <div className="text-xs text-gray-400 mt-1">{item.package_name}</div>}
+                                            {item.funeral_cases?.package_name && <div className="text-xs text-gray-400 mt-1">{item.funeral_cases.package_name}</div>}
+                                            {item.funeral_cases?.coupons?.length > 0 && (
+                                                <div className="mt-1">
+                                                    {item.funeral_cases.coupons.map((c, idx) => (
+                                                        <div key={idx} className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded inline-flex items-center gap-1 border border-indigo-100">
+                                                            <span className="font-bold">쿠폰: {c.code}</span>
+                                                            <span>({c.amount.toLocaleString()})</span>
+                                                            {c.status === 'used' && <span className="bg-white px-1 rounded text-[9px] border border-indigo-200">{c.used_for}</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </td>
 
                                         <td className="px-6 py-4">

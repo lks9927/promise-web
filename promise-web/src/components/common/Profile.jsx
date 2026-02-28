@@ -372,6 +372,30 @@ export default function Profile({ user, onUpdate }) {
                     </div>
                 )}
 
+                <div className="bg-blue-50/50 rounded-xl border border-blue-100 p-5 mt-4">
+                    <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
+                        <ShieldCheck className="w-5 h-5 text-blue-600" /> 관리자(고객센터) 문의
+                    </h3>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="font-bold text-gray-900">프라미스 운영 관리자</p>
+                            <p className="text-sm text-gray-500">시스템 오류 및 일반 문의</p>
+                        </div>
+                        <button
+                            onClick={() => setMessageModal({
+                                isOpen: true,
+                                recipientId: 'admin',
+                                recipientName: '운영 관리자',
+                                recipientRoleClass: '관리자'
+                            })}
+                            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-lg font-bold hover:bg-blue-50 hover:text-blue-700 transition-colors shadow-sm"
+                        >
+                            <Send className="w-4 h-4 text-blue-500" />
+                            문의하기
+                        </button>
+                    </div>
+                </div>
+
                 <div className="bg-gray-50 rounded-xl border border-gray-100 p-5">
                     <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
                         <CreditCard className="w-5 h-5 text-indigo-600" /> 정산 계좌 관리
@@ -422,6 +446,7 @@ export default function Profile({ user, onUpdate }) {
                 recipientId={messageModal.recipientId}
                 recipientName={messageModal.recipientName}
                 recipientRoleClass={messageModal.recipientRoleClass}
+                currentUserId={user.id}
             />
             {pendingCertImage && (
                 <ImageBlurEditor

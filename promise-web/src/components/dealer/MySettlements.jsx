@@ -22,7 +22,8 @@ export default function MySettlements({ user }) {
                     funeral_cases (
                         package_name,
                         location,
-                        final_price
+                        final_price,
+                        coupons (id, code, amount, status, used_for)
                     ),
                     profiles:recipient_id (name)
                 `)
@@ -159,6 +160,11 @@ export default function MySettlements({ user }) {
                                         <p className="text-xs text-gray-500 mt-0.5">
                                             {item.funeral_cases?.location || '위치 정보 없음'}
                                         </p>
+                                        {item.funeral_cases?.coupons?.length > 0 && (
+                                            <div className="mt-2 text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded inline-block font-bold">
+                                                쿠폰 적용됨: {item.funeral_cases.coupons[0].code}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="text-right">
                                         <p className={`font-bold text-lg ${isPaid ? 'text-gray-400' : 'text-indigo-600'}`}>

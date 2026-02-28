@@ -14,16 +14,21 @@ import {
     MapPin,
     Package,
     Bell,
-    User
+    User,
+    Download,
+    Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import html2canvas from 'html2canvas';
 import MySettlements from '../components/dealer/MySettlements';
 import BranchManagement from '../components/dealer/BranchManagement';
 import Profile from '../components/common/Profile';
 import { useNotification } from '../contexts/NotificationContext';
-import NotificationCenter from '../components/common/NotificationCenter';
+import MessageInbox from '../components/common/MessageInbox';
 import TeamLeaderProfileModal from '../components/common/TeamLeaderProfileModal';
 import TimelineView from '../components/common/TimelineView';
+import { matchHangul } from '../lib/hangul';
+import { FUNERAL_HOMES } from '../data/funeralHomes';
 
 export default function DealerDashboard() {
     const { showToast, unreadCount } = useNotification();
@@ -93,7 +98,7 @@ export default function DealerDashboard() {
                                 </span>
                             )}
                         </button>
-                        {isNotifOpen && <NotificationCenter onClose={() => setIsNotifOpen(false)} />}
+                        <MessageInbox isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} user={user} />
                     </div>
 
                     <button
@@ -146,6 +151,48 @@ function NavButton({ icon: Icon, label, active, onClick }) {
     );
 }
 
+function CouponImageTemplate({ coupon }) {
+    if (!coupon) return null;
+    return (
+        <div id={`coupon-card-${coupon.code}`} className="fixed left-[-9999px] w-[400px] h-[220px] bg-gradient-to-br from-indigo-600 to-purple-800 text-white p-7 rounded-2xl overflow-hidden shadow-2xl">
+            {/* Background Pattern */}
+            <div className="absolute top-[-20%] right-[-10%] opacity-10">
+                <DollarSign className="w-56 h-56" />
+            </div>
+
+            <div className="relative z-10 h-full flex flex-col justify-between">
+                <div>
+                    <div className="flex items-center gap-2 mb-1">
+                        <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center">
+                            <DollarSign className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="text-xs font-black tracking-widest text-indigo-100 uppercase">Cashback Voucher</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-white/80">10년의 약속 캐시백 쿠폰</h3>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-xl font-bold">₩</span>
+                        <span className="text-4xl font-black tabular-nums tracking-tight">
+                            {Number(coupon.amount).toLocaleString()}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/20">
+                        <div className="font-mono text-lg font-black tracking-widest bg-white/10 px-3 py-1 rounded">
+                            {coupon.code}
+                        </div>
+                        <div className="text-[10px] text-white/50 text-right">
+                            발행일: {new Date(coupon.created_at).toLocaleDateString()}<br />
+                            10promise.com
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // --- Tabs ---
 
 function HomeTab({ user }) {
@@ -154,6 +201,12 @@ function HomeTab({ user }) {
     const [team, setTeam] = useState([]);
     const [coupons, setCoupons] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showIssueModal, setShowIssueModal] = useState(false);
+    const [issueAmount, setIssueAmount] = useState('200000');
+    const [issueQty, setIssueQty] = useState(1);
+    const [maxQty, setMaxQty] = useState(10);
+    const [maxAmount, setMaxAmount] = useState(200000);
+    const [issuing, setIssuing] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -180,14 +233,98 @@ function HomeTab({ user }) {
         const { data: couponData } = await supabase
             .from('coupons')
             .select('*')
+            .eq('issued_by', user.id)
             .order('created_at', { ascending: false });
 
         if (couponData) setCoupons(couponData);
+
+        // 4. Fetch Config for Max Qty
+        const { data: configData } = await supabase
+            .from('system_config')
+            .select('value')
+            .eq('key', 'max_coupon_per_batch')
+            .single();
+        if (configData) setMaxQty(parseInt(configData.value) || 10);
+
+        // 5. Fetch Max Amount
+        const { data: amountData } = await supabase
+            .from('system_config')
+            .select('value')
+            .eq('key', 'max_coupon_amount')
+            .single();
+        if (amountData) {
+            const m = parseInt(amountData.value) || 200000;
+            setMaxAmount(m);
+            if (parseInt(issueAmount) > m) {
+                setIssueAmount(m.toString());
+            }
+        }
 
         setLoading(false);
     };
 
     const totalRevenue = earnings.reduce((acc, curr) => acc + curr.amount, 0);
+
+    const handleIssueCoupons = async () => {
+        if (issueQty > maxQty) {
+            showToast('error', '제한 초과', `한 번에 최대 ${maxQty}장까지만 발행 가능합니다.`);
+            return;
+        }
+
+        if (parseInt(issueAmount) > maxAmount) {
+            showToast('error', '금액 초과', `최대 ${maxAmount.toLocaleString()}원까지만 발행 가능합니다.`);
+            return;
+        }
+
+        if (!confirm(`${Number(issueAmount).toLocaleString()}원 쿠폰 ${issueQty}장을 발행하시겠습니까?`)) return;
+
+        setIssuing(true);
+        try {
+            const newCoupons = [];
+            for (let i = 0; i < issueQty; i++) {
+                newCoupons.push({
+                    code: Math.random().toString(36).substring(2, 10).toUpperCase(),
+                    amount: parseInt(issueAmount),
+                    status: 'issued',
+                    issued_by: user.id,
+                    batch_name: '딜러직접발행'
+                });
+            }
+
+            const { error } = await supabase.from('coupons').insert(newCoupons);
+            if (error) throw error;
+
+            showToast('success', '발행 완료', `${issueQty}장의 쿠폰이 발행되었습니다.`);
+            setShowIssueModal(false);
+            fetchData();
+        } catch (error) {
+            console.error(error);
+            showToast('error', '실패', '쿠폰 발행 중 오류가 발생했습니다.');
+        } finally {
+            setIssuing(false);
+        }
+    };
+
+    const handleDownloadImage = async (coupon) => {
+        const element = document.getElementById(`coupon-card-${coupon.code}`);
+        if (!element) return;
+
+        try {
+            const canvas = await html2canvas(element, {
+                scale: 3,
+                useCORS: true,
+                backgroundColor: null,
+            });
+            const link = document.createElement('a');
+            link.download = `10년의약속_쿠폰_${coupon.code}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+            showToast('success', '다운로드 성공', '쿠폰 이미지가 갤러리에 저장되었습니다.');
+        } catch (err) {
+            console.error('Coupon Image Gen Error', err);
+            showToast('error', '다운로드 실패', '이미지 생성 중 오류가 발생했습니다.');
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -205,10 +342,18 @@ function HomeTab({ user }) {
 
             {/* Coupons Section */}
             <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-                <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-indigo-600" />
-                    보유 쿠폰
-                </h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                        <DollarSign className="w-5 h-5 text-indigo-600" />
+                        내가 발행한 쿠폰
+                    </h3>
+                    <button
+                        onClick={() => setShowIssueModal(true)}
+                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-700 transition-all flex items-center gap-1"
+                    >
+                        <PlusCircle className="w-3 h-3" /> 쿠폰 발행
+                    </button>
+                </div>
                 {loading ? <p>로딩 중...</p> : (
                     <div className="space-y-3">
                         {coupons.length === 0 ? <p className="text-gray-400 text-sm">보유한 쿠폰이 없습니다.</p> : coupons.map(coupon => (
@@ -218,24 +363,86 @@ function HomeTab({ user }) {
                                     <div className="text-xs text-indigo-600 font-mono mt-1">{coupon.code}</div>
                                 </div>
                                 <div className="flex flex-col items-end gap-1">
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${coupon.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
-                                        {coupon.status === 'active' ? '사용 가능' : '사용 완료'}
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${coupon.status === 'active' || coupon.status === 'issued' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                                        {coupon.status === 'active' || coupon.status === 'issued' ? '사용 가능' : '사용 완료'}
                                     </span>
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(coupon.code);
-                                            showToast('success', '복사 완료', '쿠폰 코드가 복사되었습니다.');
-                                        }}
-                                        className="text-xs text-gray-500 underline"
-                                    >
-                                        코드 복사
-                                    </button>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => handleDownloadImage(coupon)}
+                                            className="text-xs text-indigo-600 font-bold flex items-center gap-1"
+                                        >
+                                            <Download className="w-3 h-3" /> 이미지 저장
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(coupon.code);
+                                                showToast('success', '복사 완료', '쿠폰 코드가 복사되었습니다.');
+                                            }}
+                                            className="text-xs text-gray-500"
+                                        >
+                                            코드 복사
+                                        </button>
+                                    </div>
                                 </div>
+                                <CouponImageTemplate coupon={coupon} />
                             </div>
                         ))}
                     </div>
                 )}
             </div>
+
+            {/* Issuance Modal */}
+            {showIssueModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-indigo-600 text-white p-5 flex justify-between items-center">
+                            <h4 className="font-bold flex items-center gap-2">
+                                <PlusCircle className="w-5 h-5" /> 쿠폰 직접 발행
+                            </h4>
+                            <button onClick={() => setShowIssueModal(false)} className="text-indigo-200 hover:text-white">&times;</button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">발행 금액</label>
+                                <select
+                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 font-bold"
+                                    value={issueAmount}
+                                    onChange={e => setIssueAmount(e.target.value)}
+                                >
+                                    {[10000, 50000, 100000, 200000, 300000, 500000].filter(amt => amt <= maxAmount).map(amt => (
+                                        <option key={amt} value={amt}>{amt.toLocaleString()}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">발행 수량 (최대 {maxQty}장)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max={maxQty}
+                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 font-bold"
+                                    value={issueQty}
+                                    onChange={e => setIssueQty(Math.min(maxQty, Math.max(1, parseInt(e.target.value) || 1)))}
+                                />
+                            </div>
+                            <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                                <p className="text-xs text-indigo-700 leading-relaxed font-medium">
+                                    * 발행된 쿠폰은 취소가 불가능합니다.<br />
+                                    * 발행 내역은 관리자가 모니터링할 수 있습니다.<br />
+                                    * 고객에게 쿠폰 번호를 직접 전달해주세요.
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleIssueCoupons}
+                                disabled={issuing}
+                                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50"
+                            >
+                                {issuing ? '발행 중...' : '🎟️ 쿠폰 즉시 발행'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* My Team */}
             {team.length > 0 && (
@@ -282,10 +489,29 @@ function RegisterTab({ user, onSuccess }) {
         customerName: '',
         customerPhone: '',
         location: '',
-        packageName: '기본형',
-        memo: ''
+        packageName: '',
+        memo: '',
+        couponCode: ''
     });
+    const [packages, setPackages] = useState([]);
+    const [suggestions, setSuggestions] = useState([]);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchPackages = async () => {
+            const { data } = await supabase.from('system_config').select('value').eq('key', 'funeral_packages').single();
+            if (data && data.value) {
+                try {
+                    const parsed = JSON.parse(data.value);
+                    setPackages(parsed);
+                    if (parsed.length > 0) {
+                        setFormData(prev => ({ ...prev, packageName: parsed[0].value }));
+                    }
+                } catch (e) { console.error('Failed to parse packages'); }
+            }
+        };
+        fetchPackages();
+    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -293,14 +519,43 @@ function RegisterTab({ user, onSuccess }) {
         setLoading(true);
 
         try {
-            const { error } = await supabase.from('funeral_cases').insert({
-                customer_id: user.id, // The dealer is the requester
-                location: formData.location || '미정',
-                package_name: formData.packageName,
-                status: 'requested' // 🚨 긴급 접수
-            });
+            let linkedCoupon = null;
+            if (formData.couponCode.trim()) {
+                const { data: coupon, error: couponError } = await supabase
+                    .from('coupons')
+                    .select('*')
+                    .eq('code', formData.couponCode.trim())
+                    .single();
 
-            if (error) throw error;
+                if (couponError || !coupon) {
+                    throw new Error('유효하지 않은 쿠폰 번호입니다.');
+                }
+                if (coupon.status === 'used') {
+                    throw new Error('이미 사용된 쿠폰입니다.');
+                }
+                linkedCoupon = coupon;
+            }
+
+            const { data: newCase, error: caseError } = await supabase
+                .from('funeral_cases')
+                .insert({
+                    customer_id: user.id, // The dealer is the requester
+                    location: formData.location || '미정',
+                    package_name: formData.packageName,
+                    status: 'requested' // 🚨 긴급 접수
+                })
+                .select()
+                .single();
+
+            if (caseError) throw caseError;
+
+            // Link coupon if exists
+            if (linkedCoupon) {
+                await supabase
+                    .from('coupons')
+                    .update({ case_id: newCase.id })
+                    .eq('id', linkedCoupon.id);
+            }
 
             showToast('success', '접수 완료', '장례 접수가 완료되었습니다. 해피콜을 기다려주세요.');
             onSuccess();
@@ -357,8 +612,35 @@ function RegisterTab({ user, onSuccess }) {
                             className="w-full pl-14 pr-5 py-4 text-lg border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-red-500/20 focus:border-red-500 bg-gray-50 font-bold text-gray-900"
                             placeholder="예: 서울대병원 장례식장"
                             value={formData.location}
-                            onChange={e => setFormData({ ...formData, location: e.target.value })}
+                            onChange={e => {
+                                const value = e.target.value;
+                                setFormData({ ...formData, location: value });
+                                if (value.trim().length > 0) {
+                                    const filtered = FUNERAL_HOMES.filter(home => matchHangul(home, value));
+                                    setSuggestions(filtered.slice(0, 5));
+                                } else {
+                                    setSuggestions([]);
+                                }
+                            }}
+                            onBlur={() => setTimeout(() => setSuggestions([]), 200)}
                         />
+                        {suggestions.length > 0 && (
+                            <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-48 overflow-y-auto animate-fadeIn">
+                                {suggestions.map((home, index) => (
+                                    <li
+                                        key={index}
+                                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer text-gray-700 border-b border-gray-100 last:border-none flex items-center justify-between group"
+                                        onClick={() => {
+                                            setFormData({ ...formData, location: home });
+                                            setSuggestions([]);
+                                        }}
+                                    >
+                                        <span className="font-bold">{home}</span>
+                                        <span className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">선택</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
                 </div>
                 <div>
@@ -370,11 +652,33 @@ function RegisterTab({ user, onSuccess }) {
                             value={formData.packageName}
                             onChange={e => setFormData({ ...formData, packageName: e.target.value })}
                         >
-                            <option value="기본형">기본형 (390만원)</option>
-                            <option value="고급형">고급형 (490만원)</option>
-                            <option value="프리미엄">프리미엄 (590만원)</option>
-                            <option value="VIP">VIP (790만원)</option>
+                            {packages.length > 0 ? (
+                                packages.map((pkg, idx) => (
+                                    <option key={idx} value={pkg.value}>{pkg.label}</option>
+                                ))
+                            ) : (
+                                <>
+                                    <option value="기본형">기본형 (390만원)</option>
+                                    <option value="고급형">고급형 (490만원)</option>
+                                    <option value="프리미엄">프리미엄 (590만원)</option>
+                                    <option value="VIP">VIP (790만원)</option>
+                                </>
+                            )}
                         </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-base font-bold text-gray-900 mb-2">쿠폰 번호 (선택)</label>
+                    <div className="relative">
+                        <Tag className="absolute left-4 top-4 w-6 h-6 text-gray-400" />
+                        <input
+                            type="text"
+                            className="w-full pl-14 pr-5 py-4 text-lg border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 bg-gray-50 font-bold text-gray-900"
+                            placeholder="쿠폰 코드를 입력하세요"
+                            value={formData.couponCode}
+                            onChange={e => setFormData({ ...formData, couponCode: e.target.value.toUpperCase() })}
+                        />
                     </div>
                 </div>
 

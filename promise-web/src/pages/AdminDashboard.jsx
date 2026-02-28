@@ -24,7 +24,7 @@ import SettlementManager from '../components/admin/SettlementManager';
 import CommissionSettings from '../components/admin/CommissionSettings';
 import AdminMessageTab from '../components/admin/AdminMessageTab';
 import { useNotification } from '../contexts/NotificationContext';
-import NotificationCenter from '../components/common/NotificationCenter';
+import MessageInbox from '../components/common/MessageInbox';
 import TimelineView from '../components/common/TimelineView';
 
 export default function AdminDashboard() {
@@ -103,7 +103,7 @@ export default function AdminDashboard() {
             // 6. Fetch Coupons
             const { data: couponData } = await supabase
                 .from('coupons')
-                .select('*')
+                .select('*, profiles:issued_by(name)')
                 .order('created_at', { ascending: false });
             if (couponData) setCoupons(couponData);
 
@@ -338,7 +338,7 @@ export default function AdminDashboard() {
                                     <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
                                 )}
                             </button>
-                            {isNotifOpen && <NotificationCenter onClose={() => setIsNotifOpen(false)} />}
+                            <MessageInbox isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} user={{ id: 'admin-id', name: '관리자', role: 'admin' }} />
                         </div>
                         <button
                             onClick={() => {
@@ -747,6 +747,87 @@ function StatCard({ label, value, icon, change, highlight }) {
     );
 }
 
+function PackageSettings({ config, onUpdate }) {
+    const { showToast } = useNotification();
+    const [packages, setPackages] = useState([]);
+
+    useEffect(() => {
+        try {
+            if (config.funeral_packages) {
+                setPackages(JSON.parse(config.funeral_packages));
+            } else {
+                setPackages([
+                    { value: '기본형', label: '기본형 (390만원)' },
+                    { value: '고급형', label: '고급형 (490만원)' },
+                    { value: '프리미엄', label: '프리미엄 (590만원)' },
+                    { value: 'VIP', label: 'VIP (790만원)' }
+                ]);
+            }
+        } catch (e) { console.error('Error parsing packages'); }
+    }, [config.funeral_packages]);
+
+    const handleSave = async (newPackages) => {
+        const value = JSON.stringify(newPackages);
+        await supabase.from('system_config').upsert({ key: 'funeral_packages', value });
+        showToast('success', '저장 완료', '상품 목록이 업데이트 되었습니다.');
+        onUpdate();
+    };
+
+    const addPackage = () => {
+        setPackages([...packages, { value: '', label: '' }]);
+    };
+
+    const removePackage = (index) => {
+        const newArr = packages.filter((_, i) => i !== index);
+        setPackages(newArr);
+    };
+
+    const handleChange = (index, field, val) => {
+        const newArr = [...packages];
+        newArr[index][field] = val;
+        setPackages(newArr);
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-gray-600" /> 희망 상품 목록 관리
+            </h4>
+            <div className="space-y-3 mb-4">
+                {packages.map((pkg, idx) => (
+                    <div key={idx} className="flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="값 (예: 기본형)"
+                            className="flex-1 px-3 py-2 border rounded"
+                            value={pkg.value}
+                            onChange={(e) => handleChange(idx, 'value', e.target.value)}
+                        />
+                        <input
+                            type="text"
+                            placeholder="표시명 (예: 기본형 (390만원))"
+                            className="flex-1 px-3 py-2 border rounded"
+                            value={pkg.label}
+                            onChange={(e) => handleChange(idx, 'label', e.target.value)}
+                        />
+                        <button onClick={() => removePackage(idx)} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200">
+                            삭제
+                        </button>
+                    </div>
+                ))}
+            </div>
+            <div className="flex justify-between">
+                <button onClick={addPackage} className="px-4 py-2 border border-indigo-600 text-indigo-600 rounded hover:bg-indigo-50 font-bold">
+                    + 항목 추가
+                </button>
+                <button onClick={() => handleSave(packages)} className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-bold">
+                    저장하기
+                </button>
+            </div>
+        </div>
+    );
+}
+
 function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
     const { showToast } = useNotification();
     const toggleConfig = async (key, currentValue) => {
@@ -842,6 +923,49 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
                     </button>
                 </div>
 
+                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <h4 className="font-bold text-gray-900 mb-1">딜러 1회 최대 쿠폰 발행량</h4>
+                        <p className="text-sm text-gray-500">딜러들이 한 번에 발행할 수 있는 쿠폰 수량을 제한합니다.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            className="w-20 px-3 py-1.5 border rounded-lg text-center font-bold"
+                            value={config.max_coupon_per_batch || '10'}
+                            onChange={async (e) => {
+                                const val = e.target.value;
+                                await supabase.from('system_config').upsert({ key: 'max_coupon_per_batch', value: val });
+                                onUpdate();
+                            }}
+                        />
+                        <span className="text-sm text-gray-500 font-medium">장</span>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <h4 className="font-bold text-gray-900 mb-1">딜러 발행 최대 쿠폰 금액</h4>
+                        <p className="text-sm text-gray-500">딜러가 발행할 수 있는 단일 쿠폰의 최대 금액을 제한합니다.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            step="10000"
+                            className="w-32 px-3 py-1.5 border rounded-lg text-center font-bold"
+                            value={config.max_coupon_amount || '200000'}
+                            onChange={async (e) => {
+                                const val = e.target.value;
+                                await supabase.from('system_config').upsert({ key: 'max_coupon_amount', value: val });
+                                onUpdate();
+                            }}
+                        />
+                        <span className="text-sm text-gray-500 font-medium">원</span>
+                    </div>
+                </div>
+
+                <PackageSettings config={config} onUpdate={onUpdate} />
+
                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                     <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                         <Lock className="w-4 h-4 text-gray-600" /> 관리자 비밀번호 변경
@@ -925,6 +1049,14 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
 
+    const issuanceStats = coupons ? Object.values(coupons.reduce((acc, curr) => {
+        const issuer = curr.profiles?.name || '본사';
+        if (!acc[issuer]) acc[issuer] = { name: issuer, count: 0, total: 0 };
+        acc[issuer].count += 1;
+        acc[issuer].total += curr.amount;
+        return acc;
+    }, {})).sort((a, b) => b.count - a.count) : [];
+
     const handleRefresh = async () => {
         setIsRefreshing(true);
         await onUpdate();
@@ -999,10 +1131,20 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
 
     return (
         <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                {issuanceStats.slice(0, 4).map(stat => (
+                    <div key={stat.name} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <p className="text-xs text-gray-500 font-medium mb-1">{stat.name} 발행</p>
+                        <h4 className="text-xl font-bold text-gray-900">{stat.count.toLocaleString()}장</h4>
+                        <p className="text-[10px] text-indigo-600 mt-1">총 ₩ {stat.total.toLocaleString()}</p>
+                    </div>
+                ))}
+            </div>
+
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100 mb-8 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                     <h4 className="font-bold text-indigo-900 flex items-center gap-2">
-                        <DollarSign className="w-5 h-5" /> 쿠폰 발행 (v2.0)
+                        <DollarSign className="w-5 h-5" /> 쿠폰 발행 (v2.1)
                     </h4>
                     <div className="flex bg-white rounded-lg p-1 border border-indigo-100">
                         <button
@@ -1191,6 +1333,7 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                         <tr>
                             <th className="px-6 py-4">쿠폰 코드</th>
                             <th className="px-6 py-4">대상 연락처</th>
+                            <th className="px-6 py-4">발행자</th>
                             <th className="px-6 py-4">금액</th>
                             <th className="px-6 py-4 text-center">상태</th>
                             <th className="px-6 py-4">발행일</th>
@@ -1217,6 +1360,7 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                                         </span>
                                     )}
                                 </td>
+                                <td className="px-6 py-4 font-medium text-gray-900">{coupon.profiles?.name || <span className="text-indigo-600 font-bold">본사</span>}</td>
                                 <td className="px-6 py-4 font-bold">₩ {coupon.amount.toLocaleString()}</td>
                                 <td className="px-6 py-4 text-center">
                                     <span className={`px-2 py-1 rounded text-xs font-bold ${coupon.status === 'used' ? 'bg-gray-200 text-gray-500' : 'bg-green-100 text-green-700'}`}>

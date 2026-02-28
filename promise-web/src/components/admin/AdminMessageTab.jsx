@@ -58,6 +58,7 @@ export default function AdminMessageTab({ partners }) {
             // Insert notifications
             const notificationsToInsert = targetUserIds.map(userId => ({
                 user_id: userId,
+                sender_id: user.id, // Record Admin as sender
                 type: 'info',
                 title: messageTitle,
                 message: messageContent

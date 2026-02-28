@@ -153,10 +153,10 @@ export function NotificationProvider({ children }) {
 
     // Helper to send notification (In a real app, this is mostly done by Backend triggers, 
     // but for this MVP, client triggers are fine)
-    const sendNotification = async (targetUserId, type, title, message, link = null) => {
+    const sendNotification = async (targetUserId, type, title, message, link = null, senderId = null) => {
         try {
             await supabase.from('notifications').insert([
-                { user_id: targetUserId, type, title, message, link }
+                { user_id: targetUserId, sender_id: senderId, type, title, message, link }
             ]);
 
             // Attempt to send Kakao/SMS via Solapi API
@@ -182,8 +182,25 @@ export function NotificationProvider({ children }) {
         }
     };
 
+    // Helper to fetch sent messages
+    const fetchSentMessages = async (senderId) => {
+        try {
+            const { data, error } = await supabase
+                .from('notifications')
+                .select('*')
+                .eq('sender_id', senderId)
+                .order('created_at', { ascending: false })
+                .limit(20);
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Failed to fetch sent messages:', error);
+            return [];
+        }
+    };
+
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, toast, showToast, sendNotification }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, toast, showToast, sendNotification, fetchSentMessages }}>
             {children}
         </NotificationContext.Provider>
     );

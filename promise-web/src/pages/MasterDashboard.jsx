@@ -499,6 +499,7 @@ export default function MasterDashboard() {
                 recipientId={messageModal.recipientId}
                 recipientName={messageModal.recipientName}
                 recipientRoleClass={messageModal.recipientRoleClass}
+                currentUserId={user.id}
             />
         </div>
     );

@@ -48,7 +48,8 @@ export default function MyWallet({ user }) {
                     deceased_name,
                     cemetery_name,
                     requester:requester_id ( id, name, role, grade, phone, bank_name, account_number ),
-                    team_leader:team_leader_id ( id, name, role, grade )
+                    team_leader:team_leader_id ( id, name, role, grade ),
+                    coupons ( id, code, amount, status, used_for )
                 `)
                 .eq('team_leader_id', user.id)
                 .in('status', ['completed', 'settled'])
@@ -301,6 +302,17 @@ export default function MyWallet({ user }) {
                                                 <span>본사 최종 송금액</span>
                                                 <span>{split.hq.toLocaleString()} 원</span>
                                             </div>
+                                            {c.coupons?.length > 0 && (
+                                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                                    <p className="text-xs text-indigo-500 font-bold mb-1">사용된 쿠폰</p>
+                                                    {c.coupons.map((coupon, idx) => (
+                                                        <div key={idx} className="flex justify-between items-center text-xs">
+                                                            <span className="text-gray-500">[{coupon.code}] {coupon.used_for}</span>
+                                                            <span className="font-bold text-indigo-600">₩ {coupon.amount?.toLocaleString()}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Actions */}

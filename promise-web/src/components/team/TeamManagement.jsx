@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Users, UserPlus, Phone, MapPin, Award, Trash2 } from 'lucide-react';
+import { Users, UserPlus, Phone, MapPin, Award, Trash2, Briefcase, Loader2, Plus, Send } from 'lucide-react';
 import { useNotification } from '../../contexts/NotificationContext';
 import { formatPhoneNumber } from '../../utils/formatters';
+import SendMessageModal from '../common/SendMessageModal';
 
 export default function TeamManagement({ user }) {
     const { showToast } = useNotification();
@@ -10,6 +11,7 @@ export default function TeamManagement({ user }) {
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
     const [sortBy, setSortBy] = useState('latest'); // 'latest', 'completed', 'in_progress'
+    const [messageModal, setMessageModal] = useState({ isOpen: false, recipientId: '', recipientName: '', recipientRoleClass: '' });
 
     // New team member form state
     const [formData, setFormData] = useState({
@@ -101,20 +103,30 @@ export default function TeamManagement({ user }) {
     // Calculate stats and sort members
     const getSortedMembers = () => {
         const membersWithStats = teamMembers.map(member => {
-            const cases = member.profiles?.funeral_cases || [];
+            // Defensively ensure cases is an array
+            let rawCases = [];
+            if (member.profiles && Array.isArray(member.profiles.funeral_cases)) {
+                rawCases = member.profiles.funeral_cases;
+            } else if (member.profiles && member.profiles[0] && Array.isArray(member.profiles[0].funeral_cases)) {
+                rawCases = member.profiles[0].funeral_cases;
+            }
+
             return {
                 ...member,
-                inProgressCount: cases.filter(c => ['assigned', 'consulting', 'in_progress'].includes(c.status)).length,
-                completedCount: cases.filter(c => ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length,
-                canceledCount: cases.filter(c => c.status === 'canceled').length,
+                inProgressCount: rawCases.filter(c => c && ['assigned', 'consulting', 'in_progress'].includes(c.status)).length,
+                completedCount: rawCases.filter(c => c && ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length,
+                canceledCount: rawCases.filter(c => c && c.status === 'canceled').length,
             };
         });
 
         return membersWithStats.sort((a, b) => {
             if (sortBy === 'completed') return b.completedCount - a.completedCount;
             if (sortBy === 'in_progress') return b.inProgressCount - a.inProgressCount;
-            // Default: 'latest'
-            return new Date(b.created_at) - new Date(a.created_at);
+
+            // Safe date parsing to avoid NaN issues
+            const timeA = new Date(a.created_at || 0).getTime();
+            const timeB = new Date(b.created_at || 0).getTime();
+            return (timeB || 0) - (timeA || 0);
         });
     };
 
@@ -232,7 +244,7 @@ export default function TeamManagement({ user }) {
                 ) : (
                     sortedMembers.map(member => {
                         return (
-                            <div key={member.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-indigo-200 transition-colors">
+                            <div key={member.user_id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-indigo-200 transition-colors">
                                 <div className="flex items-center gap-4">
                                     <div className="bg-indigo-50 p-3 rounded-full text-indigo-600">
                                         <Briefcase className="w-6 h-6" />
@@ -256,17 +268,39 @@ export default function TeamManagement({ user }) {
                                     </div>
                                 </div>
 
-                                <div className="text-right">
-                                    <div className="text-xs text-gray-400 mb-1">상태</div>
-                                    <div className={`text-sm font-semibold ${member.status === 'approved' ? 'text-indigo-600' : 'text-orange-500'}`}>
-                                        {member.status === 'approved' ? '활동 중' : '대기/정지'}
+                                <div className="text-right flex flex-col items-end gap-2">
+                                    <div>
+                                        <div className="text-xs text-gray-400 mb-1">상태</div>
+                                        <div className={`text-sm font-semibold ${member.status === 'approved' ? 'text-indigo-600' : 'text-orange-500'}`}>
+                                            {member.status === 'approved' ? '활동 중' : '대기/정지'}
+                                        </div>
                                     </div>
+                                    <button
+                                        onClick={() => setMessageModal({
+                                            isOpen: true,
+                                            recipientId: member.user_id,
+                                            recipientName: member.profiles?.name || '팀원',
+                                            recipientRoleClass: '팀원'
+                                        })}
+                                        className="flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-100 transition-colors shadow-sm"
+                                    >
+                                        <Send className="w-3.5 h-3.5" /> 메시지
+                                    </button>
                                 </div>
                             </div>
                         );
                     })
                 )}
             </div>
+
+            <SendMessageModal
+                isOpen={messageModal.isOpen}
+                onClose={() => setMessageModal({ ...messageModal, isOpen: false })}
+                recipientId={messageModal.recipientId}
+                recipientName={messageModal.recipientName}
+                recipientRoleClass={messageModal.recipientRoleClass}
+                currentUserId={user.id}
+            />
         </div>
     );
 }

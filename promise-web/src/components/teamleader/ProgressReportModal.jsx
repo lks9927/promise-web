@@ -182,7 +182,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-end sm:items-center z-50 animate-fadeIn p-0 sm:p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-end sm:items-center z-[70] animate-fadeIn p-0 sm:p-4">
             <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-transform" style={{ maxHeight: '95vh' }}>
                 <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 sticky top-0 z-10">
                     <div>
@@ -200,8 +200,8 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
 
                 <div className="p-5 overflow-y-auto" style={{ maxHeight: 'calc(95vh - 80px)' }}>
 
-                    {/* Stage Navigator */}
-                    <div className="mb-6 flex overflow-x-auto gap-2 pb-2 snap-x">
+                    {/* Stage Navigator - Changed to grid for better visibility */}
+                    <div className="mb-6 grid grid-cols-3 gap-1.5 sm:gap-2">
                         {FUNERAL_STAGES.map(stage => {
                             const isCompleted = reports.some(r => r.stage_number === stage.number);
                             const isActive = activeStage === stage.number;
@@ -209,11 +209,11 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                                 <button
                                     key={stage.number}
                                     onClick={() => handleStageSelect(stage.number)}
-                                    className={`snap-start flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${isActive
-                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                                            : isCompleted
-                                                ? 'bg-green-50 text-green-700 border-green-200'
-                                                : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+                                    className={`flex-shrink-0 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold border transition-all ${isActive
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-[1.03]'
+                                        : isCompleted
+                                            ? 'bg-green-50 text-green-700 border-green-200'
+                                            : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                                         }`}
                                 >
                                     <div className="flex items-center gap-1.5">

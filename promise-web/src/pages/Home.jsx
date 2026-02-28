@@ -6,14 +6,15 @@ import {
     PhoneCall, HeartHandshake, ShieldCheck, Activity, UserPlus
 } from 'lucide-react';
 import { matchHangul } from '../lib/hangul';
-import { FUNERAL_HOMES } from '../data/funeralHomes';
+import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import { formatPhoneNumber } from '../utils/formatters';
 
 export default function Home() {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [formData, setFormData] = useState({ name: '', phone: '', location: '' });
+    const [formData, setFormData] = useState({ name: '', phone: '', location: '', packageName: '', couponCode: '' });
     const [loading, setLoading] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
+    const [packages, setPackages] = useState([]);
 
     const [user, setUser] = useState(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
@@ -23,6 +24,23 @@ export default function Home() {
         setLoading(true);
         // Simple success alert for now (or implement actual submission logic)
         try {
+            let linkedCoupon = null;
+            if (formData.couponCode && formData.couponCode.trim()) {
+                const { data: coupon, error: couponError } = await supabase
+                    .from('coupons')
+                    .select('*')
+                    .eq('code', formData.couponCode.trim().toUpperCase())
+                    .single();
+
+                if (couponError || !coupon) {
+                    throw new Error('유효하지 않은 쿠폰 번호입니다.');
+                }
+                if (coupon.status === 'used') {
+                    throw new Error('이미 사용된 쿠폰입니다.');
+                }
+                linkedCoupon = coupon;
+            }
+
             // 1. Create Funeral Case
             const { data: caseData, error: caseError } = await supabase
                 .from('funeral_cases')
@@ -30,6 +48,7 @@ export default function Home() {
                     {
                         customer_id: user?.id, // If logged in
                         location: formData.location,
+                        package_name: formData.packageName,
                         status: 'requested'
                     }
                 ])
@@ -38,9 +57,17 @@ export default function Home() {
 
             if (caseError) throw caseError;
 
+            // 2. Link Coupon if exists
+            if (linkedCoupon) {
+                await supabase
+                    .from('coupons')
+                    .update({ case_id: caseData.id })
+                    .eq('id', linkedCoupon.id);
+            }
+
             alert('긴급 접수가 완료되었습니다.\n마스터가 곧 연락드리겠습니다.');
             setIsModalOpen(false);
-            setFormData({ name: '', phone: '', location: '' });
+            setFormData({ name: '', phone: '', location: '', packageName: packages.length > 0 ? packages[0].value : '', couponCode: '' });
         } catch (error) {
             console.error(error);
             alert('접수 중 오류가 발생했습니다. 대표번호로 연락주세요.');
@@ -55,6 +82,20 @@ export default function Home() {
         if (storedUser) {
             setUser(JSON.parse(storedUser));
         }
+
+        const fetchPackages = async () => {
+            const { data } = await supabase.from('system_config').select('value').eq('key', 'funeral_packages').single();
+            if (data && data.value) {
+                try {
+                    const parsed = JSON.parse(data.value);
+                    setPackages(parsed);
+                    if (parsed.length > 0) {
+                        setFormData(prev => ({ ...prev, packageName: parsed[0].value }));
+                    }
+                } catch (e) { console.error('Failed to parse packages'); }
+            }
+        };
+        fetchPackages();
     }, []);
 
     // Helper to get dashboard link based on role
@@ -395,7 +436,10 @@ export default function Home() {
                                         setFormData({ ...formData, location: value });
 
                                         if (value.trim().length > 0) {
-                                            const filtered = FUNERAL_HOMES.filter(home => matchHangul(home, value));
+                                            const filtered = FUNERAL_HOMES_FULL.filter(home =>
+                                                matchHangul(home.name, value) ||
+                                                matchHangul(home.address, value)
+                                            );
                                             setSuggestions(filtered.slice(0, 5)); // Limit to 5 suggestions
                                         } else {
                                             setSuggestions([]);
@@ -408,18 +452,53 @@ export default function Home() {
                                         {suggestions.map((home, index) => (
                                             <li
                                                 key={index}
-                                                className="px-4 py-3 hover:bg-[#F9F7F2] cursor-pointer text-[#5D5C61] border-b border-[#EAE5D9]/30 last:border-none flex items-center justify-between group"
+                                                className="px-4 py-3 hover:bg-[#F9F7F2] cursor-pointer text-[#5D5C61] border-b border-[#EAE5D9]/30 last:border-none group"
                                                 onClick={() => {
-                                                    setFormData({ ...formData, location: home });
+                                                    setFormData({ ...formData, location: home.name });
                                                     setSuggestions([]);
                                                 }}
                                             >
-                                                <span>{home}</span>
-                                                <span className="text-xs text-[#8E806A] opacity-0 group-hover:opacity-100 transition-opacity">선택</span>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-bold">{home.name}</span>
+                                                    <span className="text-xs text-[#8E806A] opacity-0 group-hover:opacity-100 transition-opacity">선택</span>
+                                                </div>
+                                                <div className="text-[10px] text-gray-400 mt-0.5">{home.address}</div>
                                             </li>
                                         ))}
                                     </ul>
                                 )}
+                            </div>
+                            <div className="relative">
+                                <label className="block text-base font-black text-gray-900 mb-2">희망 상품</label>
+                                <select
+                                    className="w-full px-5 py-4 text-xl font-bold rounded-xl border-2 border-[#D4C5A9] bg-white focus:ring-4 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all"
+                                    value={formData.packageName}
+                                    onChange={e => setFormData({ ...formData, packageName: e.target.value })}
+                                >
+                                    {packages.length > 0 ? (
+                                        packages.map((pkg, idx) => (
+                                            <option key={idx} value={pkg.value}>{pkg.label}</option>
+                                        ))
+                                    ) : (
+                                        <>
+                                            <option value="기본형">기본형 (390만원)</option>
+                                            <option value="고급형">고급형 (490만원)</option>
+                                            <option value="프리미엄">프리미엄 (590만원)</option>
+                                            <option value="VIP">VIP (790만원)</option>
+                                        </>
+                                    )}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-base font-black text-gray-900 mb-2">쿠폰 번호 (선택)</label>
+                                <input
+                                    type="text"
+                                    className="w-full px-5 py-4 text-xl font-bold rounded-xl border-2 border-[#D4C5A9] bg-white focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                                    placeholder="쿠폰 코드를 입력하세요"
+                                    value={formData.couponCode}
+                                    onChange={e => setFormData({ ...formData, couponCode: e.target.value.toUpperCase() })}
+                                />
                             </div>
 
                             <div className="pt-4">
