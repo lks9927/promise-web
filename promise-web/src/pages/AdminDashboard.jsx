@@ -17,7 +17,10 @@ import {
     LogOut,
     Lock,
     Download,
-    Send
+    Send,
+    Package,
+    XCircle,
+    Building
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import SettlementManager from '../components/admin/SettlementManager';
@@ -40,6 +43,7 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const [expandedCaseId, setExpandedCaseId] = useState(null);
+    const [vendors, setVendors] = useState([]);
 
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -47,7 +51,16 @@ export default function AdminDashboard() {
 
     useEffect(() => {
         fetchData();
+        fetchVendors();
     }, []);
+
+    const fetchVendors = async () => {
+        const { data } = await supabase
+            .from('vendors')
+            .select('*, profiles:user_id ( name, phone )')
+            .order('created_at', { ascending: false });
+        setVendors(data || []);
+    };
 
     const fetchData = async () => {
         try {
@@ -301,6 +314,13 @@ export default function AdminDashboard() {
                         active={activeTab === 'settings'}
                         onClick={() => setActiveTab('settings')}
                     />
+                    <NavItem
+                        icon={<Building />}
+                        label="외주업체 승인"
+                        active={activeTab === 'vendors'}
+                        onClick={() => setActiveTab('vendors')}
+                        badge={vendors.filter(v => v.status === 'pending').length || null}
+                    />
                 </nav>
                 <div className="p-4 border-t border-[#2C3E5D]">
                     <button
@@ -322,7 +342,7 @@ export default function AdminDashboard() {
                 <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 sticky top-0 z-30">
                     <div className="flex items-center gap-3">
                         <h2 className="text-lg font-semibold text-gray-800">
-                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'commissions' ? '🧮 수수료 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : '👥 파트너'}
+                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'commissions' ? '🧮 수수료 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : activeTab === 'vendors' ? '🏢 외주업체 승인' : '👥 파트너'}
                         </h2>
                     </div>
 
@@ -369,7 +389,7 @@ export default function AdminDashboard() {
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
                         <div className="p-5 border-b border-gray-100 flex justify-between items-center">
                             <h3 className="font-bold text-gray-800 text-lg">
-                                {activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'commissions' ? '수수료 및 마진 설계' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : '파트너 리스트'}
+                                {activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'commissions' ? '수수료 및 마진 설계' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : activeTab === 'vendors' ? '외주업체 승인 관리' : '파트너 리스트'}
                             </h3>
                             <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
                         </div>
@@ -395,6 +415,8 @@ export default function AdminDashboard() {
                             <CouponPanel coupons={coupons} onUpdate={fetchData} supabase={supabase} />
                         ) : activeTab === 'messages' ? (
                             <AdminMessageTab partners={partners} />
+                        ) : activeTab === 'vendors' ? (
+                            <VendorApprovalPanel vendors={vendors} onRefresh={fetchVendors} supabase={supabase} showToast={showToast} />
                         ) : (
                             <>
                                 {/* Desktop View */}
@@ -1408,6 +1430,185 @@ function CouponPanel({ coupons, onUpdate, supabase }) {
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+}
+
+const BUSINESS_TYPE_LABELS_ADMIN = {
+    flowers: '🌸 입관꽃',
+    goods: '📦 장례용품',
+    burial: '🌿 장지업체',
+    other: '🏢 기타',
+};
+
+function VendorApprovalPanel({ vendors, onRefresh, supabase, showToast }) {
+    const [filter, setFilter] = useState('pending');
+    const [rejectModal, setRejectModal] = useState({ isOpen: false, vendorId: null, reason: '' });
+
+    const filtered = filter === 'all' ? vendors : vendors.filter(v => v.status === filter);
+
+    const handleApprove = async (vendorId) => {
+        if (!confirm('이 업체를 승인하시겠습니까?')) return;
+        const { error } = await supabase
+            .from('vendors')
+            .update({ status: 'approved', approved_at: new Date().toISOString() })
+            .eq('id', vendorId);
+        if (error) return showToast('error', '오류', error.message);
+        showToast('success', '승인 완료', '외주업체가 승인되었습니다.');
+        onRefresh();
+    };
+
+    const handleReject = async () => {
+        const { error } = await supabase
+            .from('vendors')
+            .update({ status: 'rejected', rejection_reason: rejectModal.reason })
+            .eq('id', rejectModal.vendorId);
+        if (error) return showToast('error', '오류', error.message);
+        showToast('success', '반려 완료', '업체 신청이 반려되었습니다.');
+        setRejectModal({ isOpen: false, vendorId: null, reason: '' });
+        onRefresh();
+    };
+
+    const handleSuspend = async (vendorId) => {
+        if (!confirm('이 업체를 일시정지 하시겠습니까?')) return;
+        await supabase.from('vendors').update({ status: 'suspended' }).eq('id', vendorId);
+        showToast('success', '정지', '업체가 일시정지 처리되었습니다.');
+        onRefresh();
+    };
+
+    return (
+        <div className="p-6 space-y-4">
+            {/* 필터 탭 */}
+            <div className="flex gap-2 flex-wrap">
+                {[
+                    { id: 'pending', label: '⏳ 승인 대기', color: 'orange' },
+                    { id: 'approved', label: '✅ 승인됨', color: 'green' },
+                    { id: 'rejected', label: '❌ 반려됨', color: 'red' },
+                    { id: 'suspended', label: '🚫 정지됨', color: 'gray' },
+                    { id: 'all', label: '전체', color: 'indigo' },
+                ].map(f => (
+                    <button
+                        key={f.id}
+                        onClick={() => setFilter(f.id)}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${filter === f.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        {f.label}
+                        {f.id === 'pending' && vendors.filter(v => v.status === 'pending').length > 0 && (
+                            <span className="ml-2 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                                {vendors.filter(v => v.status === 'pending').length}
+                            </span>
+                        )}
+                    </button>
+                ))}
+            </div>
+
+            {filtered.length === 0 && (
+                <div className="text-center py-14 text-gray-400">
+                    <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">해당 상태의 업체가 없습니다.</p>
+                </div>
+            )}
+
+            <div className="space-y-3">
+                {filtered.map(vendor => (
+                    <div key={vendor.id} className="bg-gray-50 rounded-xl border border-gray-200 p-5">
+                        <div className="flex justify-between items-start flex-wrap gap-3">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-bold text-gray-900 text-lg">{vendor.company_name}</h4>
+                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                                        {BUSINESS_TYPE_LABELS_ADMIN[vendor.business_type] || vendor.business_type}
+                                    </span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${vendor.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                        vendor.status === 'pending' ? 'bg-orange-100 text-orange-700' :
+                                            vendor.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                                'bg-gray-100 text-gray-600'
+                                        }`}>
+                                        {vendor.status === 'approved' ? '✅ 승인' :
+                                            vendor.status === 'pending' ? '⏳ 대기' :
+                                                vendor.status === 'rejected' ? '❌ 반려' : '🚫 정지'}
+                                    </span>
+                                </div>
+                                <p className="text-sm text-gray-500">
+                                    담당자: {vendor.profiles?.name || '-'} · {vendor.phone || vendor.profiles?.phone || '-'}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                    신청일: {new Date(vendor.created_at).toLocaleDateString()}
+                                    {vendor.address && ` · ${vendor.address}`}
+                                </p>
+                                {vendor.rejection_reason && (
+                                    <p className="text-xs text-red-500 mt-1">반려 사유: {vendor.rejection_reason}</p>
+                                )}
+                            </div>
+
+                            <div className="flex gap-2 flex-wrap">
+                                {vendor.status === 'pending' && (
+                                    <>
+                                        <button
+                                            onClick={() => handleApprove(vendor.id)}
+                                            className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1"
+                                        >
+                                            <CheckCircle className="w-4 h-4" /> 승인
+                                        </button>
+                                        <button
+                                            onClick={() => setRejectModal({ isOpen: true, vendorId: vendor.id, reason: '' })}
+                                            className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 text-sm font-bold rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1"
+                                        >
+                                            <XCircle className="w-4 h-4" /> 반려
+                                        </button>
+                                    </>
+                                )}
+                                {vendor.status === 'approved' && (
+                                    <button
+                                        onClick={() => handleSuspend(vendor.id)}
+                                        className="px-4 py-2 bg-gray-100 text-gray-600 text-sm font-bold rounded-lg hover:bg-gray-200 transition-colors"
+                                    >
+                                        🚫 일시정지
+                                    </button>
+                                )}
+                                {(vendor.status === 'rejected' || vendor.status === 'suspended') && (
+                                    <button
+                                        onClick={() => handleApprove(vendor.id)}
+                                        className="px-4 py-2 bg-green-50 text-green-700 border border-green-200 text-sm font-bold rounded-lg hover:bg-green-100 transition-colors"
+                                    >
+                                        ✅ 재승인
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* 반려 사유 모달 */}
+            {rejectModal.isOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+                        <h3 className="font-bold text-gray-900">반려 사유 입력</h3>
+                        <textarea
+                            value={rejectModal.reason}
+                            onChange={e => setRejectModal({ ...rejectModal, reason: e.target.value })}
+                            placeholder="반려 사유를 입력하세요 (업체에게 안내됩니다)"
+                            rows={3}
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none outline-none"
+                        />
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setRejectModal({ isOpen: false, vendorId: null, reason: '' })}
+                                className="flex-1 py-2.5 bg-gray-100 text-gray-600 font-bold rounded-xl text-sm"
+                            >
+                                취소
+                            </button>
+                            <button
+                                onClick={handleReject}
+                                className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-xl text-sm"
+                            >
+                                반려 처리
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
