@@ -90,7 +90,7 @@ export default function OrderModal({ isOpen, onClose, caseData, teamLeaderId }) 
                     vendor_id: selectedVendor.id,
                     total_amount: totalAmount,
                     delivery_address: caseData.location || '',
-                    delivery_note: deliveryNote || `고인명: ${caseData.deceased_name || '-'} | 장례식장: ${caseData.location || '-'}`,
+                    delivery_note: deliveryNote || `고인명: ${caseData.deceased_name || '-'}\n장례식장: ${caseData.location || '-'}\n입관: ${caseData.encoffinment_time ? new Date(caseData.encoffinment_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}\n발인: ${caseData.funeral_end_time ? new Date(caseData.funeral_end_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}`,
                     status: 'pending'
                 })
                 .select()
@@ -273,6 +273,14 @@ export default function OrderModal({ isOpen, onClose, caseData, teamLeaderId }) 
                                     <span>고인명</span>
                                     <span className="font-bold">{caseData?.deceased_name || '미입력'}</span>
                                 </div>
+                                <div className="flex justify-between text-gray-600">
+                                    <span>입관 일시</span>
+                                    <span className="font-bold">{caseData?.encoffinment_time ? new Date(caseData.encoffinment_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}</span>
+                                </div>
+                                <div className="flex justify-between text-gray-600">
+                                    <span>발인 일시</span>
+                                    <span className="font-bold">{caseData?.funeral_end_time ? new Date(caseData.funeral_end_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}</span>
+                                </div>
                             </div>
 
                             {/* 발주 항목 */}
@@ -298,8 +306,8 @@ export default function OrderModal({ isOpen, onClose, caseData, teamLeaderId }) 
                                 <textarea
                                     value={deliveryNote}
                                     onChange={e => setDeliveryNote(e.target.value)}
-                                    placeholder={`고인명: ${caseData?.deceased_name || '-'}\n장례식장: ${caseData?.location || '-'}\n입관 시간 등 납품 시 참고사항을 입력하세요.`}
-                                    rows={3}
+                                    placeholder={`고인명: ${caseData?.deceased_name || '-'}\n장례식장: ${caseData?.location || '-'}\n입관: ${caseData?.encoffinment_time ? new Date(caseData.encoffinment_time).toLocaleString() : '미정'}\n발인: ${caseData?.funeral_end_time ? new Date(caseData.funeral_end_time).toLocaleString() : '미정'}\n기타 납품 시 참고사항을 입력하세요.`}
+                                    rows={4}
                                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
                             </div>

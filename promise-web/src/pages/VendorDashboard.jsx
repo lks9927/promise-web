@@ -96,7 +96,7 @@ export default function VendorDashboard() {
                 .from('orders')
                 .select(`
                     *,
-                    funeral_cases ( location, deceased_name, room_number, encoffinment_time ),
+                    funeral_cases ( location, deceased_name, room_number, encoffinment_time, funeral_end_time ),
                     order_items ( *, vendor_products ( product_name ) ),
                     team_leader:team_leader_id ( name, phone )
                 `)
@@ -346,6 +346,8 @@ export default function VendorDashboard() {
                                     <div className="p-4 space-y-2 text-sm text-gray-600">
                                         <p>📍 <span className="font-medium">{fc?.location || '장소 미정'}</span></p>
                                         <p>🕊️ 고인: <span className="font-medium">{fc?.deceased_name || '미입력'}</span></p>
+                                        <p>🕒 입관: <span className="font-medium">{fc?.encoffinment_time ? new Date(fc.encoffinment_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}</span></p>
+                                        <p>🗓️ 발인: <span className="font-medium">{fc?.funeral_end_time ? new Date(fc.funeral_end_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}</span></p>
                                         <p>👤 팀장: {order.team_leader?.name} · {order.team_leader?.phone}</p>
                                         <div className="bg-gray-50 rounded-lg p-2 space-y-1">
                                             {order.order_items?.map((item, i) => (
