@@ -19,7 +19,8 @@ import {
     MoreVertical,
     Activity,
     Phone,
-    Tag
+    Tag,
+    ExternalLink
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
@@ -625,6 +626,23 @@ export default function TeamLeaderDashboard() {
                                     />
                                 </div>
                             </div>
+
+                            {/* e하늘 화장 예약 바로가기 */}
+                            <a
+                                href="https://15774129.go.kr/new/esky_p/esky_index.do#MENU:M210900000"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between w-full px-4 py-3 bg-sky-50 border border-sky-200 rounded-xl hover:bg-sky-100 transition-colors group"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xl">🔥</span>
+                                    <div>
+                                        <p className="text-sm font-bold text-sky-700">e하늘 화장 예약 바로가기</p>
+                                        <p className="text-[10px] text-sky-500">보건복지부 화장예약시스템 · 새 탭으로 열림</p>
+                                    </div>
+                                </div>
+                                <ExternalLink className="w-4 h-4 text-sky-400 group-hover:text-sky-600 transition-colors" />
+                            </a>
 
                             <div className="pt-2">
                                 <button
