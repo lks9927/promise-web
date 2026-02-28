@@ -4,7 +4,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
 import {
     Package, Plus, Edit2, Trash2, Truck, CheckCircle,
-    Camera, Bell, Users, LogOut, X, Save, AlertCircle, ClipboardList
+    Camera, Bell, Users, LogOut, X, Save, AlertCircle, ClipboardList, Link as LinkIcon, Copy
 } from 'lucide-react';
 
 const BUSINESS_TYPE_LABELS = {
@@ -243,6 +243,13 @@ export default function VendorDashboard() {
         }
     };
 
+    // 기사용 전달 링크 복사
+    const handleCopyDriverLink = (orderId) => {
+        const url = `${window.location.origin}/delivery/${orderId}`;
+        navigator.clipboard.writeText(url);
+        showToast('success', '주소 복사 완료', '배송기사용 전용 링크가 복사되었습니다.\n문자나 카카오톡으로 전달하세요.');
+    };
+
     // 업체 미승인 상태
     if (!user) return null;
 
@@ -355,27 +362,38 @@ export default function VendorDashboard() {
                                             ))}
                                             <p className="text-xs font-bold text-blue-700 pt-1 border-t border-gray-200">합계: {order.total_amount?.toLocaleString()}원</p>
                                         </div>
-
                                         {/* 액션 버튼 */}
-                                        {order.status === 'pending' && (
-                                            <button
-                                                onClick={() => handleConfirmOrder(order.id)}
-                                                className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl text-sm mt-2"
-                                            >
-                                                ✅ 주문 확인
-                                            </button>
-                                        )}
-                                        {(order.status === 'confirmed' || order.status === 'shipped') && (
-                                            <button
-                                                onClick={() => setDeliveryModal({ isOpen: true, order, driver_id: '', notes: '' })}
-                                                className="w-full py-2.5 bg-green-600 text-white font-bold rounded-xl text-sm mt-2 flex items-center justify-center gap-1"
-                                            >
-                                                <Camera className="w-4 h-4" /> 납품 완료 처리
-                                            </button>
-                                        )}
-                                        {order.status === 'delivered' && (
-                                            <p className="text-center text-xs text-green-600 font-bold py-2">✅ 납품 완료</p>
-                                        )}
+                                        <div className="space-y-2 mt-3">
+                                            {order.status === 'pending' && (
+                                                <button
+                                                    onClick={() => handleConfirmOrder(order.id)}
+                                                    className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl text-sm mt-2"
+                                                >
+                                                    ✅ 주문 확인
+                                                </button>
+                                            )}
+                                            {(order.status === 'confirmed' || order.status === 'shipped') && (
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        onClick={() => setDeliveryModal({ isOpen: true, order, driver_id: '', notes: '' })}
+                                                        className="py-2.5 bg-green-600 hover:bg-green-700 transition-colors text-white font-bold rounded-xl text-sm flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <CheckCircle className="w-4 h-4" /> (직접) 납품완료
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleCopyDriverLink(order.id)}
+                                                        className="py-2.5 bg-gray-100 hover:bg-gray-200 transition-colors text-gray-700 font-bold rounded-xl text-sm flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <Copy className="w-4 h-4" /> 기사 전용링크 복사
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {order.status === 'delivered' && (
+                                                <div className="text-center py-2.5 bg-green-50 rounded-xl">
+                                                    <p className="text-xs text-green-700 font-bold flex items-center justify-center gap-1"><CheckCircle className="w-4 h-4" /> 납품 및 확인 완료</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             );

@@ -7,6 +7,7 @@ import MasterDashboard from './pages/MasterDashboard'
 import PartnerApply from './pages/PartnerApply'
 import CustomerStatus from './pages/CustomerStatus'
 import VendorDashboard from './pages/VendorDashboard'
+import DriverDelivery from './pages/DriverDelivery'
 
 // Placeholder Pages
 import Login from './pages/Login'
@@ -46,6 +47,7 @@ function AppContent() {
         <Route path="/dev" element={<DevLogin />} />
         <Route path="/developer" element={<DevLogin />} />
         <Route path="/vendor" element={<VendorDashboard />} />
+        <Route path="/delivery/:orderId" element={<DriverDelivery />} />
         <Route path="*" element={<div className="flex items-center justify-center h-screen bg-gray-100 text-xl font-bold text-gray-600">404 - 페이지를 찾을 수 없습니다</div>} />
       </Routes>
       <ChatbotWidget />
