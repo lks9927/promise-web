@@ -44,15 +44,16 @@ export default function MyWallet({ user }) {
                 .select(`
                     id, 
                     created_at, 
-                    status, 
+                    status,
+                    location,
+                    package_name,
+                    final_price,
                     deceased_name,
-                    cemetery_name,
-                    requester:requester_id ( id, name, role, grade, phone, bank_name, account_number ),
-                    team_leader:team_leader_id ( id, name, role, grade ),
-                    coupons ( id, code, amount, status, used_for )
+                    profiles:customer_id ( id, name, phone ),
+                    team_leader:team_leader_id ( id, name, role )
                 `)
                 .eq('team_leader_id', user.id)
-                .in('status', ['completed', 'settled'])
+                .in('status', ['completed', 'team_settling', 'hq_check'])
                 .order('created_at', { ascending: false });
 
             if (casesError) throw casesError;
@@ -181,11 +182,10 @@ export default function MyWallet({ user }) {
     }
 
     // Pending vs Settled calculations
-    const pendingCases = cases.filter(c => c.status === 'completed');
-    const settledCases = cases.filter(c => c.status === 'settled');
+    const pendingCases = cases.filter(c => c.status === 'team_settling' || c.status === 'hq_check');
+    const settledCases = cases.filter(c => c.status === 'completed');
 
-    // Total HQ To Deposit
-    const totalToDeposit = pendingCases.reduce((acc, c) => acc + calculateSplit(c, policy).hq, 0);
+    const totalToDeposit = pendingCases.reduce((acc, c) => acc + (c.final_price || 0), 0);
 
     return (
         <div className="space-y-6 pb-20">
@@ -227,105 +227,43 @@ export default function MyWallet({ user }) {
                     </div>
                 ) : (
                     <div className="space-y-4 mb-8">
-                        {pendingCases.map((c) => {
-                            const split = calculateSplit(c, policy);
-                            return (
-                                <div key={c.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                                    {/* Card Header */}
-                                    <div className="bg-gray-50 px-5 py-4 flex justify-between items-center border-b border-gray-200">
-                                        <div>
-                                            <p className="text-xs text-gray-500 mb-0.5">{new Date(c.created_at).toLocaleDateString()}</p>
-                                            <h4 className="font-bold text-gray-900 text-lg">고인: {c.deceased_name}</h4>
-                                        </div>
-                                        <span className="px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full">
-                                            정산대기
-                                        </span>
+                        {pendingCases.map((c) => (
+                            <div key={c.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                                <div className="bg-gray-50 px-5 py-4 flex justify-between items-center border-b border-gray-200">
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-0.5">{new Date(c.created_at).toLocaleDateString()}</p>
+                                        <h4 className="font-bold text-gray-900 text-lg">
+                                            {c.deceased_name ? `고인: ${c.deceased_name}` : (c.profiles?.name ? `${c.profiles.name} 님 장례` : '장례 건')}
+                                        </h4>
+                                        <p className="text-xs text-gray-500 mt-0.5">{c.location} · {c.package_name}</p>
                                     </div>
-
-                                    {/* Breakdown */}
-                                    <div className="p-5 space-y-4">
-                                        {/* Sales Person Info */}
-                                        <div className="flex justify-between items-center pb-4 border-b border-gray-100">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                                                    <User className="w-5 h-5" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs text-gray-500">영업 담당자 (지급 대상)</p>
-                                                    <p className="font-bold text-gray-800">{split.req_name}</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-xs text-gray-500">영업 수수료</p>
-                                                <p className="font-bold text-blue-600 text-lg">+{split.sales_payout.toLocaleString()}원</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Bank Info for Direct Transfer */}
-                                        {split.sales_payout > 0 && (
-                                            <div className="bg-blue-50 rounded-xl p-4 flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-xs text-blue-600 font-bold mb-1 flex items-center gap-1">
-                                                        <CreditCard className="w-3 h-3" /> 입금 계좌정보
-                                                    </p>
-                                                    {split.req_bank && split.req_account ? (
-                                                        <p className="font-bold text-blue-900 font-mono tracking-tight">{split.req_bank} {split.req_account}</p>
-                                                    ) : (
-                                                        <p className="text-sm text-blue-400 font-medium">계좌 정보가 등록되지 않았습니다.</p>
-                                                    )}
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        const txt = `${split.req_bank} ${split.req_account}`;
-                                                        navigator.clipboard.writeText(txt);
-                                                        showToast('success', '복사 완료', '계좌번호가 복사되었습니다.');
-                                                    }}
-                                                    className="px-3 py-1.5 bg-white text-blue-600 text-xs font-bold rounded-lg shadow-sm"
-                                                >
-                                                    복사
-                                                </button>
-                                            </div>
-                                        )}
-
-                                        {/* HQ & Customer breakdown */}
-                                        <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm text-gray-600">
-                                            <div className="flex justify-between items-center">
-                                                <span>총 마진금액</span>
-                                                <span className="font-bold text-gray-800">{split.total_margin.toLocaleString()} 원</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-red-500">
-                                                <span>상주 페이백 (지출)</span>
-                                                <span>-{split.customer.toLocaleString()} 원</span>
-                                            </div>
-                                            <div className="h-px bg-gray-200 my-2"></div>
-                                            <div className="flex justify-between items-center text-indigo-700 font-bold text-base">
-                                                <span>본사 최종 송금액</span>
-                                                <span>{split.hq.toLocaleString()} 원</span>
-                                            </div>
-                                            {c.coupons?.length > 0 && (
-                                                <div className="mt-3 pt-3 border-t border-gray-200">
-                                                    <p className="text-xs text-indigo-500 font-bold mb-1">사용된 쿠폰</p>
-                                                    {c.coupons.map((coupon, idx) => (
-                                                        <div key={idx} className="flex justify-between items-center text-xs">
-                                                            <span className="text-gray-500">[{coupon.code}] {coupon.used_for}</span>
-                                                            <span className="font-bold text-indigo-600">₩ {coupon.amount?.toLocaleString()}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Actions */}
-                                        <button
-                                            onClick={() => handleMarkAsSettled(c.id)}
-                                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors mt-2"
-                                        >
-                                            <CheckCircle className="w-5 h-5" /> 모든 정산/송금 완료 처리
-                                        </button>
-                                    </div>
+                                    <span className="px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full">
+                                        {c.status === 'hq_check' ? '본사 검토 중' : '정산 대기'}
+                                    </span>
                                 </div>
-                            );
-                        })}
+
+                                <div className="p-5 space-y-4">
+                                    <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm text-gray-600">
+                                        <div className="flex justify-between items-center">
+                                            <span>최종 서비스 금액</span>
+                                            <span className="font-bold text-gray-800">{(c.final_price || 0).toLocaleString()} 원</span>
+                                        </div>
+                                        <div className="h-px bg-gray-200 my-2"></div>
+                                        <div className="flex justify-between items-center text-indigo-700 font-bold text-base">
+                                            <span>정산 대기금액</span>
+                                            <span>{(c.final_price || 0).toLocaleString()} 원</span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => handleMarkAsSettled(c.id)}
+                                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors mt-2"
+                                    >
+                                        <CheckCircle className="w-5 h-5" /> 정산 완료 처리
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>
@@ -337,21 +275,20 @@ export default function MyWallet({ user }) {
                 </h3>
                 {settledCases.length > 0 ? (
                     <div className="space-y-3">
-                        {settledCases.map(c => {
-                            const split = calculateSplit(c, policy);
-                            return (
-                                <div key={c.id} className="bg-white p-4 flex justify-between items-center rounded-xl border border-gray-100 opacity-70">
-                                    <div>
-                                        <p className="font-bold text-gray-800 text-sm">고인: {c.deceased_name}</p>
-                                        <p className="text-xs text-gray-400 mt-0.5">{new Date(c.updated_at || c.created_at).toLocaleDateString()} 정산완료</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xs text-gray-500 mb-0.5">본사 송금액</p>
-                                        <p className="font-bold text-gray-600 text-sm">{split.hq.toLocaleString()}원</p>
-                                    </div>
+                        {settledCases.map(c => (
+                            <div key={c.id} className="bg-white p-4 flex justify-between items-center rounded-xl border border-gray-100 opacity-70">
+                                <div>
+                                    <p className="font-bold text-gray-800 text-sm">
+                                        {c.deceased_name ? `고인: ${c.deceased_name}` : (c.profiles?.name ? `${c.profiles.name} 님 장례` : '장례 건')}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-0.5">{new Date(c.created_at).toLocaleDateString()} · {c.location}</p>
                                 </div>
-                            )
-                        })}
+                                <div className="text-right">
+                                    <p className="text-xs text-gray-500 mb-0.5">최종 금액</p>
+                                    <p className="font-bold text-gray-600 text-sm">{(c.final_price || 0).toLocaleString()}원</p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ) : (
                     <p className="text-sm text-gray-400 text-center py-4 bg-gray-50 rounded-xl">완료된 정산 내역이 없습니다.</p>
