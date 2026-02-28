@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNotification } from '../contexts/NotificationContext';
+import { useNavigate } from 'react-router-dom';
 import {
     Package, Plus, Edit2, Trash2, Truck, CheckCircle,
     Camera, Bell, Users, LogOut, X, Save, AlertCircle, ClipboardList
@@ -21,8 +22,10 @@ const STATUS_LABELS = {
     cancelled: { text: '취소', color: 'red' },
 };
 
-export default function VendorDashboard({ user, onLogout }) {
+export default function VendorDashboard() {
+    const navigate = useNavigate();
     const { showToast } = useNotification();
+    const [user, setUser] = useState(null);
     const [tab, setTab] = useState('orders'); // orders | products | drivers | profile
     const [vendorInfo, setVendorInfo] = useState(null);
     const [orders, setOrders] = useState([]);
@@ -44,8 +47,22 @@ export default function VendorDashboard({ user, onLogout }) {
     const photoRef = useRef();
 
     useEffect(() => {
-        fetchAll();
-    }, [user.id]);
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            setUser(JSON.parse(storedUser));
+        } else {
+            navigate('/login');
+        }
+    }, [navigate]);
+
+    const handleLogout = () => {
+        localStorage.removeItem('user');
+        navigate('/');
+    };
+
+    useEffect(() => {
+        if (user?.id) fetchAll();
+    }, [user?.id]);
 
     const fetchAll = async () => {
         setLoading(true);
@@ -225,6 +242,8 @@ export default function VendorDashboard({ user, onLogout }) {
     };
 
     // 업체 미승인 상태
+    if (!user) return null;
+
     if (!vendorInfo) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
@@ -233,7 +252,7 @@ export default function VendorDashboard({ user, onLogout }) {
                     <h2 className="font-bold text-gray-800 text-lg mb-2">업체 정보 없음</h2>
                     <p className="text-sm text-gray-500 mb-4">관리자의 승인 후 이용 가능합니다.<br />승인 완료 알림을 기다려주세요.</p>
                     <p className="text-xs text-red-500 mb-4">Debug User ID: {user?.id}</p>
-                    <button onClick={onLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
+                    <button onClick={handleLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
                 </div>
             </div>
         );
@@ -252,7 +271,7 @@ export default function VendorDashboard({ user, onLogout }) {
                         <strong>Message:</strong> {vendorInfo.error?.message}<br />
                         <strong>Details:</strong> {vendorInfo.error?.details}
                     </div>
-                    <button onClick={onLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
+                    <button onClick={handleLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
                 </div>
             </div>
         );
@@ -271,7 +290,7 @@ export default function VendorDashboard({ user, onLogout }) {
                             반려 사유: {vendorInfo.rejection_reason || '-'}
                         </div>
                     )}
-                    <button onClick={onLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
+                    <button onClick={handleLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
                 </div>
             </div>
         );
@@ -288,7 +307,7 @@ export default function VendorDashboard({ user, onLogout }) {
                         {BUSINESS_TYPE_LABELS[vendorInfo.business_type]}
                     </span>
                 </div>
-                <button onClick={onLogout} className="p-2 text-gray-400 hover:text-gray-600">
+                <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-gray-600">
                     <LogOut className="w-5 h-5" />
                 </button>
             </div>

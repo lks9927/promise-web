@@ -45,7 +45,7 @@ function AppContent() {
         <Route path="/briefing" element={<MobileBriefing />} />
         <Route path="/dev" element={<DevLogin />} />
         <Route path="/developer" element={<DevLogin />} />
-        <Route path="/vendor" element={<VendorDashboard user={{ id: 'placeholder' }} onLogout={() => window.location.href = '/'} />} />
+        <Route path="/vendor" element={<VendorDashboard />} />
         <Route path="*" element={<div className="flex items-center justify-center h-screen bg-gray-100 text-xl font-bold text-gray-600">404 - 페이지를 찾을 수 없습니다</div>} />
       </Routes>
       <ChatbotWidget />
