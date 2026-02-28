@@ -51,11 +51,19 @@ export default function VendorDashboard({ user, onLogout }) {
         setLoading(true);
         try {
             // 업체 정보
-            const { data: vendor } = await supabase
+            const { data: vendor, error: vendorError } = await supabase
                 .from('vendors')
                 .select('*')
                 .eq('user_id', user.id)
                 .single();
+
+            if (vendorError) {
+                console.error("Vendor fetch error:", vendorError);
+                // Save error to state to display it temporarily for debugging
+                setVendorInfo({ __isError: true, error: vendorError });
+                setLoading(false);
+                return;
+            }
 
             if (!vendor) {
                 setVendorInfo(null);
@@ -224,6 +232,26 @@ export default function VendorDashboard({ user, onLogout }) {
                     <AlertCircle className="w-12 h-12 text-orange-400 mx-auto mb-4" />
                     <h2 className="font-bold text-gray-800 text-lg mb-2">업체 정보 없음</h2>
                     <p className="text-sm text-gray-500 mb-4">관리자의 승인 후 이용 가능합니다.<br />승인 완료 알림을 기다려주세요.</p>
+                    <p className="text-xs text-red-500 mb-4">Debug User ID: {user?.id}</p>
+                    <button onClick={onLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
+                </div>
+            </div>
+        );
+    }
+
+    if (vendorInfo.__isError) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+                <div className="bg-white rounded-2xl p-8 text-center shadow-lg w-full max-w-md">
+                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                    <h2 className="font-bold text-gray-800 text-lg mb-2">데이터베이스 오류</h2>
+                    <p className="text-sm text-gray-500 mb-4">외주업체 정보를 불러오는 중 에러가 발생했습니다.</p>
+                    <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-4 text-xs text-left max-h-40 overflow-y-auto w-full break-words">
+                        <strong>User ID:</strong> {user?.id}<br />
+                        <strong>Error code:</strong> {vendorInfo.error?.code}<br />
+                        <strong>Message:</strong> {vendorInfo.error?.message}<br />
+                        <strong>Details:</strong> {vendorInfo.error?.details}
+                    </div>
                     <button onClick={onLogout} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">로그아웃</button>
                 </div>
             </div>
