@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabase'; // Ensure consistent import
 import { formatPhoneNumber } from '../utils/formatters';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, CheckCircle, Store, Briefcase, User } from 'lucide-react';
+import { UserPlus, CheckCircle, Store, Briefcase, User, Truck } from 'lucide-react';
 
 import DaumPostcodeEmbed from 'react-daum-postcode';
 
@@ -18,7 +18,12 @@ export default function PartnerApply() {
         role: 'customer', // Default role
         region: '',
         address: '',
-        detailAddress: ''
+        detailAddress: '',
+        // Vendor fields
+        companyName: '',
+        businessType: '',
+        bankName: '',
+        bankAccount: ''
     });
 
     const handleSubmit = async (e) => {
@@ -74,6 +79,25 @@ export default function PartnerApply() {
 
                 if (partnerError) throw partnerError;
                 alert('파트너 신청이 접수되었습니다.\n마스터 승인 후 활동 가능합니다.');
+            } else if (formData.role === 'vendor') {
+                // Create Vendor Record
+                const { error: vendorError } = await supabase
+                    .from('vendors')
+                    .insert([
+                        {
+                            user_id: newUserId,
+                            company_name: formData.companyName || formData.name,
+                            business_type: formData.businessType || 'other',
+                            phone: formData.phone,
+                            address: formData.address + (formData.detailAddress ? ' ' + formData.detailAddress : ''),
+                            bank_name: formData.bankName,
+                            bank_account: formData.bankAccount,
+                            status: 'pending'
+                        }
+                    ]);
+
+                if (vendorError) throw vendorError;
+                alert('외주업체 가입 신청이 접수되었습니다.\n관리자 승인 후 활동 가능합니다.');
             } else {
                 alert('회원가입이 완료되었습니다.');
             }
@@ -105,10 +129,11 @@ export default function PartnerApply() {
 
                 <form onSubmit={handleSubmit} className="p-8 space-y-6">
                     {/* Role Selection */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                         {[
                             { id: 'leader', label: '팀장', icon: Briefcase },
                             { id: 'dealer', label: '딜러', icon: Store },
+                            { id: 'vendor', label: '외주업체', icon: Truck },
                             { id: 'customer', label: '일반고객', icon: User }
                         ].map(role => (
                             <button
@@ -197,6 +222,60 @@ export default function PartnerApply() {
                                     <option value="경상">경상</option>
                                     <option value="제주">제주</option>
                                 </select>
+                            </div>
+                        )}
+
+                        {/* Vendor Detail Fields */}
+                        {formData.role === 'vendor' && (
+                            <div className="space-y-4 bg-gray-50 p-4 border rounded-xl">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">업체명 (상호명)</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="주식회사 10년"
+                                        value={formData.companyName}
+                                        onChange={e => setFormData({ ...formData, companyName: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">제공 서비스 (업종)</label>
+                                    <select
+                                        required
+                                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        value={formData.businessType}
+                                        onChange={e => setFormData({ ...formData, businessType: e.target.value })}
+                                    >
+                                        <option value="">선택하세요</option>
+                                        <option value="flowers">입관꽃 (하늘꽃)</option>
+                                        <option value="goods">장례 용품</option>
+                                        <option value="burial">장지 업체 (납골당 등)</option>
+                                        <option value="other">기타</option>
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">은행명</label>
+                                        <input
+                                            type="text"
+                                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                            placeholder="예: 신한은행"
+                                            value={formData.bankName}
+                                            onChange={e => setFormData({ ...formData, bankName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">계좌번호</label>
+                                        <input
+                                            type="text"
+                                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                            placeholder="숫자만 입력"
+                                            value={formData.bankAccount}
+                                            onChange={e => setFormData({ ...formData, bankAccount: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         )}
 
