@@ -408,6 +408,7 @@ export default function AdminDashboard() {
                                 onUpdate={fetchData}
                                 passwordRequests={passwordRequests}
                                 onApproveReset={handleApproveReset}
+                                partners={partners}
                             />
                         ) : activeTab === 'commissions' ? (
                             <CommissionSettings supabase={supabase} />
@@ -850,11 +851,38 @@ function PackageSettings({ config, onUpdate }) {
     );
 }
 
-function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
+function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset, partners }) {
     const { showToast } = useNotification();
-    const toggleConfig = async (key, currentValue) => {
+    const [dispatchOrderMap, setDispatchOrderMap] = useState({});
+
+    useEffect(() => {
+        try {
+            if (config.dispatch_order_map) {
+                setDispatchOrderMap(JSON.parse(config.dispatch_order_map));
+            }
+        } catch (e) { console.error(e); }
+    }, [config.dispatch_order_map]);
+
+    const handleOrderChange = async (userId, newOrder) => {
+        const orderVal = parseInt(newOrder);
+        const newMap = { ...dispatchOrderMap };
+        if (isNaN(orderVal)) {
+            delete newMap[userId];
+        } else {
+            newMap[userId] = orderVal;
+        }
+        setDispatchOrderMap(newMap);
+        await supabase.from('system_config').upsert({ key: 'dispatch_order_map', value: JSON.stringify(newMap) });
+        showToast('success', '저장 완료', '배차 순번이 업데이트 되었습니다.');
+        onUpdate();
+    };
+
+    const toggleConfig = async (key, currentValue, overrideNewValue = null) => {
         const safeValue = currentValue || 'false';
-        const newValue = safeValue === 'true' ? 'false' : 'true';
+        let newValue = safeValue === 'true' ? 'false' : 'true';
+        if (overrideNewValue) {
+            newValue = overrideNewValue;
+        }
 
         await supabase.from('system_config').upsert({ key, value: newValue });
         showToast('success', '설정 변경', '설정이 변경되었습니다.');
@@ -905,6 +933,109 @@ function SettingsPanel({ config, onUpdate, passwordRequests, onApproveReset }) {
                         <span className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full transition-transform ${config.bidding_enabled === 'true' ? 'translate-x-6' : 'translate-x-0'}`} />
                     </button>
                 </div>
+
+                {/* 배차 방식 스위칭 */}
+                <div className="bg-white p-6 rounded-xl border border-indigo-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h4 className="font-bold text-indigo-900 mb-1 flex items-center gap-2">
+                                <ListOrdered className="w-5 h-5 text-indigo-600" /> 팀장 배차 방식
+                            </h4>
+                            <p className="text-sm text-gray-500">신규 접수 건 발생 시 팀장들에게 콜을 노출하는 방식을 선택합니다.</p>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-4 mb-6">
+                        <button
+                            onClick={() => toggleConfig('dispatch_mode', config.dispatch_mode, 'team_hybrid')}
+                            className={`p-4 rounded-xl border-2 text-left transition-all ${config.dispatch_mode === 'team_hybrid' ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-gray-200 hover:border-indigo-300'}`}
+                        >
+                            <div className="font-bold text-gray-900 text-lg flex items-center gap-2">🏆 팀별 균등 하이브리드 (권장)</div>
+                            <div className="text-sm text-gray-500 mt-1">
+                                팀(마스터 단위)이 연속으로 콜을 독식하는 것을 방지합니다. <br />
+                                <span className="text-indigo-600 font-medium">최신 룰: 다른 마스터 팀 단위로 턴을 돌리며, 그 안에서 가중치(신규/실적)가 가장 높은 사람에게 우선 배정합니다.</span>
+                            </div>
+                        </button>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => toggleConfig('dispatch_mode', config.dispatch_mode, 'hybrid')}
+                                className={`flex-1 p-4 rounded-xl border-2 text-left transition-all ${config.dispatch_mode === 'hybrid' || !config.dispatch_mode ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-gray-200 hover:border-indigo-300'}`}
+                            >
+                                <div className="font-bold text-gray-900">⚖️ 전체 가중치 기반 배정</div>
+                                <div className="text-xs text-gray-500 mt-1">소속 팀에 상관없이 전체 110명 중 점수가 높은 순으로 배정합니다. (모수가 적을 때 적합)</div>
+                            </button>
+                            <button
+                                onClick={() => toggleConfig('dispatch_mode', config.dispatch_mode, 'sequential')}
+                                className={`flex-1 p-4 rounded-xl border-2 text-left transition-all ${config.dispatch_mode === 'sequential' ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-gray-200 hover:border-indigo-300'}`}
+                            >
+                                <div className="font-bold text-gray-900">🔢 완전 수동 순번 배정</div>
+                                <div className="text-xs text-gray-500 mt-1">아래에서 지정한 고정 순번대로 콜을 넘깁니다. (점수 무시)</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
+                        <div>
+                            <h4 className="font-bold text-gray-800 text-sm">무반응 시 대기 시간 (분)</h4>
+                            <p className="text-xs text-gray-500">배차 알림 후 지정된 시간이 지나면 배정 기회가 넘어갑니다.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-center font-bold outline-none ring-indigo-500 focus:ring-2"
+                                value={config.dispatch_timeout_mins || '5'}
+                                onChange={async (e) => {
+                                    const val = e.target.value;
+                                    await supabase.from('system_config').upsert({ key: 'dispatch_timeout_mins', value: val });
+                                    onUpdate();
+                                }}
+                            />
+                            <span className="text-sm text-gray-500 font-medium">분</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 순차 배정 순번 관리 */}
+                {(config.dispatch_mode === 'sequential' || true) && (
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm transition-all">
+                        <h4 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                            <Users className="w-5 h-5 text-gray-600" /> 팀장 순차 배차 순위 설정
+                        </h4>
+                        <p className="text-sm text-gray-500 mb-4">순차 배정 시 호출될 팀장들의 순위를 지정합니다. 숫자가 낮을수록(1, 2...) 먼저 호출됩니다. (순위가 같은 경우 가입순)</p>
+
+                        <div className="space-y-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                            {partners?.filter(p => p.profiles?.role === 'leader').sort((a, b) => (dispatchOrderMap[a.user_id] || 999) - (dispatchOrderMap[b.user_id] || 999)).map(leader => (
+                                <div key={leader.user_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${dispatchOrderMap[leader.user_id] ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                            {dispatchOrderMap[leader.user_id] || '-'}
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-gray-900 flex items-center gap-2">
+                                                {leader.profiles?.name}
+                                                <span className="text-xs bg-gray-200 text-gray-600 px-1.5 rounded">{leader.grade || '일반'}</span>
+                                            </div>
+                                            <div className="text-xs text-gray-500">{leader.region || '지역 미정'} / {leader.profiles?.phone}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-500 font-bold">순번:</label>
+                                        <input
+                                            type="number"
+                                            className="w-16 px-2 py-1.5 border border-gray-300 rounded text-center text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            defaultValue={dispatchOrderMap[leader.user_id] || ''}
+                                            onBlur={e => handleOrderChange(leader.user_id, e.target.value)}
+                                            placeholder="미지정"
+                                            title="숫자를 입력하고 다른 곳을 클릭하면 저장됩니다."
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                            {partners?.filter(p => p.profiles?.role === 'leader').length === 0 && (
+                                <div className="text-center py-6 text-gray-500 text-sm">등록된 팀장이 없습니다.</div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
                     <div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Camera, CheckCircle, Package, MapPin, Phone, Truck, AlertCircle } from 'lucide-react';
+import { Camera, CheckCircle, Package, MapPin, Phone, Truck, AlertCircle, Navigation } from 'lucide-react';
 import { useNotification } from '../contexts/NotificationContext';
 
 export default function DriverDelivery() {
@@ -63,6 +63,15 @@ export default function DriverDelivery() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleNavigation = () => {
+        if (!order?.funeral_cases?.location) {
+            return showToast('error', '길찾기 오류', '장례식장 주소 정보가 없습니다.');
+        }
+        const address = encodeURIComponent(order.funeral_cases.location);
+        const url = `https://map.kakao.com/link/search/${address}`;
+        window.open(url, '_blank');
     };
 
     const handleComplete = async () => {
@@ -183,12 +192,18 @@ export default function DriverDelivery() {
                         <MapPin className="w-5 h-5 text-red-500" />
                         배송지 정보
                     </h2>
-                    <div className="space-y-2 text-sm">
-                        <p className="flex items-start gap-2 text-gray-700">
-                            <span className="font-bold min-w-[60px] text-gray-500">장례식장</span>
-                            <strong className="text-base text-gray-900">{fc?.location || '미정'}</strong>
-                        </p>
-                        <p className="flex items-start gap-2 text-gray-700">
+                    <div className="space-y-4 text-sm mt-1">
+                        <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+                            <p className="flex items-start gap-2 text-gray-700 flex-1">
+                                <span className="font-bold min-w-[55px] text-gray-500 mt-0.5">장례식장</span>
+                                <strong className="text-base text-gray-900 leading-snug">{fc?.location || '미정'}</strong>
+                            </p>
+                            <button onClick={handleNavigation} className="flex shrink-0 items-center justify-center gap-1.5 px-3 py-2 bg-[#FEE500] hover:bg-[#F4DC00] text-[#191919] text-xs font-black rounded-xl transition-transform active:scale-95 shadow-sm">
+                                <Navigation className="w-3.5 h-3.5 fill-[#191919]" />
+                                길찾기
+                            </button>
+                        </div>
+                        <p className="flex items-start gap-2 text-gray-700 mt-3 pt-1">
                             <span className="font-bold min-w-[60px] text-gray-500">고인명</span>
                             <span>{fc?.deceased_name || '미입력'}</span>
                         </p>

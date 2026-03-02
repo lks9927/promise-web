@@ -159,7 +159,7 @@ export default function TeamLeaderDashboard() {
 
             const { data: myAssigned, error: myError } = await supabase
                 .from('funeral_cases')
-                .select('*, profiles:customer_id(name, phone)')
+                .select('*, profiles:customer_id(name, phone), funeral_progress_reports(id)')
                 .in('status', ['assigned', 'consulting', 'in_progress', 'team_settling', 'hq_check', 'completed'])
                 .in('team_leader_id', targetTeamIds) // The core visibility rule
                 .order('created_at', { ascending: false });
@@ -798,17 +798,12 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                 {status === 'in_progress' && (
                     <div className="space-y-2">
                         <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 mb-2">
-                            <span>📷 실시간 6단계 진행 보고 작성</span>
+                            <span>📷 장례 진행 보고 (25단계 중 {item.funeral_progress_reports?.length || 0}개 완료)</span>
                         </button>
                         {/* 외주 발주 버튼 */}
-                        <button onClick={() => onOpenOrder(item)} className="w-full bg-sky-50 text-sky-700 border border-sky-200 font-bold py-3.5 rounded-xl hover:bg-sky-100 transition-colors flex items-center justify-center gap-2">
-                            <span>📦 외주 발주서 작성</span>
+                        <button onClick={() => onOpenOrder(item)} className="w-full bg-sky-50 text-sky-700 border border-sky-200 font-bold py-3.5 rounded-xl hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 mb-2">
+                            <span>📦 장례 관련 용품 발주</span>
                         </button>
-                        {isFlowerOrderRequired && !hasOrderedFlower && (
-                            <button onClick={() => onOrderFlower(id)} className="w-full bg-pink-50 text-pink-700 border border-pink-200 font-bold py-3.5 rounded-xl hover:bg-pink-100 transition-colors flex items-center justify-center gap-2 animate-pulse">
-                                ✿ 하늘꽃 발주 (필수)
-                            </button>
-                        )}
                         <button onClick={() => onUpdate(id, 'team_settling')} className="w-full bg-green-50 text-green-700 border border-green-200 font-bold py-3.5 rounded-xl hover:bg-green-100 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
                             <span>다음 단계:</span> <span>🟢 장례 종료 (정산 요청)</span>
                         </button>

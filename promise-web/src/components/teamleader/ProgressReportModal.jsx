@@ -4,13 +4,37 @@ import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
 
+const GROUPS = ['상담', '1일차', '2일차', '3일차'];
 const FUNERAL_STAGES = [
-    { number: 1, name: '1. 임종/이송', description: '고인 임종 확인 및 장례식장 이송' },
-    { number: 2, name: '2. 안치/빈소차림', description: '장례식장 안치 및 빈소 제단 세팅' },
-    { number: 3, name: '3. 입관', description: '염습 및 입관식 진행 (하늘꽃 등)' },
-    { number: 4, name: '4. 성복제/상식', description: '상복 착용, 제례 진행 (1일차/2일차)' },
-    { number: 5, name: '5. 발인/영결식', description: '장례식장을 떠나 장지로 출발' },
-    { number: 6, name: '6. 장지 안착/종료', description: '화장장/장지 도착 및 장례 절차 최종 마무리' }
+    { number: 1, group: '상담', name: '콜문자', requiresImage: false },
+    { number: 2, group: '상담', name: '상품표/팀장프로필 발송문자', requiresImage: false },
+    { number: 3, group: '상담', name: '사망진단서/화장예약확인', requiresImage: true },
+    { number: 5, group: '상담', name: '상담결과보고', requiresImage: false },
+
+    { number: 4, group: '1일차', name: '1일차 입실 사진', requiresImage: true },
+    { number: 6, group: '1일차', name: '현황판/근조기', requiresImage: true },
+    { number: 7, group: '1일차', name: '제단/헌화꽃', requiresImage: true },
+    { number: 8, group: '1일차', name: '편의용품/일회용품', requiresImage: true },
+    { number: 9, group: '1일차', name: '빈소셋팅/도우미유니폼', requiresImage: true },
+    { number: 10, group: '1일차', name: '부고스크린샷/부고링크', requiresImage: true },
+    { number: 26, group: '1일차', name: '1일차 부고 사진', requiresImage: true },
+    { number: 11, group: '1일차', name: '장례일정표/향로꽃장식', requiresImage: true },
+    { number: 12, group: '1일차', name: '1일차 퇴실사진', requiresImage: true },
+
+    { number: 13, group: '2일차', name: '2일차 입실사진', requiresImage: true },
+    { number: 14, group: '2일차', name: '관셋팅/명정(소렴/대렴 표시)', requiresImage: true },
+    { number: 15, group: '2일차', name: '관꽃장식', requiresImage: true },
+    { number: 16, group: '2일차', name: '봉안함 발주서', requiresImage: true },
+    { number: 17, group: '2일차', name: '장의행사확인서', requiresImage: true },
+    { number: 18, group: '2일차', name: '2일차 퇴실사진', requiresImage: true },
+
+    { number: 19, group: '3일차', name: '3일차 입실사진', requiresImage: true },
+    { number: 20, group: '3일차', name: '장의차량 도착사진(리무진/버스)', requiresImage: true },
+    { number: 21, group: '3일차', name: '화장장 사진(봉안함)', requiresImage: true },
+    { number: 22, group: '3일차', name: '장지 안치 사진', requiresImage: true },
+    { number: 23, group: '3일차', name: '의전보고서/이용후기 사진', requiresImage: true },
+    { number: 24, group: '3일차', name: '의전종료보고', requiresImage: false },
+    { number: 25, group: '3일차', name: '3일차 퇴실사진', requiresImage: true }
 ];
 
 export default function ProgressReportModal({ isOpen, onClose, caseItem, user }) {
@@ -45,7 +69,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
 
             // Auto-select the next uncompleted stage
             const completedStages = (data || []).map(r => r.stage_number);
-            const nextStage = FUNERAL_STAGES.find(s => !completedStages.includes(s.number))?.number || 6;
+            const nextStage = FUNERAL_STAGES.find(s => !completedStages.includes(s.number))?.number || FUNERAL_STAGES[FUNERAL_STAGES.length - 1].number;
             handleStageSelect(nextStage, data || []);
 
         } catch (error) {
@@ -101,14 +125,24 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
     };
 
     const handleSaveReport = async () => {
-        if (!content && !imageFile && !previewUrl) {
-            showToast('error', '입력 오류', '보고 내용이나 사진을 등록해주세요.');
-            return;
-        }
-
         try {
             setUploading(true);
             const stageInfo = FUNERAL_STAGES.find(s => s.number === activeStage);
+            
+            let finalContent = content;
+            if (!finalContent && !imageFile && !previewUrl) {
+                if (stageInfo.requiresImage) {
+                    showToast('error', '입력 오류', '해당 항목은 사진 첨부가 필수입니다.');
+                    setUploading(false);
+                    return;
+                } else {
+                    finalContent = '확인 완료';
+                }
+            } else if (stageInfo.requiresImage && !imageFile && !previewUrl) {
+                showToast('error', '입력 오류', '해당 항목은 사진 첨부가 필수입니다.');
+                setUploading(false);
+                return;
+            }
 
             let finalImageUrl = previewUrl; // Use existing URL if no new file is uploaded
 
@@ -140,7 +174,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                 const { error } = await supabase
                     .from('funeral_progress_reports')
                     .update({
-                        content,
+                        content: finalContent,
                         image_url: finalImageUrl,
                         updated_at: new Date().toISOString()
                     })
@@ -156,7 +190,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                         author_grade: user.grade,
                         stage_number: activeStage,
                         stage_name: stageInfo.name,
-                        content,
+                        content: finalContent,
                         image_url: finalImageUrl
                     }]);
                 dbError = error;
@@ -187,7 +221,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                 <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 sticky top-0 z-10">
                     <div>
                         <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
-                            <CheckCircle className="w-5 h-5 text-indigo-600" /> 6단계 진행 보고
+                            <CheckCircle className="w-5 h-5 text-indigo-600" /> 25단계 진행 체크리스트
                         </h3>
                         <p className="text-xs text-gray-500 mt-1">
                             [{caseItem.profiles?.name || '고객'}님의 장례] 실시간 보고서 작성
@@ -198,100 +232,102 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                     </button>
                 </div>
 
-                <div className="p-5 overflow-y-auto" style={{ maxHeight: 'calc(95vh - 80px)' }}>
+                <div className="p-3 sm:p-5 overflow-y-auto bg-gray-50/50" style={{ maxHeight: 'calc(95vh - 80px)' }}>
 
-                    {/* Stage Navigator - Changed to grid for better visibility */}
-                    <div className="mb-6 grid grid-cols-3 gap-1.5 sm:gap-2">
-                        {FUNERAL_STAGES.map(stage => {
-                            const isCompleted = reports.some(r => r.stage_number === stage.number);
-                            const isActive = activeStage === stage.number;
-                            return (
-                                <button
-                                    key={stage.number}
-                                    onClick={() => handleStageSelect(stage.number)}
-                                    className={`flex-shrink-0 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold border transition-all ${isActive
-                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-[1.03]'
-                                        : isCompleted
-                                            ? 'bg-green-50 text-green-700 border-green-200'
-                                            : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-1.5">
-                                        {isCompleted && !isActive && <CheckCircle className="w-4 h-4" />}
-                                        {stage.name}
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <div className="space-y-6 pb-6 w-full max-w-full overflow-hidden">
+                        {GROUPS.map(groupName => (
+                            <div key={groupName} className="mb-2">
+                                <h4 className="font-bold text-gray-800 mb-3 px-1 border-l-4 border-indigo-500 pl-2 ml-1">{groupName}</h4>
+                                <div className="space-y-2.5">
+                                    {FUNERAL_STAGES.filter(s => s.group === groupName).map(stage => {
+                                        const isCompleted = reports.some(r => r.stage_number === stage.number);
+                                        const isActive = activeStage === stage.number;
+                                        return (
+                                            <div key={stage.number} id={`stage-form-${stage.number}`} className={`border rounded-xl bg-white transition-all ${isActive ? 'border-indigo-400 shadow-md ring-1 ring-indigo-400' : 'border-gray-200'}`}>
+                                                <button 
+                                                    className="w-full px-4 py-3.5 flex items-center justify-between text-left"
+                                                    onClick={() => {
+                                                        if (isActive) {
+                                                            setActiveStage(null);
+                                                        } else {
+                                                            handleStageSelect(stage.number);
+                                                            setTimeout(() => {
+                                                                document.getElementById(`stage-form-${stage.number}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                            }, 50);
+                                                        }
+                                                    }}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        {isCompleted ? <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-300 bg-gray-50 flex-shrink-0"></div>}
+                                                        <span className={`font-medium ${isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'} text-sm sm:text-base`}>{stage.name}</span>
+                                                    </div>
+                                                    {!isCompleted && stage.requiresImage && (
+                                                        <span className="text-[10px] sm:text-xs font-bold bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full whitespace-nowrap ml-2">사진 필수</span>
+                                                    )}
+                                                </button>
+                                                
+                                                {isActive && (
+                                                    <div className="p-4 bg-indigo-50/30 border-t border-indigo-100">
+                                                        {stage.requiresImage && (
+                                                            <div className="mb-4">
+                                                                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
+                                                                    <ImageIcon className="w-4 h-4 text-indigo-500" /> 현장 사진 첨부
+                                                                </label>
+                                                                <div className="relative group rounded-xl overflow-hidden border-2 border-dashed border-indigo-300 bg-white hover:border-indigo-500 transition-colors">
+                                                                    {previewUrl ? (
+                                                                        <div className="relative aspect-video w-full bg-black">
+                                                                            <img src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
+                                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                                                <span className="bg-white/90 text-gray-800 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm backdrop-blur-sm">사진 변경하기</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="py-8 flex flex-col items-center justify-center text-gray-400">
+                                                                            <Camera className="w-7 h-7 mb-2 text-indigo-300" />
+                                                                            <span className="text-sm font-bold text-indigo-900">사진 추가</span>
+                                                                        </div>
+                                                                    )}
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        capture="environment"
+                                                                        onChange={handleImageChange}
+                                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        )}
 
-                    {/* Active Stage Form */}
-                    <div className="bg-gray-50 rounded-2xl border border-gray-200 p-4 mb-6">
-                        <div className="mb-4">
-                            <h4 className="font-bold text-lg text-indigo-900 mb-1">
-                                {FUNERAL_STAGES.find(s => s.number === activeStage)?.name}
-                            </h4>
-                            <p className="text-xs text-gray-500">
-                                {FUNERAL_STAGES.find(s => s.number === activeStage)?.description}
-                            </p>
-                        </div>
+                                                        <div className="mb-4">
+                                                            <label className="block text-sm font-bold text-gray-700 mb-2">특이사항 (선택)</label>
+                                                            <textarea
+                                                                value={content}
+                                                                onChange={(e) => setContent(e.target.value)}
+                                                                rows={2}
+                                                                placeholder="진행 상황, 구체적 수량, 가족 요청사항 등 기록"
+                                                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm resize-none"
+                                                            />
+                                                        </div>
 
-                        {/* Image Upload Area */}
-                        <div className="mb-4">
-                            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
-                                <ImageIcon className="w-4 h-4" /> 현장 사진 첨부
-                            </label>
-
-                            <div className="relative group rounded-xl overflow-hidden border-2 border-dashed border-gray-300 bg-white hover:border-indigo-400 transition-colors">
-                                {previewUrl ? (
-                                    <div className="relative aspect-video w-full bg-black">
-                                        <img src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                            <span className="bg-white/90 text-gray-800 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm backdrop-blur-sm">
-                                                사진 변경하기
-                                            </span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="py-10 flex flex-col items-center justify-center text-gray-400">
-                                        <Camera className="w-8 h-8 mb-2 text-gray-300" />
-                                        <span className="text-sm font-bold">사진 추가하기</span>
-                                        <span className="text-xs mt-1 text-gray-400">터치하여 촬영하거나 앨범에서 선택</span>
-                                    </div>
-                                )}
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment" // Hint for mobile devices to open camera
-                                    onChange={handleImageChange}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                />
+                                                        <button
+                                                            onClick={handleSaveReport}
+                                                            disabled={uploading}
+                                                            className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 active:scale-[0.98] shadow-md"
+                                                        >
+                                                            {uploading ? (
+                                                                <><Loader2 className="w-5 h-5 animate-spin" /> 업로드 중...</>
+                                                            ) : (
+                                                                <><Save className="w-5 h-5" /> 완료 및 저장</>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
                             </div>
-                        </div>
-
-                        {/* Text Content Area */}
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">보고 내용</label>
-                            <textarea
-                                value={content}
-                                onChange={(e) => setContent(e.target.value)}
-                                rows={4}
-                                placeholder="진행 상황, 특이사항, 가족 요청사항 등을 상세히 기록해주세요."
-                                className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm resize-none transition-shadow hover:shadow-sm"
-                            />
-                        </div>
-
-                        <button
-                            onClick={handleSaveReport}
-                            disabled={uploading}
-                            className="w-full mt-5 bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-md active:scale-[0.98]"
-                        >
-                            {uploading ? (
-                                <><Loader2 className="w-5 h-5 animate-spin" /> 업로드 중...</>
-                            ) : (
-                                <><Save className="w-5 h-5" /> 보고서 저장</>
-                            )}
-                        </button>
+                        ))}
                     </div>
 
                 </div>

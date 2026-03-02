@@ -4,7 +4,8 @@ import { useNotification } from '../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
 import {
     Package, Plus, Edit2, Trash2, Truck, CheckCircle,
-    Camera, Bell, Users, LogOut, X, Save, AlertCircle, ClipboardList, Link as LinkIcon, Copy
+    Camera, Bell, Users, LogOut, X, Save, AlertCircle, ClipboardList, Link as LinkIcon, Copy,
+    Printer, Map
 } from 'lucide-react';
 
 const BUSINESS_TYPE_LABELS = {
@@ -43,8 +44,9 @@ export default function VendorDashboard() {
     const [driverForm, setDriverForm] = useState({ id: null, name: '', phone: '' });
     const [showDriverForm, setShowDriverForm] = useState(false);
 
-    // 납품 처리
+    // 납품 처리 및 지도/프린트
     const [deliveryModal, setDeliveryModal] = useState({ isOpen: false, order: null, driver_id: '', notes: '' });
+    const [mapModal, setMapModal] = useState({ isOpen: false, startLocation: '' });
     const [deliveryPhoto, setDeliveryPhoto] = useState(null);
     const photoRef = useRef();
 
@@ -250,6 +252,94 @@ export default function VendorDashboard() {
         showToast('success', '주소 복사 완료', '배송기사용 전용 링크가 복사되었습니다.\n문자나 카카오톡으로 전달하세요.');
     };
 
+    // 당일 발주 프린트 출력
+    const handlePrintOrders = () => {
+        const activeOrders = orders.filter(o => o.status !== 'cancelled');
+
+        let content = `
+        <html>
+        <head>
+            <title>금일 장례식장 배송/발주 목록 - ${vendorInfo.company_name}</title>
+            <style>
+                body { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; padding: 20px; color: #222; background: #fff; }
+                h1 { text-align: center; border-bottom: 2px solid #222; padding-bottom: 15px; margin-bottom: 20px; font-size: 24px; }
+                .order-card { border: 2px solid #eee; border-radius: 12px; padding: 20px; margin-bottom: 20px; page-break-inside: avoid; background: #fff; }
+                .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px dashed #eee; padding-bottom: 10px; margin-bottom: 15px; }
+                .title { font-size: 18px; font-weight: bold; color: #1a56db;  margin-bottom: 4px; }
+                .order-num { font-size: 12px; color: #888; }
+                .status { font-weight: bold; font-size: 16px; padding: 4px 8px; border-radius: 4px; background: #f3f4f6;}
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 14px; }
+                td { padding: 4px 0; }
+                .items { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+                .items-title { font-weight: bold; margin-bottom: 10px; color: #334155; display: block; }
+                .item-line { font-size: 14px; margin: 4px 0; display: flex; justify-content: space-between; }
+                .total { font-weight: 900; text-align: right; margin-top: 15px; padding-top: 10px; border-top: 1px solid #cbd5e1; font-size: 16px; color: #0f172a;}
+                .btn-print { padding: 12px 24px; font-size: 16px; font-weight: bold; cursor: pointer; margin: 0 auto 30px; display: block; background: #111; color: #fff; border:none; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                @media print {
+                    body { padding: 0; background: #fff; }
+                    .btn-print { display: none !important; }
+                    .order-card { border: 1px solid #ccc; box-shadow: none; border-radius: 0; margin-bottom: 30px; }
+                }
+            </style>
+        </head>
+        <body>
+            <button class="btn-print" onclick="window.print()">🖨️ 인쇄하기 (종이 출력)</button>
+            <h1>📦 금 일 배 송 / 발 주 지 시 서 (총 ${activeOrders.length}건)</h1>
+            <p style="text-align: right; color: #666; font-size: 13px;">출력일시: ${new Date().toLocaleString()}</p>
+        `;
+
+        activeOrders.forEach(order => {
+            const fc = order.funeral_cases;
+            const stColor = order.status === 'pending' ? 'color: #ea580c;' : (order.status === 'delivered' ? 'color: #16a34a;' : 'color: #2563eb;');
+
+            content += `
+            <div class="order-card">
+                <div class="header">
+                    <div>
+                        <div class="title">📍 ${fc?.location || '장소 미상'} ${fc?.room_number ? '(' + fc.room_number + ')' : ''}</div>
+                        <div class="order-num">발주번호: ${order.order_number}</div>
+                    </div>
+                    <div>
+                        <span class="status" style="${stColor}">${STATUS_LABELS[order.status]?.text || ''}</span>
+                    </div>
+                </div>
+                <table>
+                    <tr>
+                        <td style="width: 50%;"><strong>👤 담당 팀장:</strong> ${order.team_leader?.name} <span style="color:#666;">(${order.team_leader?.phone})</span></td>
+                        <td style="width: 50%;"><strong>🕊️ 고 인 명:</strong> ${fc?.deceased_name || '미입력'}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🕒 입관 일시:</strong> ${fc?.encoffinment_time ? new Date(fc.encoffinment_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}</td>
+                        <td><strong>🗓️ 발인 일시:</strong> ${fc?.funeral_end_time ? new Date(fc.funeral_end_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '미정'}</td>
+                    </tr>
+                </table>
+                <div class="items">
+                    <span class="items-title">[ 납품 내역 ]</span>
+                    ${order.order_items?.map(i => `
+                        <div class="item-line">
+                            <span>- ${i.product_name}</span>
+                            <strong>${i.quantity}${i.unit}</strong>
+                        </div>
+                    `).join('')}
+                    <div class="total">총 금액: ${order.total_amount?.toLocaleString()} 원</div>
+                </div>
+            </div>
+            `;
+        });
+
+        content += '</body></html>';
+
+        const printWin = window.open('', '_blank', 'width=850,height=900');
+        if (printWin) {
+            printWin.document.open();
+            printWin.document.write(content);
+            printWin.document.close();
+            setTimeout(() => { printWin.print(); }, 800);
+        } else {
+            alert('팝업 차단을 해제해주세요.');
+        }
+    };
+
     // 업체 미승인 상태
     if (!user) return null;
 
@@ -326,10 +416,20 @@ export default function VendorDashboard() {
                 {/* 주문 탭 */}
                 {tab === 'orders' && (
                     <div className="space-y-3">
-                        <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                            <ClipboardList className="w-5 h-5 text-blue-500" />
-                            발주 목록
-                        </h2>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                                <ClipboardList className="w-5 h-5 text-blue-500" />
+                                당일 발주 및 배송 목록
+                            </h2>
+                            <div className="flex flex-wrap gap-2">
+                                <button onClick={() => setMapModal({ isOpen: true, startLocation: '' })} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 text-xs font-bold rounded-xl transition-colors shadow-sm">
+                                    <Map className="w-3.5 h-3.5" /> 최적경로
+                                </button>
+                                <button onClick={handlePrintOrders} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-900 border border-gray-900 text-white hover:bg-black text-xs font-bold rounded-xl transition-colors shadow-sm">
+                                    <Printer className="w-3.5 h-3.5" /> 인쇄출력
+                                </button>
+                            </div>
+                        </div>
                         {orders.length === 0 && (
                             <div className="bg-white rounded-2xl p-10 text-center text-gray-400">
                                 <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -557,6 +657,64 @@ export default function VendorDashboard() {
                         >
                             <CheckCircle className="w-5 h-5" /> 납품 완료 및 팀장 알림 전송
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* 지도/경로 최적화 모달 */}
+            {mapModal.isOpen && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl animate-fadeIn">
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-sky-50">
+                            <div>
+                                <h3 className="font-bold text-gray-900 flex items-center gap-1.5"><Map className="w-5 h-5 text-sky-600" /> 금일 배송 최적 경로 안내</h3>
+                                <p className="text-xs text-gray-500 mt-0.5">배송할 장례식장 위치와 최적 경로를 연결합니다.</p>
+                            </div>
+                            <button onClick={() => setMapModal({ isOpen: false, startLocation: '' })} className="p-1 rounded-full hover:bg-white transition-colors"><X className="w-6 h-6 text-gray-400" /></button>
+                        </div>
+                        <div className="p-5 space-y-5 bg-white">
+                            <div>
+                                <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">🚚 출발지 (창고 또는 자택)</label>
+                                <input
+                                    type="text"
+                                    value={mapModal.startLocation}
+                                    onChange={e => setMapModal({ ...mapModal, startLocation: e.target.value })}
+                                    placeholder="출발할 주소를 입력하세요 (예: 서울 강남구 역삼로 123)"
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                                />
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-inner max-h-48 overflow-y-auto custom-scrollbar">
+                                <p className="text-xs font-bold text-slate-500 mb-3 flex items-center justify-between">
+                                    <span>경유지 목록 (미납품 장례식장)</span>
+                                    <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">{orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length}곳</span>
+                                </p>
+                                <ul className="space-y-2 text-sm text-gray-700 font-medium">
+                                    {orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').map((o, i) => (
+                                        <li key={o.id} className="flex items-start gap-2 bg-white p-2 rounded-lg border border-gray-100">
+                                            <span className="font-black text-sky-500 bg-sky-50 w-5 h-5 flex items-center justify-center rounded-full text-xs shrink-0">{i + 1}</span>
+                                            <div>
+                                                <div className="font-bold">{o.funeral_cases?.location || '주소 미상'}</div>
+                                                <div className="text-[10px] text-gray-400 mt-0.5 font-normal">팀장: {o.team_leader?.name} · 발주번호: {o.order_number}</div>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                                {orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length === 0 && (
+                                    <div className="text-center py-4 text-gray-400 text-sm">현재 배송 예루할 곳이 없습니다.</div>
+                                )}
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    showToast('warning', '네비게이션 연결 준비', '관리자 승인 후 카카오 모빌리티 연동 시 자동 전송됩니다.\n현재는 테스트 모드이며, 실제 내비 연동은 배송기사 앱 화면의 [카카오맵] 버튼을 이용해주세요.');
+                                    setTimeout(() => setMapModal({ isOpen: false }), 4000);
+                                }}
+                                className="w-full py-4 bg-[#FEE500] text-[#191919] font-black rounded-xl shadow-md flex items-center justify-center gap-2 hover:bg-[#F4DC00] transition-colors active:scale-95"
+                            >
+                                <span className="flex items-center gap-1.5"><Map className="w-5 h-5" /> 카카오내비 다중경로 전송 (준비중)</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
