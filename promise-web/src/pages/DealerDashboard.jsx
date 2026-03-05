@@ -735,6 +735,8 @@ function StatusTab({ user }) {
                     phone,
                     role,
                     avatar_url,
+                    certificate_url,
+                    business_license_url,
                     experience_years,
                     introduction
                 )
@@ -751,6 +753,8 @@ function StatusTab({ user }) {
                     phone,
                     role,
                     avatar_url,
+                    certificate_url,
+                    business_license_url,
                     experience_years,
                     introduction
                 )

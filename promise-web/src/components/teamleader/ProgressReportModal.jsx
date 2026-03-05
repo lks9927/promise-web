@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Camera, Save, XCircle, Loader2, CheckCircle, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Camera, Save, XCircle, Loader2, CheckCircle, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
@@ -37,17 +37,31 @@ const FUNERAL_STAGES = [
     { number: 25, group: '3일차', name: '3일차 퇴실사진', requiresImage: true }
 ];
 
+// image_url 컬럼에서 URL 배열로 파싱 (하위 호환)
+function parseImageUrls(imageUrl) {
+    if (!imageUrl) return [];
+    try {
+        const parsed = JSON.parse(imageUrl);
+        if (Array.isArray(parsed)) return parsed;
+        return [parsed]; // 단일 URL 문자열이 JSON으로 저장된 경우
+    } catch {
+        return [imageUrl]; // 기존 단일 URL 문자열 (레거시)
+    }
+}
+
 export default function ProgressReportModal({ isOpen, onClose, caseItem, user }) {
     const { showToast } = useNotification();
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
 
-    // Form state for current selected stage
     const [activeStage, setActiveStage] = useState(1);
     const [content, setContent] = useState('');
-    const [imageFile, setImageFile] = useState(null);
-    const [previewUrl, setPreviewUrl] = useState(null);
+
+    // 다중 사진: { file: File|null, previewUrl: string }[]
+    const [images, setImages] = useState([]);
+
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         if (isOpen && caseItem) {
@@ -67,7 +81,6 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
             if (error) throw error;
             setReports(data || []);
 
-            // Auto-select the next uncompleted stage
             const completedStages = (data || []).map(r => r.stage_number);
             const nextStage = FUNERAL_STAGES.find(s => !completedStages.includes(s.number))?.number || FUNERAL_STAGES[FUNERAL_STAGES.length - 1].number;
             handleStageSelect(nextStage, data || []);
@@ -82,91 +95,112 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
 
     const handleStageSelect = (stageNum, currentReports = reports) => {
         setActiveStage(stageNum);
-        setImageFile(null);
-        setPreviewUrl(null);
 
-        // Find existing report for this stage to pre-fill
         const existingReport = currentReports.find(r => r.stage_number === stageNum);
         if (existingReport) {
             setContent(existingReport.content || '');
-            if (existingReport.image_url) {
-                setPreviewUrl(existingReport.image_url);
-            }
+            const urls = parseImageUrls(existingReport.image_url);
+            setImages(urls.map(url => ({ file: null, previewUrl: url })));
         } else {
             setContent('');
+            setImages([]);
         }
     };
 
+    // 사진 추가 버튼 클릭 → 숨겨진 file input 트리거
+    const handleAddImageClick = () => {
+        fileInputRef.current?.click();
+    };
+
     const handleImageChange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        // 최대 10장 제한
+        const remaining = 10 - images.length;
+        if (remaining <= 0) {
+            showToast('error', '최대 10장', '사진은 최대 10장까지 첨부할 수 있습니다.');
+            return;
+        }
+        const filesToProcess = files.slice(0, remaining);
+
+        showToast('info', '이미지 압축 중...', `${filesToProcess.length}장 최적화를 진행합니다.`);
+
+        const options = {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1200,
+            useWebWorker: true,
+            fileType: 'image/webp'
+        };
 
         try {
-            // Create a quick local preview
-            const objectUrl = URL.createObjectURL(file);
-            setPreviewUrl(objectUrl);
-
-            showToast('info', '이미지 압축 중...', '사진 최적화를 진행합니다.');
-            const options = {
-                maxSizeMB: 1,
-                maxWidthOrHeight: 1200,
-                useWebWorker: true,
-                fileType: 'image/webp'
-            };
-            const compressedFile = await imageCompression(file, options);
-            setImageFile(compressedFile);
-            showToast('success', '이미지 준비 완료', '보고서를 저장해 주세요.');
+            const processed = await Promise.all(
+                filesToProcess.map(async (file) => {
+                    const previewUrl = URL.createObjectURL(file);
+                    const compressedFile = await imageCompression(file, options);
+                    return { file: compressedFile, previewUrl };
+                })
+            );
+            setImages(prev => [...prev, ...processed]);
+            showToast('success', '이미지 준비 완료', `${processed.length}장이 추가됐습니다.`);
         } catch (error) {
             console.error(error);
-            showToast('error', '이미지 처리 실패', '사진 처리에 실패했습니다.');
-            setPreviewUrl(null);
-            setImageFile(null);
+            showToast('error', '이미지 처리 실패', '사진 처리 중 오류가 발생했습니다.');
         }
+
+        // input 초기화 (같은 파일 재선택 가능하게)
+        e.target.value = '';
+    };
+
+    const handleRemoveImage = (index) => {
+        setImages(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleSaveReport = async () => {
         try {
             setUploading(true);
             const stageInfo = FUNERAL_STAGES.find(s => s.number === activeStage);
-            
-            let finalContent = content;
-            if (!finalContent && !imageFile && !previewUrl) {
+
+            const hasImages = images.length > 0;
+
+            if (!content && !hasImages) {
                 if (stageInfo.requiresImage) {
                     showToast('error', '입력 오류', '해당 항목은 사진 첨부가 필수입니다.');
                     setUploading(false);
                     return;
-                } else {
-                    finalContent = '확인 완료';
                 }
-            } else if (stageInfo.requiresImage && !imageFile && !previewUrl) {
+            } else if (stageInfo.requiresImage && !hasImages) {
                 showToast('error', '입력 오류', '해당 항목은 사진 첨부가 필수입니다.');
                 setUploading(false);
                 return;
             }
 
-            let finalImageUrl = previewUrl; // Use existing URL if no new file is uploaded
+            const finalContent = content || (hasImages ? '' : '확인 완료');
 
-            // 1. Upload new image if exists
-            if (imageFile) {
-                const fileExt = 'webp';
-                const fileName = `${caseItem.id}-${activeStage}-${Date.now()}.${fileExt}`;
-                const filePath = `reports/${fileName}`;
+            // 새로 추가된 파일만 업로드, 기존 URL은 그대로 유지
+            const finalUrls = await Promise.all(
+                images.map(async (img) => {
+                    if (!img.file) return img.previewUrl; // 기존 저장된 URL
+                    const fileName = `${caseItem.id}-${activeStage}-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+                    const filePath = `reports/${fileName}`;
 
-                const { error: uploadError } = await supabase.storage
-                    .from('reports')
-                    .upload(filePath, imageFile, { upsert: true });
+                    const { error: uploadError } = await supabase.storage
+                        .from('reports')
+                        .upload(filePath, img.file, { upsert: true });
 
-                if (uploadError) throw uploadError;
+                    if (uploadError) throw uploadError;
 
-                const { data: { publicUrl } } = supabase.storage
-                    .from('reports')
-                    .getPublicUrl(filePath);
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('reports')
+                        .getPublicUrl(filePath);
 
-                finalImageUrl = `${publicUrl}?t=${Date.now()}`;
-            }
+                    return `${publicUrl}?t=${Date.now()}`;
+                })
+            );
 
-            // 2. Upsert the report record
-            // Check if report for this stage already exists
+            // 배열을 JSON 문자열로 저장
+            const imageUrlJson = finalUrls.length > 0 ? JSON.stringify(finalUrls) : null;
+
             const existingReport = reports.find(r => r.stage_number === activeStage);
             let dbError;
 
@@ -175,7 +209,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                     .from('funeral_progress_reports')
                     .update({
                         content: finalContent,
-                        image_url: finalImageUrl,
+                        image_url: imageUrlJson,
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', existingReport.id);
@@ -191,7 +225,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                         stage_number: activeStage,
                         stage_name: stageInfo.name,
                         content: finalContent,
-                        image_url: finalImageUrl
+                        image_url: imageUrlJson
                     }]);
                 dbError = error;
             }
@@ -199,17 +233,13 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
             if (dbError) throw dbError;
 
             showToast('success', '보고서 저장 완료', `${stageInfo.name} 단계 보고가 등록되었습니다.`);
-            fetchReports(); // Refresh data
-
-            // If there's a next stage, jump to it
-            // if (activeStage < 6) setActiveStage(activeStage + 1);
+            fetchReports();
 
         } catch (error) {
             console.error('Save error:', error);
             showToast('error', '저장 실패', '보고서 저장 중 문제가 발생했습니다.');
         } finally {
             setUploading(false);
-            setImageFile(null);
         }
     };
 
@@ -233,6 +263,16 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                 </div>
 
                 <div className="p-3 sm:p-5 overflow-y-auto bg-gray-50/50" style={{ maxHeight: 'calc(95vh - 80px)' }}>
+                    {/* 숨겨진 파일 input (다중 선택 허용) */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        capture="environment"
+                        onChange={handleImageChange}
+                        className="hidden"
+                    />
 
                     <div className="space-y-6 pb-6 w-full max-w-full overflow-hidden">
                         {GROUPS.map(groupName => (
@@ -244,7 +284,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                                         const isActive = activeStage === stage.number;
                                         return (
                                             <div key={stage.number} id={`stage-form-${stage.number}`} className={`border rounded-xl bg-white transition-all ${isActive ? 'border-indigo-400 shadow-md ring-1 ring-indigo-400' : 'border-gray-200'}`}>
-                                                <button 
+                                                <button
                                                     className="w-full px-4 py-3.5 flex items-center justify-between text-left"
                                                     onClick={() => {
                                                         if (isActive) {
@@ -265,36 +305,56 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                                                         <span className="text-[10px] sm:text-xs font-bold bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full whitespace-nowrap ml-2">사진 필수</span>
                                                     )}
                                                 </button>
-                                                
+
                                                 {isActive && (
                                                     <div className="p-4 bg-indigo-50/30 border-t border-indigo-100">
                                                         {stage.requiresImage && (
                                                             <div className="mb-4">
                                                                 <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
-                                                                    <ImageIcon className="w-4 h-4 text-indigo-500" /> 현장 사진 첨부
+                                                                    <ImageIcon className="w-4 h-4 text-indigo-500" />
+                                                                    현장 사진 첨부
+                                                                    <span className="ml-auto text-xs font-normal text-gray-400">{images.length}/10장</span>
                                                                 </label>
-                                                                <div className="relative group rounded-xl overflow-hidden border-2 border-dashed border-indigo-300 bg-white hover:border-indigo-500 transition-colors">
-                                                                    {previewUrl ? (
-                                                                        <div className="relative aspect-video w-full bg-black">
-                                                                            <img src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-                                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                                                <span className="bg-white/90 text-gray-800 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm backdrop-blur-sm">사진 변경하기</span>
+
+                                                                {/* 사진 그리드 */}
+                                                                <div className="grid grid-cols-3 gap-2 mb-2">
+                                                                    {images.map((img, idx) => (
+                                                                        <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-black group">
+                                                                            <img
+                                                                                src={img.previewUrl}
+                                                                                alt={`사진 ${idx + 1}`}
+                                                                                className="w-full h-full object-cover"
+                                                                            />
+                                                                            {/* 삭제 버튼 */}
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleRemoveImage(idx)}
+                                                                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                                                                            >
+                                                                                <Trash2 className="w-3 h-3" />
+                                                                            </button>
+                                                                            <div className="absolute bottom-1 left-1 bg-black/50 text-white text-[10px] px-1 rounded">
+                                                                                {idx + 1}
                                                                             </div>
                                                                         </div>
-                                                                    ) : (
-                                                                        <div className="py-8 flex flex-col items-center justify-center text-gray-400">
-                                                                            <Camera className="w-7 h-7 mb-2 text-indigo-300" />
-                                                                            <span className="text-sm font-bold text-indigo-900">사진 추가</span>
-                                                                        </div>
+                                                                    ))}
+
+                                                                    {/* 사진 추가 버튼 */}
+                                                                    {images.length < 10 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleAddImageClick}
+                                                                            className="aspect-square rounded-lg border-2 border-dashed border-indigo-300 bg-white hover:border-indigo-500 hover:bg-indigo-50 flex flex-col items-center justify-center gap-1 transition-colors text-indigo-400 hover:text-indigo-600"
+                                                                        >
+                                                                            <Plus className="w-6 h-6" />
+                                                                            <span className="text-[10px] font-bold">사진 추가</span>
+                                                                        </button>
                                                                     )}
-                                                                    <input
-                                                                        type="file"
-                                                                        accept="image/*"
-                                                                        capture="environment"
-                                                                        onChange={handleImageChange}
-                                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                                                    />
                                                                 </div>
+
+                                                                {images.length === 0 && (
+                                                                    <p className="text-xs text-gray-400 text-center mt-1">📷 사진 추가 버튼을 눌러 여러 장 첨부하세요</p>
+                                                                )}
                                                             </div>
                                                         )}
 
@@ -329,7 +389,6 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                             </div>
                         ))}
                     </div>
-
                 </div>
             </div>
         </div>

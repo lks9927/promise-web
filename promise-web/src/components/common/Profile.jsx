@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
-import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck, FileBadge } from 'lucide-react';
+import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck, FileBadge, Image as ImageIcon, Plus, Trash2, Search, X } from 'lucide-react';
+import { useRef } from 'react';
 import SendMessageModal from './SendMessageModal';
 import ImageBlurEditor from './ImageBlurEditor';
+import DaumPostcode from 'react-daum-postcode';
 
 export default function Profile({ user, onUpdate }) {
     const { showToast } = useNotification();
@@ -14,12 +16,37 @@ export default function Profile({ user, onUpdate }) {
     const [bankInfo, setBankInfo] = useState({ bank_name: '', account_number: '' });
     const [savingBank, setSavingBank] = useState(false);
 
+    const [galleryUrls, setGalleryUrls] = useState([]);
+    const [galleryUploading, setGalleryUploading] = useState(false);
+    const galleryInputRef = useRef(null);
+
     // Additional Profile Details
-    const [profileDetails, setProfileDetails] = useState({ introduction: '', experience_years: 0 });
+    const [profileDetails, setProfileDetails] = useState({ introduction: '', experience_years: 0, address: '', address_detail: '' });
     const [savingDetails, setSavingDetails] = useState(false);
+    const [isPostcodeOpen, setIsPostcodeOpen] = useState(false);
+
+    const handleCompletePostcode = (data) => {
+        let fullAddress = data.address;
+        let extraAddress = '';
+
+        if (data.addressType === 'R') {
+            if (data.bname !== '') extraAddress += data.bname;
+            if (data.buildingName !== '') extraAddress += (extraAddress !== '' ? `, ${data.buildingName}` : data.buildingName);
+            fullAddress += (extraAddress !== '' ? ` (${extraAddress})` : '');
+        }
+
+        setProfileDetails(prev => ({
+            ...prev,
+            address: fullAddress
+        }));
+        setIsPostcodeOpen(false);
+    };
 
     const [certUploading, setCertUploading] = useState(false);
     const [pendingCertImage, setPendingCertImage] = useState(null);
+
+    const [bizLicUploading, setBizLicUploading] = useState(false);
+    const [pendingBizLicImage, setPendingBizLicImage] = useState(null);
 
     const [masterInfo, setMasterInfo] = useState(null);
     const [messageModal, setMessageModal] = useState({ isOpen: false, recipientId: '', recipientName: '', recipientRoleClass: '' });
@@ -31,11 +58,17 @@ export default function Profile({ user, onUpdate }) {
     const handleCertFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
-        reader.onload = (event) => {
-            setPendingCertImage(event.target.result);
-        };
+        reader.onload = (event) => { setPendingCertImage(event.target.result); };
+        reader.readAsDataURL(file);
+        e.target.value = null;
+    };
+
+    const handleBizLicFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => { setPendingBizLicImage(event.target.result); };
         reader.readAsDataURL(file);
         e.target.value = null;
     };
@@ -82,6 +115,35 @@ export default function Profile({ user, onUpdate }) {
         }
     };
 
+    // 사업자등록증 저장
+    const handleBizLicSave = async (blurredBlob) => {
+        setPendingBizLicImage(null);
+        if (!blurredBlob) return;
+        try {
+            setBizLicUploading(true);
+            showToast('info', '업로드 중...', '사업자등록증을 저장하고 있습니다.');
+            const fileName = `bizlic-${user.id}-${Date.now()}.jpeg`;
+            const filePath = `certificates/${fileName}`;
+            const { error: uploadError } = await supabase.storage
+                .from('profiles')
+                .upload(filePath, blurredBlob, { upsert: true, contentType: 'image/jpeg' });
+            if (uploadError) throw uploadError;
+            const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
+            const timestampedUrl = `${publicUrl}?t=${Date.now()}`;
+            const { error: updateError } = await supabase.from('profiles')
+                .update({ business_license_url: timestampedUrl })
+                .eq('id', user.id);
+            if (updateError) throw updateError;
+            setProfileData(prev => ({ ...prev, business_license_url: timestampedUrl }));
+            showToast('success', '업로드 완료', '사업자등록증이 저장되었습니다.');
+        } catch (error) {
+            console.error(error);
+            showToast('error', '업로드 실패', '사업자등록증 업로드 중 오류가 발생했습니다.');
+        } finally {
+            setBizLicUploading(false);
+        }
+    };
+
     const fetchProfile = async () => {
         try {
             setLoading(true);
@@ -95,8 +157,11 @@ export default function Profile({ user, onUpdate }) {
             setBankInfo({ bank_name: data.bank_name || '', account_number: data.account_number || '' });
             setProfileDetails({
                 introduction: data.introduction || '',
-                experience_years: data.experience_years || 0
+                experience_years: data.experience_years || 0,
+                address: data.address || '',
+                address_detail: data.address_detail || ''
             });
+            setGalleryUrls(data.gallery_urls || []);
 
             if (['leader', 'dealer', 'morning', 'meal', '아침', '식사'].includes(user.role) && user.grade !== 'Master') {
                 const { data: pData } = await supabase.from('partners').select('master_id').eq('user_id', user.id).single();
@@ -202,6 +267,68 @@ export default function Profile({ user, onUpdate }) {
         }
     };
 
+    const handleGalleryUpload = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        const remaining = 10 - galleryUrls.length;
+        if (remaining <= 0) {
+            showToast('error', '최대 10장', '추가 프로필 사진은 최대 10장까지 가능합니다.');
+            return;
+        }
+
+        const filesToProcess = files.slice(0, remaining);
+        setGalleryUploading(true);
+        showToast('info', '사진 업로드 중...', '여러 장의 사진을 처리하고 있습니다.');
+
+        try {
+            const options = { maxSizeMB: 1, maxWidthOrHeight: 1200, useWebWorker: true, fileType: 'image/webp' };
+            const newUrls = [];
+
+            for (const file of filesToProcess) {
+                const compressedFile = await imageCompression(file, options);
+                const fileName = `gallery-${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.webp`;
+                const filePath = `avatars/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, compressedFile);
+                if (uploadError) throw uploadError;
+
+                const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
+                newUrls.push(publicUrl);
+            }
+
+            const updatedUrls = [...galleryUrls, ...newUrls];
+
+            const { error: updateError } = await supabase.from('profiles').update({ gallery_urls: updatedUrls }).eq('id', user.id);
+            if (updateError) throw updateError;
+
+            setGalleryUrls(updatedUrls);
+            setProfileData(prev => ({ ...prev, gallery_urls: updatedUrls }));
+            showToast('success', '업로드 완료', '추가 프로필 사진이 등록되었습니다.');
+
+        } catch (error) {
+            console.error(error);
+            showToast('error', '업로드 실패', '사진 업로드 중 오류가 발생했습니다.');
+        } finally {
+            setGalleryUploading(false);
+            e.target.value = null;
+        }
+    };
+
+    const handleRemoveGalleryImage = async (indexToRemove) => {
+        if (!confirm('이 사진을 삭제하시겠습니까?')) return;
+        const updatedUrls = galleryUrls.filter((_, i) => i !== indexToRemove);
+        try {
+            const { error } = await supabase.from('profiles').update({ gallery_urls: updatedUrls }).eq('id', user.id);
+            if (error) throw error;
+            setGalleryUrls(updatedUrls);
+            setProfileData(prev => ({ ...prev, gallery_urls: updatedUrls }));
+            showToast('success', '삭제 완료', '사진이 삭제되었습니다.');
+        } catch (error) {
+            showToast('error', '삭제 실패', '사진 삭제 중 오류가 발생했습니다.');
+        }
+    };
+
     const handleSaveProfileDetails = async () => {
         try {
             setSavingDetails(true);
@@ -209,7 +336,9 @@ export default function Profile({ user, onUpdate }) {
                 .from('profiles')
                 .update({
                     introduction: profileDetails.introduction,
-                    experience_years: parseInt(profileDetails.experience_years) || 0
+                    experience_years: parseInt(profileDetails.experience_years) || 0,
+                    address: profileDetails.address,
+                    address_detail: profileDetails.address_detail
                 })
                 .eq('id', user.id);
             if (error) throw error;
@@ -282,17 +411,16 @@ export default function Profile({ user, onUpdate }) {
                             <User className="w-5 h-5 text-indigo-600" /> 팀장 프로필 정보 (고객에게 노출됨)
                         </h3>
                         <div className="space-y-4">
-                            {/* Certificate Upload Area */}
+                            {/* 1. 상례지도사 자격증 업로드 */}
                             <div className="bg-white p-4 rounded-lg border border-indigo-100">
-                                <label className="block text-xs font-bold text-gray-800 mb-2 flex items-center gap-2">
-                                    <FileBadge className="w-4 h-4 text-indigo-500" /> 상례지도사 자격증 / 사업자등록증
+                                <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center gap-2">
+                                    <FileBadge className="w-4 h-4 text-indigo-500" /> ① 상례지도사 자격증
                                 </label>
-                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">자격증을 업로드하여 고객 신뢰도를 높여주세요. 업로드 과정에서 <strong>주민번호 뒷자리 등을 블러(모자이크) 처리</strong>할 수 있습니다.</p>
-
+                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">자격증을 업로드하세요. 업로드 과정에서 <strong>주민번호 뒷자리 등을 블러(모자이크) 처리</strong>할 수 있습니다.</p>
                                 {profileData?.certificate_url ? (
                                     <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 mb-2">
                                         <img src={profileData.certificate_url} alt="자격증" className="w-full h-auto max-h-48 object-contain" />
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                             <label className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg text-sm font-bold shadow-lg hover:bg-gray-100 transition-colors">
                                                 다시 업로드하기
                                                 <input type="file" accept="image/*" onChange={handleCertFileSelect} className="hidden" disabled={certUploading} />
@@ -303,11 +431,101 @@ export default function Profile({ user, onUpdate }) {
                                     <label className={`block w-full text-center py-6 border-2 border-dashed border-indigo-200 rounded-lg cursor-pointer hover:bg-indigo-50 hover:border-indigo-400 transition-colors ${certUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                                         <div className="flex flex-col items-center justify-center text-indigo-500">
                                             {certUploading ? <Loader2 className="w-6 h-6 animate-spin mb-2" /> : <Camera className="w-6 h-6 mb-2" />}
-                                            <span className="text-sm font-bold">{certUploading ? '처리 중...' : '터치하여 사진 업로드'}</span>
+                                            <span className="text-sm font-bold">{certUploading ? '처리 중...' : '사진 업로드'}</span>
                                         </div>
                                         <input type="file" accept="image/*" onChange={handleCertFileSelect} className="hidden" disabled={certUploading} />
                                     </label>
                                 )}
+                            </div>
+
+                            {/* 2. 사업자등록증 업로드 */}
+                            <div className="bg-white p-4 rounded-lg border border-indigo-100">
+                                <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center gap-2">
+                                    <FileBadge className="w-4 h-4 text-purple-500" /> ② 사업자등록증
+                                </label>
+                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">사업자등록증을 업로드하세요. 업로드 과정에서 <strong>민감 정보를 블러(모자이크) 처리</strong>할 수 있습니다.</p>
+                                {profileData?.business_license_url ? (
+                                    <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 mb-2">
+                                        <img src={profileData.business_license_url} alt="사업자등록증" className="w-full h-auto max-h-48 object-contain" />
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <label className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg text-sm font-bold shadow-lg hover:bg-gray-100 transition-colors">
+                                                다시 업로드하기
+                                                <input type="file" accept="image/*" onChange={handleBizLicFileSelect} className="hidden" disabled={bizLicUploading} />
+                                            </label>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <label className={`block w-full text-center py-6 border-2 border-dashed border-purple-200 rounded-lg cursor-pointer hover:bg-purple-50 hover:border-purple-400 transition-colors ${bizLicUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        <div className="flex flex-col items-center justify-center text-purple-400">
+                                            {bizLicUploading ? <Loader2 className="w-6 h-6 animate-spin mb-2" /> : <Camera className="w-6 h-6 mb-2" />}
+                                            <span className="text-sm font-bold">{bizLicUploading ? '처리 중...' : '사진 업로드'}</span>
+                                        </div>
+                                        <input type="file" accept="image/*" onChange={handleBizLicFileSelect} className="hidden" disabled={bizLicUploading} />
+                                    </label>
+                                )}
+                            </div>
+
+                            {/* Gallery Upload Area */}
+                            <div className="bg-white p-4 rounded-lg border border-indigo-100">
+                                <label className="block text-xs font-bold text-gray-800 mb-2 flex items-center gap-2">
+                                    <ImageIcon className="w-4 h-4 text-indigo-500" /> 추가 프로필 (갤러리 / 현장 사진 등)
+                                </label>
+                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">최대 10장까지 등록 가능하며, 고객에게 신뢰감을 줄 수 있는 다양한 프로필/현장 사진을 올려주세요.</p>
+
+                                <div className="grid grid-cols-3 gap-2 mb-3">
+                                    {galleryUrls.map((url, i) => (
+                                        <div key={i} className="relative aspect-square rounded-lg border border-gray-200 overflow-hidden bg-gray-50 group">
+                                            <img src={url} alt={`Gallery ${i}`} className="w-full h-full object-cover" />
+                                            <button
+                                                onClick={() => handleRemoveGalleryImage(i)}
+                                                className="absolute top-1 right-1 w-6 h-6 bg-red-500/80 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {galleryUrls.length < 10 && (
+                                        <button
+                                            onClick={() => galleryInputRef.current?.click()}
+                                            disabled={galleryUploading}
+                                            className={`aspect-square rounded-lg border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:bg-indigo-50 transition-colors ${galleryUploading ? 'opacity-50' : ''}`}
+                                        >
+                                            {galleryUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-6 h-6" />}
+                                            <span className="text-[10px] font-bold mt-1">사진 추가</span>
+                                        </button>
+                                    )}
+                                </div>
+                                <input type="file" multiple accept="image/*" className="hidden" ref={galleryInputRef} onChange={handleGalleryUpload} />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-1">자택 주소 (상례용품 배송지)</label>
+                                <div className="space-y-2">
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            value={profileDetails.address}
+                                            onClick={() => setIsPostcodeOpen(true)}
+                                            placeholder="주소 검색을 통해 주소를 입력해주세요."
+                                            className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium cursor-pointer"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsPostcodeOpen(true)}
+                                            className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-bold text-sm whitespace-nowrap shadow-sm"
+                                        >
+                                            <Search className="w-4 h-4" /> 주소 검색
+                                        </button>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={profileDetails.address_detail}
+                                        onChange={(e) => setProfileDetails({ ...profileDetails, address_detail: e.target.value })}
+                                        placeholder="상세 주소 및 배송 특이사항 (예: 101동 202호 / 공동현관 비밀번호 1234#)"
+                                        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium"
+                                    />
+                                </div>
                             </div>
 
                             <div>
@@ -454,6 +672,32 @@ export default function Profile({ user, onUpdate }) {
                     onSave={handleCertSave}
                     onCancel={() => setPendingCertImage(null)}
                 />
+            )}
+            {pendingBizLicImage && (
+                <ImageBlurEditor
+                    imageUrl={pendingBizLicImage}
+                    onSave={handleBizLicSave}
+                    onCancel={() => setPendingBizLicImage(null)}
+                />
+            )}
+
+            {/* Daum Postcode Modal */}
+            {isPostcodeOpen && (
+                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
+                        <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <Search className="w-5 h-5 text-indigo-600" /> 주소 검색
+                            </h3>
+                            <button onClick={() => setIsPostcodeOpen(false)} className="text-gray-400 hover:text-gray-700 p-1 rounded-full hover:bg-gray-200 transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="h-[450px] overflow-y-auto">
+                            <DaumPostcode onComplete={handleCompletePostcode} style={{ width: '100%', height: '100%' }} />
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

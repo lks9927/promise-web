@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
     Phone,
-    PhoneCall, HeartHandshake, ShieldCheck, Activity, UserPlus
+    PhoneCall, HeartHandshake, ShieldCheck, Activity, UserPlus,
+    Users, Shield, Clock, Heart
 } from 'lucide-react';
 import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';

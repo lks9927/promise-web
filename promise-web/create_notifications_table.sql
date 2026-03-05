@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    sender_id UUID REFERENCES profiles(id) ON DELETE SET NULL, -- Added to track who sent the message
     type VARCHAR(50) NOT NULL, -- 'info', 'success', 'warning', 'error'
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,

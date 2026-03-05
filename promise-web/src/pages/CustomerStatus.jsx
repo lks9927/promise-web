@@ -64,6 +64,8 @@ export default function CustomerStatus() {
                         phone,
                         role,
                         avatar_url,
+                        certificate_url,
+                        business_license_url,
                         experience_years,
                         introduction
                     )

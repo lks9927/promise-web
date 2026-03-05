@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS notifications CASCADE;
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    sender_id UUID REFERENCES profiles(id) ON DELETE SET NULL, -- 발신자 추적
     type TEXT NOT NULL,
     title TEXT NOT NULL,
     message TEXT NOT NULL,
