@@ -21,7 +21,8 @@ import {
     Phone,
     Tag,
     ExternalLink,
-    Package
+    Package,
+    ClipboardList
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
