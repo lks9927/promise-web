@@ -262,6 +262,21 @@ export default function TeamLeaderDashboard() {
         }
     };
 
+    const handleConfirmDelivery = async (orderId) => {
+        if (!confirm('물품의 도착 및 상태를 확인하셨습니까?\n(인수 확인을 완료해야 외주업체와 정산이 진행됩니다)')) return;
+        try {
+            const { error } = await supabase
+                .from('orders')
+                .update({ status: 'completed' })
+                .eq('id', orderId);
+            if (error) throw error;
+            showToast('success', '인수 확인 완료', '정상적으로 인수 처리가 완료되었습니다.');
+            fetchData();
+        } catch (error) {
+            showToast('error', '처리 실패', error.message);
+        }
+    };
+
     const handleCouponUsage = async (couponId, usedFor, caseId) => {
         try {
             const { error } = await supabase
@@ -414,6 +429,7 @@ export default function TeamLeaderDashboard() {
                         isFlowerOrderRequired={isFlowerOrderRequired}
                         onUpdate={handleStatusUpdate}
                         onOrderFlower={handleOrderFlower}
+                        onConfirmDelivery={handleConfirmDelivery}
                         onOpenReport={(item) => setReportModal({ isOpen: true, caseItem: item })}
                         onOpenOrder={(item) => setOrderModal({ isOpen: true, caseData: item })}
                         onOpenCoupon={(item) => {
@@ -692,12 +708,12 @@ function AvailableList({ cases, onBid, isMaster, onOpenAssignModal }) {
     );
 }
 
-function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail, onOpenOrder }) {
+function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail, onOpenOrder, onConfirmDelivery }) {
     if (cases.length === 0) return <div className="bg-white rounded-xl p-10 text-center border border-gray-200 mt-8"><p className="text-gray-500">현재 진행 중인 건이 없습니다.</p></div>;
-    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} onOpenReport={onOpenReport} onOpenCoupon={onOpenCoupon} onOpenDetail={onOpenDetail} onOpenOrder={onOpenOrder} />);
+    return cases.map(item => <CaseCard key={item.id} item={item} isFlowerOrderRequired={isFlowerOrderRequired} onUpdate={onUpdate} onOrderFlower={onOrderFlower} onOpenReport={onOpenReport} onOpenCoupon={onOpenCoupon} onOpenDetail={onOpenDetail} onOpenOrder={onOpenOrder} onConfirmDelivery={onConfirmDelivery} />);
 }
 
-function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail, onOpenOrder }) {
+function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail, onOpenOrder, onConfirmDelivery }) {
     const { id, profiles, location, package_name, status, flower_orders, coupons, deceased_name, room_number, encoffinment_time, funeral_end_time, orders } = item;
     const hasOrderedFlower = flower_orders && flower_orders.length > 0;
     const linkedCoupon = coupons?.[0];
@@ -775,7 +791,8 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                                 pending: { label: '발주 대기', color: 'text-orange-600 bg-orange-50 border-orange-100' },
                                 confirmed: { label: '확인 완료', color: 'text-blue-600 bg-blue-50 border-blue-100' },
                                 shipped: { label: '배송 중', color: 'text-purple-600 bg-purple-50 border-purple-100' },
-                                delivered: { label: '납품/확인 완료', color: 'text-green-600 bg-green-50 border-green-100' },
+                                delivered: { label: '배송 완료 (인수 대기)', color: 'text-amber-600 bg-amber-50 border-amber-100' },
+                                completed: { label: '납품/인수 완료', color: 'text-green-600 bg-green-50 border-green-100' },
                                 cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
                             };
                             const stInfo = stMap[order.status] || { label: order.status, color: 'text-gray-600 bg-gray-50 border-gray-100' };
@@ -793,7 +810,7 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                                         </span>
                                     </div>
 
-                                    {order.status === 'delivered' && delivery && (
+                                    {(order.status === 'delivered' || order.status === 'completed') && delivery && (
                                         <div className="mt-3 pt-3 border-t border-gray-100">
                                             <p className="text-xs text-gray-500 mb-2">
                                                 ✅ 납품 시간: {new Date(delivery.completed_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}<br />
@@ -813,6 +830,14 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                                                 <div className="mt-2 text-xs bg-gray-50 p-2 rounded text-gray-600">
                                                     <strong className="text-gray-500">배송 메모:</strong> {delivery.notes}
                                                 </div>
+                                            )}
+                                            {order.status === 'delivered' && (
+                                                <button
+                                                    onClick={() => onConfirmDelivery(order.id)}
+                                                    className="mt-3 w-full font-bold bg-green-600 hover:bg-green-700 text-white rounded-xl py-3 shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <CheckCircle className="w-4 h-4" /> 인수 확인 완료 (정산 동의)
+                                                </button>
                                             )}
                                         </div>
                                     )}
