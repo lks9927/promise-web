@@ -733,129 +733,53 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4 transition-all hover:shadow-md">
-            <div className="p-5 border-b border-gray-50 flex justify-between items-start bg-gray-50/30">
-                <div>
-                    <div className="flex items-center gap-2 mb-2">{getStatusBadge(status)}</div>
-                    <h4 className="font-bold text-lg text-gray-900">{profiles?.name || '고객'} 님 장례</h4>
-                    <div className="flex items-center text-gray-500 text-sm mt-1">
-                        <MapPin className="w-3.5 h-3.5 mr-1" />{location} {room_number && <span className="text-indigo-600 font-bold ml-1">({room_number})</span>}
-                    </div>
-                    {deceased_name && (
-                        <div className="text-sm font-bold text-gray-700 mt-1">
-                            🥀 고인명: {deceased_name}
-                        </div>
-                    )}
-                    {(encoffinment_time || funeral_end_time) && (
-                        <div className="flex flex-wrap gap-2 mt-1">
-                            {encoffinment_time && (
-                                <span className="text-[10px] text-gray-500 flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded">
-                                    <Clock className="w-3 h-3" /> 입관: {new Date(encoffinment_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                            )}
-                            {funeral_end_time && (
-                                <span className="text-[10px] text-gray-500 flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded">
-                                    <Calendar className="w-3 h-3" /> 발인: {new Date(funeral_end_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                            )}
-                        </div>
-                    )}
-                    {linkedCoupon && (
-                        <div className="mt-2 flex items-center gap-2">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isCouponUsed ? 'bg-gray-100 text-gray-500' : 'bg-indigo-100 text-indigo-700 animate-pulse'}`}>
-                                <Tag className="w-3 h-3 inline mr-1" />
-                                쿠폰: {linkedCoupon.code} ({linkedCoupon.amount.toLocaleString()}원)
-                            </span>
-                            {isCouponUsed && (
-                                <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
-                                    사용됨: {linkedCoupon.used_for}
-                                </span>
-                            )}
-                        </div>
-                    )}
+            <div className="p-5 border-b border-gray-50 bg-gray-50/30">
+                <div className="flex items-center gap-2 mb-2">{getStatusBadge(status)}</div>
+                <h4 className="font-bold text-lg text-gray-900 mt-1">
+                    {deceased_name ? `🥀 고인명: ${deceased_name}` : '🥀 고인명 미상'}
+                </h4>
+                <div className="flex items-center text-gray-700 font-bold text-sm mt-2">
+                    <MapPin className="w-4 h-4 text-indigo-500 mr-1" />{location || '장례식장 미정'} {room_number && <span className="text-indigo-600 font-bold ml-1">({room_number})</span>}
                 </div>
-                {profiles?.phone && (
-                    <a href={`tel:${profiles.phone}`} className="flex-shrink-0 w-10 h-10 bg-green-50 text-green-600 rounded-full flex items-center justify-center hover:bg-green-100 transition-colors shadow-sm ml-2">
-                        <Phone className="w-5 h-5" />
-                    </a>
+                {(encoffinment_time || funeral_end_time) && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        {encoffinment_time && (
+                            <span className="text-[11px] text-gray-600 flex items-center gap-1 bg-white border border-gray-200 px-2 py-1 rounded-md shadow-sm">
+                                <Clock className="w-3.5 h-3.5" /> 입관: {new Date(encoffinment_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        )}
+                        {funeral_end_time && (
+                            <span className="text-[11px] text-gray-600 flex items-center gap-1 bg-white border border-gray-200 px-2 py-1 rounded-md shadow-sm">
+                                <Calendar className="w-3.5 h-3.5" /> 발인: {new Date(funeral_end_time).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        )}
+                    </div>
+                )}
+                {linkedCoupon && (
+                    <div className="mt-3 flex items-center gap-2">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isCouponUsed ? 'bg-gray-100 text-gray-500' : 'bg-indigo-100 text-indigo-700 animate-pulse'}`}>
+                            <Tag className="w-3 h-3 inline mr-1" />
+                            쿠폰: {linkedCoupon.code} ({linkedCoupon.amount.toLocaleString()}원)
+                        </span>
+                        {isCouponUsed && (
+                            <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
+                                사용됨: {linkedCoupon.used_for}
+                            </span>
+                        )}
+                    </div>
                 )}
             </div>
-            <div className="p-4 bg-white border-t border-gray-100 space-y-2">
-                {/* 발주/납품 현황 표시 (공통 노출) */}
-                {orders && orders.length > 0 && (
-                    <div className="mb-4 space-y-2">
-                        <h5 className="font-bold text-gray-700 text-sm flex items-center gap-1">
-                            <Package className="w-4 h-4 text-gray-500" /> 발주 및 납품 현황 ({orders.length}건)
-                        </h5>
-                        {orders.map(order => {
-                            const stMap = {
-                                pending: { label: '발주 대기', color: 'text-orange-600 bg-orange-50 border-orange-100' },
-                                confirmed: { label: '확인 완료', color: 'text-blue-600 bg-blue-50 border-blue-100' },
-                                shipped: { label: '배송 중', color: 'text-purple-600 bg-purple-50 border-purple-100' },
-                                delivered: { label: '배송 완료 (인수 대기)', color: 'text-amber-600 bg-amber-50 border-amber-100' },
-                                completed: { label: '납품/인수 완료', color: 'text-green-600 bg-green-50 border-green-100' },
-                                cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
-                            };
-                            const stInfo = stMap[order.status] || { label: order.status, color: 'text-gray-600 bg-gray-50 border-gray-100' };
-                            const delivery = order.deliveries?.[0]; // get the latest delivery info if any
 
-                            return (
-                                <div key={order.id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-3 text-sm">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <div className="font-bold text-gray-800">{order.vendors?.company_name}</div>
-                                            <div className="text-xs text-gray-400 font-mono mt-0.5">{order.order_number}</div>
-                                        </div>
-                                        <span className={`text-xs font-bold px-2.5 py-1 rounded-md border shrink-0 ${stInfo.color}`}>
-                                            {stInfo.label}
-                                        </span>
-                                    </div>
+            <div className="p-4 bg-white border-t border-gray-100 space-y-4">
 
-                                    {(order.status === 'delivered' || order.status === 'completed') && delivery && (
-                                        <div className="mt-3 pt-3 border-t border-gray-100">
-                                            <p className="text-xs text-gray-500 mb-2">
-                                                ✅ 납품 시간: {new Date(delivery.completed_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}<br />
-                                                🧑‍🔧 담당 기사: {delivery.driver_name || '미확인'}
-                                            </p>
-                                            {delivery.delivery_photo_url && (
-                                                <a href={delivery.delivery_photo_url} target="_blank" rel="noopener noreferrer" className="block w-full">
-                                                    <img
-                                                        src={delivery.delivery_photo_url}
-                                                        alt="납품 완료 사진"
-                                                        className="w-full h-32 object-cover rounded-lg border border-gray-200"
-                                                    />
-                                                    <p className="text-[10px] text-gray-400 text-center mt-1">사진을 누르면 크게 볼 수 있습니다</p>
-                                                </a>
-                                            )}
-                                            {delivery.notes && (
-                                                <div className="mt-2 text-xs bg-gray-50 p-2 rounded text-gray-600">
-                                                    <strong className="text-gray-500">배송 메모:</strong> {delivery.notes}
-                                                </div>
-                                            )}
-                                            {order.status === 'delivered' && (
-                                                <button
-                                                    onClick={() => onConfirmDelivery(order.id)}
-                                                    className="mt-3 w-full font-bold bg-green-600 hover:bg-green-700 text-white rounded-xl py-3 shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                                                >
-                                                    <CheckCircle className="w-4 h-4" /> 인수 확인 완료 (정산 동의)
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {status === 'assigned' && (
-                    <div className="space-y-2">
+                {/* 1. 장례 진행 관련 (초기 배정 및 상담, 서비스 진행) */}
+                <div>
+                    {status === 'assigned' && (
                         <button onClick={() => onUpdate(id, 'consulting')} className="w-full bg-orange-50 text-orange-700 border border-orange-200 font-bold py-3.5 rounded-xl hover:bg-orange-100 transition-colors flex items-center justify-center gap-2">
                             <span>다음 단계:</span> <span>🗣️ 상담 시작</span>
                         </button>
-                    </div>
-                )}
-                {status === 'consulting' && (
-                    <div className="space-y-2">
+                    )}
+                    {status === 'consulting' && (
                         <div className="grid grid-cols-2 gap-3">
                             {linkedCoupon && !isCouponUsed ? (
                                 <button onClick={() => onOpenCoupon(item)} className="col-span-2 bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2">
@@ -877,40 +801,115 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                                 <span>❌ 상담 취소</span>
                             </button>
                         </div>
-                    </div>
-                )}
-                {status === 'in_progress' && (
-                    <div className="space-y-2">
-                        <button onClick={() => onOpenReport(item)} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 mb-2">
-                            <span>📷 장례 진행 보고 (25단계 중 {item.funeral_progress_reports?.length || 0}개 완료)</span>
+                    )}
+                    {status === 'in_progress' && (
+                        <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100 space-y-2 mb-4">
+                            <h5 className="font-bold text-gray-700 text-sm mb-2 flex items-center gap-1.5">
+                                <ClipboardList className="w-4 h-4 text-indigo-500" /> 장례 진행 관련
+                            </h5>
+                            <button onClick={() => onOpenReport(item)} className="w-full bg-white text-indigo-700 border border-indigo-200 font-bold py-3.5 rounded-xl hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                <span>📷 장례 진행 보고 (25단계 중 {item.funeral_progress_reports?.length || 0}개 완료)</span>
+                            </button>
+                            <button onClick={() => onUpdate(id, 'team_settling')} className="w-full bg-green-50 text-green-700 border border-green-200 font-bold py-3.5 rounded-xl hover:bg-green-100 shadow-sm transition-all flex items-center justify-center gap-2 mt-2">
+                                <span>다음 단계:</span> <span>🟢 장례 종료 (정산 요청)</span>
+                            </button>
+                        </div>
+                    )}
+                    {status === 'team_settling' && (
+                        <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
+                            <CheckCircle className="w-5 h-5 text-green-500" />
+                            🟢 정산 확인 대기 (관리자 승인 대기)
                         </button>
-                        {/* 외주 발주 버튼 */}
-                        <button onClick={() => onOpenOrder(item)} className="w-full bg-sky-50 text-sky-700 border border-sky-200 font-bold py-3.5 rounded-xl hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 mb-2">
-                            <span>📦 장례 관련 용품 발주</span>
+                    )}
+                    {status === 'hq_check' && (
+                        <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
+                            <Clock className="w-5 h-5" />
+                            🟢 본사 정산 검토 중
                         </button>
+                    )}
+                    {status === 'completed' && (
+                        <button className="w-full bg-gray-50 border border-gray-200 text-gray-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
+                            ⚪ 완전히 종료된 장례입니다.
+                        </button>
+                    )}
+                </div>
 
-                        <button onClick={() => onUpdate(id, 'team_settling')} className="w-full bg-green-50 text-green-700 border border-green-200 font-bold py-3.5 rounded-xl hover:bg-green-100 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
-                            <span>다음 단계:</span> <span>🟢 장례 종료 (정산 요청)</span>
-                        </button>
+                {/* 2. 외주 관련 (발주 및 납품 현황) - 상담 중 단계 이상부터 노출 */}
+                {(status === 'consulting' || status === 'in_progress' || status === 'team_settling' || status === 'hq_check' || status === 'completed') && (
+                    <div className="bg-white p-3 rounded-xl border border-gray-200 space-y-3 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)]">
+                        <h5 className="font-bold text-gray-700 text-sm mb-2 flex items-center gap-1.5">
+                            <Package className="w-4 h-4 text-sky-500" /> 외주 관련 (검색 및 발주)
+                        </h5>
+
+                        {(status === 'in_progress' || status === 'consulting') && (
+                            <button onClick={() => onOpenOrder(item)} className="w-full bg-sky-50 text-sky-700 border border-sky-200 font-bold py-3.5 rounded-xl hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 mb-3">
+                                <span>📦 장례 관련 용품 발주</span>
+                            </button>
+                        )}
+
+                        {orders && orders.length > 0 && (
+                            <div className="space-y-2 mt-2">
+                                {orders.map(order => {
+                                    const stMap = {
+                                        pending: { label: '발주 대기', color: 'text-orange-600 bg-orange-50 border-orange-100' },
+                                        confirmed: { label: '확인 완료', color: 'text-blue-600 bg-blue-50 border-blue-100' },
+                                        shipped: { label: '배송 중', color: 'text-purple-600 bg-purple-50 border-purple-100' },
+                                        delivered: { label: '배송 완료 (인수 대기)', color: 'text-amber-600 bg-amber-50 border-amber-100' },
+                                        completed: { label: '납품/인수 완료', color: 'text-green-600 bg-green-50 border-green-100' },
+                                        cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
+                                    };
+                                    const stInfo = stMap[order.status] || { label: order.status, color: 'text-gray-600 bg-gray-50 border-gray-100' };
+                                    const delivery = order.deliveries?.[0];
+
+                                    return (
+                                        <div key={order.id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-3 text-sm">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className="font-bold text-gray-800">{order.vendors?.company_name}</div>
+                                                    <div className="text-xs text-gray-400 font-mono mt-0.5">{order.order_number}</div>
+                                                </div>
+                                                <span className={`text-xs font-bold px-2.5 py-1 rounded-md border shrink-0 ${stInfo.color}`}>
+                                                    {stInfo.label}
+                                                </span>
+                                            </div>
+
+                                            {(order.status === 'delivered' || order.status === 'completed') && delivery && (
+                                                <div className="mt-3 pt-3 border-t border-gray-100">
+                                                    <p className="text-xs text-gray-500 mb-2">
+                                                        ✅ 납품 시간: {new Date(delivery.completed_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}<br />
+                                                        🧑‍🔧 담당 기사: {delivery.driver_name || '미확인'}
+                                                    </p>
+                                                    {delivery.delivery_photo_url && (
+                                                        <a href={delivery.delivery_photo_url} target="_blank" rel="noopener noreferrer" className="block w-full">
+                                                            <img
+                                                                src={delivery.delivery_photo_url}
+                                                                alt="납품 완료 사진"
+                                                                className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                                                            />
+                                                            <p className="text-[10px] text-gray-400 text-center mt-1">사진을 누르면 크게 볼 수 있습니다</p>
+                                                        </a>
+                                                    )}
+                                                    {delivery.notes && (
+                                                        <div className="mt-2 text-xs bg-gray-50 p-2 rounded text-gray-600">
+                                                            <strong className="text-gray-500">배송 메모:</strong> {delivery.notes}
+                                                        </div>
+                                                    )}
+                                                    {order.status === 'delivered' && (
+                                                        <button
+                                                            onClick={() => onConfirmDelivery(order.id)}
+                                                            className="mt-3 w-full font-bold bg-green-600 hover:bg-green-700 text-white rounded-xl py-3 shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                                        >
+                                                            <CheckCircle className="w-4 h-4" /> 인수 확인 완료 (정산 동의)
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
-                )}
-                {status === 'team_settling' && (
-                    <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                        🟢 정산 확인 대기 (관리자 승인 대기)
-                    </button>
-                )}
-                {status === 'hq_check' && (
-                    <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
-                        <Clock className="w-5 h-5" />
-                        🟢 본사 정산 검토 중
-                    </button>
-                )}
-                {status === 'completed' && (
-                    <button className="w-full bg-gray-50 border border-gray-200 text-gray-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-default">
-                        <CheckCircle className="w-5 h-5" />
-                        ⚪ 완료된 장례입니다
-                    </button>
                 )}
             </div>
         </div>
