@@ -160,7 +160,7 @@ export default function TeamLeaderDashboard() {
 
             const { data: myAssigned, error: myError } = await supabase
                 .from('funeral_cases')
-                .select('*, profiles:customer_id(name, phone), funeral_progress_reports(id), orders(*, vendors(company_name))')
+                .select('*, profiles:customer_id(name, phone), funeral_progress_reports(id), orders(*, vendors(company_name), deliveries(*))')
                 .in('status', ['assigned', 'consulting', 'in_progress', 'team_settling', 'hq_check', 'completed'])
                 .in('team_leader_id', targetTeamIds) // The core visibility rule
                 .order('created_at', { ascending: false });
@@ -779,15 +779,43 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                                 cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
                             };
                             const stInfo = stMap[order.status] || { label: order.status, color: 'text-gray-600 bg-gray-50 border-gray-100' };
+                            const delivery = order.deliveries?.[0]; // get the latest delivery info if any
+
                             return (
-                                <div key={order.id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-3 flex justify-between items-center text-sm">
-                                    <div>
-                                        <div className="font-bold text-gray-800">{order.vendors?.company_name}</div>
-                                        <div className="text-xs text-gray-500 font-mono mt-0.5">{order.order_number}</div>
+                                <div key={order.id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-3 text-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <div className="font-bold text-gray-800">{order.vendors?.company_name}</div>
+                                            <div className="text-xs text-gray-400 font-mono mt-0.5">{order.order_number}</div>
+                                        </div>
+                                        <span className={`text-xs font-bold px-2.5 py-1 rounded-md border shrink-0 ${stInfo.color}`}>
+                                            {stInfo.label}
+                                        </span>
                                     </div>
-                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${stInfo.color}`}>
-                                        {stInfo.label}
-                                    </span>
+
+                                    {order.status === 'delivered' && delivery && (
+                                        <div className="mt-3 pt-3 border-t border-gray-100">
+                                            <p className="text-xs text-gray-500 mb-2">
+                                                ✅ 납품 시간: {new Date(delivery.completed_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}<br />
+                                                🧑‍🔧 담당 기사: {delivery.driver_name || '미확인'}
+                                            </p>
+                                            {delivery.delivery_photo_url && (
+                                                <a href={delivery.delivery_photo_url} target="_blank" rel="noopener noreferrer" className="block w-full">
+                                                    <img
+                                                        src={delivery.delivery_photo_url}
+                                                        alt="납품 완료 사진"
+                                                        className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                                                    />
+                                                    <p className="text-[10px] text-gray-400 text-center mt-1">사진을 누르면 크게 볼 수 있습니다</p>
+                                                </a>
+                                            )}
+                                            {delivery.notes && (
+                                                <div className="mt-2 text-xs bg-gray-50 p-2 rounded text-gray-600">
+                                                    <strong className="text-gray-500">배송 메모:</strong> {delivery.notes}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
