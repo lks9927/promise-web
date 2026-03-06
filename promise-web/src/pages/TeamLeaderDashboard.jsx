@@ -764,6 +764,36 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                 )}
             </div>
             <div className="p-4 bg-white border-t border-gray-100 space-y-2">
+                {/* 발주/납품 현황 표시 (공통 노출) */}
+                {orders && orders.length > 0 && (
+                    <div className="mb-4 space-y-2">
+                        <h5 className="font-bold text-gray-700 text-sm flex items-center gap-1">
+                            <Package className="w-4 h-4 text-gray-500" /> 발주 및 납품 현황 ({orders.length}건)
+                        </h5>
+                        {orders.map(order => {
+                            const stMap = {
+                                pending: { label: '발주 대기', color: 'text-orange-600 bg-orange-50 border-orange-100' },
+                                confirmed: { label: '확인 완료', color: 'text-blue-600 bg-blue-50 border-blue-100' },
+                                shipped: { label: '배송 중', color: 'text-purple-600 bg-purple-50 border-purple-100' },
+                                delivered: { label: '납품/확인 완료', color: 'text-green-600 bg-green-50 border-green-100' },
+                                cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
+                            };
+                            const stInfo = stMap[order.status] || { label: order.status, color: 'text-gray-600 bg-gray-50 border-gray-100' };
+                            return (
+                                <div key={order.id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-3 flex justify-between items-center text-sm">
+                                    <div>
+                                        <div className="font-bold text-gray-800">{order.vendors?.company_name}</div>
+                                        <div className="text-xs text-gray-500 font-mono mt-0.5">{order.order_number}</div>
+                                    </div>
+                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${stInfo.color}`}>
+                                        {stInfo.label}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
                 {status === 'assigned' && (
                     <div className="space-y-2">
                         <button onClick={() => onUpdate(id, 'consulting')} className="w-full bg-orange-50 text-orange-700 border border-orange-200 font-bold py-3.5 rounded-xl hover:bg-orange-100 transition-colors flex items-center justify-center gap-2">
@@ -805,36 +835,6 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                         <button onClick={() => onOpenOrder(item)} className="w-full bg-sky-50 text-sky-700 border border-sky-200 font-bold py-3.5 rounded-xl hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 mb-2">
                             <span>📦 장례 관련 용품 발주</span>
                         </button>
-
-                        {/* 발주/납품 현황 표시 */}
-                        {orders && orders.length > 0 && (
-                            <div className="mb-4 space-y-2">
-                                <h5 className="font-bold text-gray-700 text-sm flex items-center gap-1">
-                                    <Package className="w-4 h-4 text-gray-500" /> 발주 및 납품 현황 ({orders.length}건)
-                                </h5>
-                                {orders.map(order => {
-                                    const stMap = {
-                                        pending: { label: '발주 대기', color: 'text-orange-600 bg-orange-50 border-orange-100' },
-                                        confirmed: { label: '확인 완료', color: 'text-blue-600 bg-blue-50 border-blue-100' },
-                                        shipped: { label: '배송 중', color: 'text-purple-600 bg-purple-50 border-purple-100' },
-                                        delivered: { label: '납품/확인 완료', color: 'text-green-600 bg-green-50 border-green-100' },
-                                        cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
-                                    };
-                                    const stInfo = stMap[order.status] || { label: order.status, color: 'text-gray-600 bg-gray-50 border-gray-100' };
-                                    return (
-                                        <div key={order.id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-3 flex justify-between items-center text-sm">
-                                            <div>
-                                                <div className="font-bold text-gray-800">{order.vendors?.company_name}</div>
-                                                <div className="text-xs text-gray-500 font-mono mt-0.5">{order.order_number}</div>
-                                            </div>
-                                            <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${stInfo.color}`}>
-                                                {stInfo.label}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
 
                         <button onClick={() => onUpdate(id, 'team_settling')} className="w-full bg-green-50 text-green-700 border border-green-200 font-bold py-3.5 rounded-xl hover:bg-green-100 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
                             <span>다음 단계:</span> <span>🟢 장례 종료 (정산 요청)</span>
