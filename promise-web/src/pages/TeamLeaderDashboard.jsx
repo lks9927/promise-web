@@ -20,7 +20,8 @@ import {
     Activity,
     Phone,
     Tag,
-    ExternalLink
+    ExternalLink,
+    Package
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MyWallet from '../components/team/MyWallet';
@@ -159,7 +160,7 @@ export default function TeamLeaderDashboard() {
 
             const { data: myAssigned, error: myError } = await supabase
                 .from('funeral_cases')
-                .select('*, profiles:customer_id(name, phone), funeral_progress_reports(id)')
+                .select('*, profiles:customer_id(name, phone), funeral_progress_reports(id), orders(*, vendors(company_name))')
                 .in('status', ['assigned', 'consulting', 'in_progress', 'team_settling', 'hq_check', 'completed'])
                 .in('team_leader_id', targetTeamIds) // The core visibility rule
                 .order('created_at', { ascending: false });
@@ -697,7 +698,7 @@ function MyCaseList({ cases, isFlowerOrderRequired, onUpdate, onOrderFlower, onO
 }
 
 function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpenReport, onOpenCoupon, onOpenDetail, onOpenOrder }) {
-    const { id, profiles, location, package_name, status, flower_orders, coupons, deceased_name, room_number, encoffinment_time, funeral_end_time } = item;
+    const { id, profiles, location, package_name, status, flower_orders, coupons, deceased_name, room_number, encoffinment_time, funeral_end_time, orders } = item;
     const hasOrderedFlower = flower_orders && flower_orders.length > 0;
     const linkedCoupon = coupons?.[0];
     const isCouponUsed = linkedCoupon?.status === 'used';
@@ -804,6 +805,37 @@ function CaseCard({ item, isFlowerOrderRequired, onUpdate, onOrderFlower, onOpen
                         <button onClick={() => onOpenOrder(item)} className="w-full bg-sky-50 text-sky-700 border border-sky-200 font-bold py-3.5 rounded-xl hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 mb-2">
                             <span>📦 장례 관련 용품 발주</span>
                         </button>
+
+                        {/* 발주/납품 현황 표시 */}
+                        {orders && orders.length > 0 && (
+                            <div className="mb-4 space-y-2">
+                                <h5 className="font-bold text-gray-700 text-sm flex items-center gap-1">
+                                    <Package className="w-4 h-4 text-gray-500" /> 발주 및 납품 현황 ({orders.length}건)
+                                </h5>
+                                {orders.map(order => {
+                                    const stMap = {
+                                        pending: { label: '발주 대기', color: 'text-orange-600 bg-orange-50 border-orange-100' },
+                                        confirmed: { label: '확인 완료', color: 'text-blue-600 bg-blue-50 border-blue-100' },
+                                        shipped: { label: '배송 중', color: 'text-purple-600 bg-purple-50 border-purple-100' },
+                                        delivered: { label: '납품/확인 완료', color: 'text-green-600 bg-green-50 border-green-100' },
+                                        cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
+                                    };
+                                    const stInfo = stMap[order.status] || { label: order.status, color: 'text-gray-600 bg-gray-50 border-gray-100' };
+                                    return (
+                                        <div key={order.id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-3 flex justify-between items-center text-sm">
+                                            <div>
+                                                <div className="font-bold text-gray-800">{order.vendors?.company_name}</div>
+                                                <div className="text-xs text-gray-500 font-mono mt-0.5">{order.order_number}</div>
+                                            </div>
+                                            <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${stInfo.color}`}>
+                                                {stInfo.label}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         <button onClick={() => onUpdate(id, 'team_settling')} className="w-full bg-green-50 text-green-700 border border-green-200 font-bold py-3.5 rounded-xl hover:bg-green-100 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
                             <span>다음 단계:</span> <span>🟢 장례 종료 (정산 요청)</span>
                         </button>
