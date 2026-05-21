@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.vercel
+.env*.local
+.env
+
+# Debug/scratch scripts
+scratch/
+*.cjs
+debug-*.js
+fix-*.js
+fix_*.js
+cleanup_*.cjs
+check_*.js
+test-*.js
+test-*.mjs
+test_*.js
+seed_*.js
+list_*.js
+lifecycle_*.js

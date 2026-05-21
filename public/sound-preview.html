@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔔 알림 소리 미리 듣기</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .container {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 24px;
+    padding: 40px;
+    max-width: 500px;
+    width: 100%;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+  }
+  h1 { color: #fff; font-size: 22px; font-weight: 700; text-align: center; margin-bottom: 6px; }
+  p.sub { color: rgba(255,255,255,0.45); font-size: 13px; text-align: center; margin-bottom: 8px; }
+  .vol-row {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px; padding: 10px 16px; margin-bottom: 22px;
+  }
+  .vol-row label { color: rgba(255,255,255,0.6); font-size: 13px; white-space: nowrap; }
+  .vol-row input[type=range] { flex: 1; accent-color: #6366f1; }
+  .vol-val { color: #a5b4fc; font-size: 13px; font-weight: 700; width: 36px; text-align: right; }
+  .sound-list { display: flex; flex-direction: column; gap: 10px; }
+  .sound-item {
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px; padding: 14px 18px; transition: all 0.2s;
+  }
+  .sound-item:hover { background: rgba(255,255,255,0.1); }
+  .sound-item.playing { background: rgba(99,102,241,0.2); border-color: rgba(99,102,241,0.5); }
+  .play-btn {
+    width: 50px; height: 50px; border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border: none; color: white; font-size: 20px; cursor: pointer;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; box-shadow: 0 4px 15px rgba(99,102,241,0.4);
+  }
+  .play-btn:hover { transform: scale(1.08); }
+  .play-btn:active { transform: scale(0.93); }
+  .play-btn.playing {
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    box-shadow: 0 4px 20px rgba(239,68,68,0.5);
+    animation: pulse 0.5s infinite alternate;
+  }
+  @keyframes pulse { to { transform: scale(1.12); } }
+  .info { flex: 1; }
+  .name { color: #fff; font-size: 15px; font-weight: 600; }
+  .desc { color: rgba(255,255,255,0.4); font-size: 12px; margin-top: 2px; }
+  .select-btn {
+    background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.35);
+    color: #a5b4fc; font-size: 12px; font-weight: 600;
+    padding: 7px 15px; border-radius: 20px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  }
+  .select-btn:hover { background: rgba(99,102,241,0.4); color: #fff; }
+  .select-btn.selected { background: #6366f1; border-color: #6366f1; color: white; }
+  .result {
+    margin-top: 20px; padding: 16px;
+    background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 12px; text-align: center; display: none;
+  }
+  .result p { color: rgba(255,255,255,0.7); font-size: 13px; }
+  .result strong { color: #a5b4fc; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔔 알림 소리 선택</h1>
+  <p class="sub">▶ 버튼으로 미리 듣고 마음에 드는 번호 알려주세요</p>
+
+  <div class="vol-row">
+    <label>🔊 볼륨</label>
+    <input type="range" id="volSlider" min="0.1" max="1.5" step="0.05" value="1.0" oninput="updateVol()">
+    <span class="vol-val" id="volVal">100%</span>
+  </div>
+
+  <div class="sound-list" id="soundList"></div>
+  <div class="result" id="result">
+    <p>선택: <strong id="selName">-</strong></p>
+    <p style="margin-top:5px;font-size:11px;color:rgba(255,255,255,0.35)">이 번호를 채팅창에 알려주시면 바로 적용해드릴게요</p>
+  </div>
+</div>
+
+<script>
+let volume = 1.0;
+let selectedId = null;
+let audioCtx = null;
+
+function updateVol() {
+  volume = parseFloat(document.getElementById('volSlider').value);
+  document.getElementById('volVal').textContent = Math.round(volume * 100) + '%';
+}
+
+function getCtx() {
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// 베이스 볼륨을 높은 수준으로 유지 (0.9 이상)
+const sounds = [
+  {
+    id: 1,
+    name: '① 카카오톡 스타일',
+    desc: '통통~ 경쾌한 두 음 차임 (강하게)',
+    play: (ctx, v) => {
+      const gain = ctx.createGain();
+      gain.connect(ctx.destination);
+      [880, 1318.5].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        osc.connect(gain);
+        osc.type = 'sine';
+        const t = ctx.currentTime + i * 0.15;
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(v * 0.95, t + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+        osc.start(t); osc.stop(t + 0.55);
+      });
+    }
+  },
+  {
+    id: 2,
+    name: '② 강한 차임벨',
+    desc: '딩~동~댕~ 크고 맑은 3음',
+    play: (ctx, v) => {
+      [523.25, 659.25, 783.99].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.connect(g); g.connect(ctx.destination);
+        osc.type = 'sine';
+        const t = ctx.currentTime + i * 0.2;
+        osc.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(v * 0.9, t + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+        osc.start(t); osc.stop(t + 0.85);
+      });
+    }
+  },
+  {
+    id: 3,
+    name: '③ 임팩트 비프',
+    desc: '삐빅!! 강하고 짧은 알림',
+    play: (ctx, v) => {
+      const osc = ctx.createOscillator();
+      const dist = ctx.createWaveShaper();
+      const g = ctx.createGain();
+      // distortion curve for more punch
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) {
+        const x = (i * 2) / 256 - 1;
+        curve[i] = (Math.PI + 200) * x / (Math.PI + 200 * Math.abs(x));
+      }
+      dist.curve = curve;
+      osc.connect(dist); dist.connect(g); g.connect(ctx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(900, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.15);
+      g.gain.setValueAtTime(0, ctx.currentTime);
+      g.gain.linearRampToValueAtTime(v * 0.7, ctx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3);
+    }
+  },
+  {
+    id: 4,
+    name: '④ 웅장한 종소리',
+    desc: '깊고 울리는 종 두 번',
+    play: (ctx, v) => {
+      [0, 0.5].forEach(delay => {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const g1 = ctx.createGain();
+        const g2 = ctx.createGain();
+        osc1.connect(g1); g1.connect(ctx.destination);
+        osc2.connect(g2); g2.connect(ctx.destination);
+        osc1.type = 'sine'; osc2.type = 'sine';
+        const t = ctx.currentTime + delay;
+        osc1.frequency.setValueAtTime(440, t);
+        osc2.frequency.setValueAtTime(880, t);
+        g1.gain.setValueAtTime(0, t);
+        g1.gain.linearRampToValueAtTime(v * 1.0, t + 0.04);
+        g1.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+        g2.gain.setValueAtTime(0, t);
+        g2.gain.linearRampToValueAtTime(v * 0.4, t + 0.02);
+        g2.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+        osc1.start(t); osc1.stop(t + 1.9);
+        osc2.start(t); osc2.stop(t + 0.7);
+      });
+    }
+  },
+  {
+    id: 5,
+    name: '⑤ 토스 스타일',
+    desc: '딩! 딩! 또렷하게 두 번',
+    play: (ctx, v) => {
+      [0, 0.3].forEach(delay => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.connect(g); g.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1046.5, ctx.currentTime + delay); // C6
+        g.gain.setValueAtTime(0, ctx.currentTime + delay);
+        g.gain.linearRampToValueAtTime(v * 1.0, ctx.currentTime + delay + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.35);
+        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.4);
+      });
+    }
+  },
+  {
+    id: 6,
+    name: '⑥ 긴급 경보',
+    desc: '삐-삐-삐-삐! 강한 반복음',
+    play: (ctx, v) => {
+      [0, 0.18, 0.36, 0.54].forEach(delay => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.connect(g); g.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1200, ctx.currentTime + delay);
+        g.gain.setValueAtTime(0, ctx.currentTime + delay);
+        g.gain.linearRampToValueAtTime(v * 0.6, ctx.currentTime + delay + 0.01);
+        g.gain.setValueAtTime(v * 0.6, ctx.currentTime + delay + 0.1);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.15);
+        osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.16);
+      });
+    }
+  },
+  {
+    id: 7,
+    name: '⑦ 업링크 (상승음)',
+    desc: '삐요~ 상승하는 강한 전자음',
+    play: (ctx, v) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1600, ctx.currentTime + 0.3);
+      g.gain.setValueAtTime(0, ctx.currentTime);
+      g.gain.linearRampToValueAtTime(v * 1.0, ctx.currentTime + 0.05);
+      g.gain.setValueAtTime(v * 1.0, ctx.currentTime + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.55);
+    }
+  },
+  {
+    id: 8,
+    name: '⑧ 드럼 킥 + 차임',
+    desc: '쿵! + 딩~ 강하고 존재감 있음',
+    play: (ctx, v) => {
+      // kick
+      const kick = ctx.createOscillator();
+      const kg = ctx.createGain();
+      kick.connect(kg); kg.connect(ctx.destination);
+      kick.type = 'sine';
+      kick.frequency.setValueAtTime(200, ctx.currentTime);
+      kick.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.15);
+      kg.gain.setValueAtTime(v * 1.2, ctx.currentTime);
+      kg.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      kick.start(ctx.currentTime); kick.stop(ctx.currentTime + 0.27);
+      // chime after
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1046.5, ctx.currentTime + 0.2);
+      g.gain.setValueAtTime(0, ctx.currentTime + 0.2);
+      g.gain.linearRampToValueAtTime(v * 0.9, ctx.currentTime + 0.24);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.9);
+      osc.start(ctx.currentTime + 0.2); osc.stop(ctx.currentTime + 1.0);
+    }
+  },
+];
+
+function render() {
+  const list = document.getElementById('soundList');
+  list.innerHTML = sounds.map(s => `
+    <div class="sound-item ${selectedId === s.id ? 'playing' : ''}" id="item-${s.id}">
+      <button class="play-btn" onclick="playSound(${s.id})" id="btn-${s.id}">▶</button>
+      <div class="info">
+        <div class="name">${s.name}</div>
+        <div class="desc">${s.desc}</div>
+      </div>
+      <button class="select-btn ${selectedId === s.id ? 'selected' : ''}" onclick="selectSound(${s.id})">
+        ${selectedId === s.id ? '✓ 선택됨' : '선택'}
+      </button>
+    </div>
+  `).join('');
+}
+
+function playSound(id) {
+  const sound = sounds.find(s => s.id === id);
+  if (!sound) return;
+  const ctx = getCtx();
+  sound.play(ctx, volume);
+  const btn = document.getElementById(`btn-${id}`);
+  const dur = [1,2,3,4,7].includes(id) ? 900 : 700;
+  btn.classList.add('playing'); btn.textContent = '♪';
+  setTimeout(() => { btn.classList.remove('playing'); btn.textContent = '▶'; }, dur);
+}
+
+function selectSound(id) {
+  selectedId = id;
+  const sound = sounds.find(s => s.id === id);
+  document.getElementById('result').style.display = 'block';
+  document.getElementById('selName').textContent = sound.name;
+  render();
+  playSound(id);
+}
+
+render();
+</script>
+</body>
+</html>
