@@ -43,13 +43,15 @@ import SettingsPanel from '../components/admin/tabs/SettingsPanel';
 import DashboardSummaryBar from '../components/admin/tabs/StatCard';
 import PackagePanel from '../components/admin/tabs/PackagePanel';
 import ApiKeyPanel from '../components/admin/tabs/ApiKeyPanel';
+import CustomerTab from '../components/admin/tabs/CustomerTab';
 
 export default function AdminDashboard() {
     const { showToast, sendNotification, unreadCount } = useNotification();
-    const [activeTab, setActiveTab] = useState('settlement');
+     const [activeTab, setActiveTab] = useState('settlement');
     const [settlements, setSettlements] = useState([]);
     const [cases, setCases] = useState([]);
     const [partners, setPartners] = useState([]);
+    const [customers, setCustomers] = useState([]);
     const [passwordRequests, setPasswordRequests] = useState([]);
     const [coupons, setCoupons] = useState([]);
     const [config, setConfig] = useState({});
@@ -116,7 +118,7 @@ export default function AdminDashboard() {
         setVendors(data || []);
     };
 
-    const fetchData = async () => {
+     const fetchData = async () => {
         try {
             setLoading(true);
 
@@ -126,10 +128,11 @@ export default function AdminDashboard() {
                 supabase.from('partners').select('*, profiles:user_id (name, phone, role, email)'),
                 supabase.from('system_config').select('*'),
                 supabase.from('profiles').select('*').eq('password_reset_requested', true),
-                supabase.from('coupons').select('*, profiles:issued_by(name)').order('created_at', { ascending: false })
+                supabase.from('coupons').select('*, profiles:issued_by(name)').order('created_at', { ascending: false }),
+                supabase.from('profiles').select('*').eq('role', 'customer').order('created_at', { ascending: false })
             ]);
 
-            const [settlementRes, caseRes, partnerRes, configRes, requestRes, couponRes] = results.map(r => r.status === 'fulfilled' ? r.value : { data: null });
+            const [settlementRes, caseRes, partnerRes, configRes, requestRes, couponRes, customerRes] = results.map(r => r.status === 'fulfilled' ? r.value : { data: null });
 
             if (settlementRes.data) setSettlements(settlementRes.data);
             if (caseRes.data) setCases(caseRes.data);
@@ -140,6 +143,7 @@ export default function AdminDashboard() {
             }
             if (requestRes.data) setPasswordRequests(requestRes.data);
             if (couponRes.data) setCoupons(couponRes.data);
+            if (customerRes && customerRes.data) setCustomers(customerRes.data);
 
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -257,6 +261,12 @@ export default function AdminDashboard() {
                             badge={settlements.filter(s => s.status === 'pending').length}
                         />
                     )}
+                     <NavItem
+                        icon={<Users />}
+                        label="고객 관리"
+                        active={activeTab === 'customers'}
+                        onClick={() => setActiveTab('customers')}
+                    />
                     <NavItem
                         icon={<Users />}
                         label="파트너 관리"
@@ -332,8 +342,8 @@ export default function AdminDashboard() {
             <main className="flex-1 flex flex-col min-w-0">
                 <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 sticky top-0 z-30">
                     <div className="flex items-center gap-3">
-                        <h2 className="text-lg font-semibold text-gray-800">
-                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'commissions' ? '🧮 수수료 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : activeTab === 'vendors' ? '🏢 외주업체 승인' : activeTab === 'packages' ? '📦 상품 승인' : activeTab === 'apikeys' ? '🔑 API 키 관리' : '👥 파트너'}
+                         <h2 className="text-lg font-semibold text-gray-800">
+                            {activeTab === 'cases' ? '📋 접수 현황' : activeTab === 'settlement' ? '💰 정산' : activeTab === 'settings' ? '⚙️ 설정' : activeTab === 'commissions' ? '🧮 수수료 설정' : activeTab === 'coupons' ? '🎟️ 쿠폰 발급' : activeTab === 'vendors' ? '🏢 외주업체 승인' : activeTab === 'packages' ? '📦 상품 승인' : activeTab === 'apikeys' ? '🔑 API 키 관리' : activeTab === 'customers' ? '👤 고객 관리' : '👥 파트너'}
                         </h2>
                     </div>
 
@@ -378,9 +388,9 @@ export default function AdminDashboard() {
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
                         <div className="p-5 border-b border-gray-100 flex justify-between items-center">
                             <h3 className="font-bold text-gray-800 text-lg">
-                        {activeTab === 'preview' ? (
-                        <span>👁️ 화면 미리보기</span>
-                    ) : activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'commissions' ? '상품 및 수수료 설정' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : activeTab === 'vendors' ? '외주업체 승인 관리' : activeTab === 'packages' ? '커스텀 상품 제안 승인' : activeTab === 'apikeys' ? 'API 키 관리' : '파트너 리스트'}
+                                {activeTab === 'preview' ? (
+                                    <span>👁️ 화면 미리보기</span>
+                                ) : activeTab === 'cases' ? '접수 목록' : activeTab === 'settlement' ? '정산 목록' : activeTab === 'settings' ? '설정 패널' : activeTab === 'commissions' ? '상품 및 수수료 설정' : activeTab === 'coupons' ? '쿠폰 발급 및 내역' : activeTab === 'vendors' ? '외주업체 승인 관리' : activeTab === 'packages' ? '커스텀 상품 제안 승인' : activeTab === 'apikeys' ? 'API 키 관리' : activeTab === 'customers' ? '고객 리스트' : '파트너 리스트'}
                             </h3>
                             <button onClick={fetchData} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">새로고침</button>
                         </div>
@@ -412,6 +422,8 @@ export default function AdminDashboard() {
                             <CaseTab cases={cases} partners={partners} coupons={coupons} loading={loading} isReadonly={isReadonly} />
                         ) : activeTab === 'partners' ? (
                             <PartnerTab partners={partners} loading={loading} onRefresh={fetchData} onApproveReset={handleApproveReset} isReadonly={isReadonly} onUpdateMaxSubordinates={handleUpdateMaxSubordinates} />
+                        ) : activeTab === 'customers' ? (
+                            <CustomerTab customers={customers} loading={loading} onRefresh={fetchData} />
                         ) : activeTab === 'settlement' ? (
                             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden m-6">
                                 <SettlementManager />

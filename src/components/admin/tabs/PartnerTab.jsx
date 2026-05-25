@@ -3,6 +3,7 @@ import { Lock } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { translateError } from '../../../lib/errorHandler';
 import { useNotification } from '../../../contexts/NotificationContext';
+import RoleChangeModal from './RoleChangeModal';
 
 // ─── 역할 배지 컴포넌트 ──────────────────────────────────
 function RoleBadge({ role, grade, large = false }) {
@@ -61,6 +62,8 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
     const [searchQuery, setSearchQuery] = useState('');
     const [gradeModal, setGradeModal] = useState({ isOpen: false, partnerId: null, currentGrade: '', name: '' });
     const [roleModal, setRoleModal] = useState({ isOpen: false, partnerId: null, currentRole: '', currentMasterId: null, name: '' });
+    const [isChangeRoleOpen, setIsChangeRoleOpen] = useState(false);
+    const [roleChangeUser, setRoleChangeUser] = useState(null);
 
     const togglePartnerStatus = async (partnerId, currentStatus, role) => {
         const newStatus = (currentStatus === 'suspended' || currentStatus === 'pending') ? 'approved' : 'suspended';
@@ -354,7 +357,26 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                                 isReadonly ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'
                                             }`}
                                         >
-                                            직급/소속 관리 {isReadonly ? '🔒' : '⚙️'}
+                                            소속 관리 {isReadonly ? '🔒' : '⚙️'}
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (isReadonly) return;
+                                                setRoleChangeUser({
+                                                    id: partner.user_id,
+                                                    name: partner.profiles?.name,
+                                                    phone: partner.profiles?.phone,
+                                                    role: partner.profiles?.role,
+                                                    address: partner.address || ''
+                                                });
+                                                setIsChangeRoleOpen(true);
+                                            }}
+                                            disabled={isReadonly}
+                                            className={`text-[11px] px-2 py-1 rounded transition-colors whitespace-nowrap ml-1 ${
+                                                isReadonly ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
+                                            }`}
+                                        >
+                                            직업 변경
                                         </button>
                                     </td>
                                     <td className="px-6 py-4 text-gray-600">{partner.profiles?.phone}</td>
@@ -546,6 +568,17 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                 onConfirm={confirmRoleChange}
                 onCancel={() => setRoleModal({ ...roleModal, isOpen: false })}
             />
+             {isChangeRoleOpen && (
+                <RoleChangeModal
+                    isOpen={isChangeRoleOpen}
+                    onClose={() => {
+                        setIsChangeRoleOpen(false);
+                        setRoleChangeUser(null);
+                    }}
+                    user={roleChangeUser}
+                    onUpdate={onRefresh}
+                />
+            )}
         </div>
     );
 }

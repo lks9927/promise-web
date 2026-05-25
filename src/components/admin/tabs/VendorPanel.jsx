@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Package, CheckCircle, XCircle } from 'lucide-react';
 import { translateError } from '../../../lib/errorHandler';
+import RoleChangeModal from './RoleChangeModal';
 
 const BUSINESS_TYPE_LABELS_ADMIN = {
     flowers: '🌸 입관꽃',
@@ -13,6 +14,8 @@ export default function VendorPanel({ vendors, onRefresh, supabase, showToast, i
     const [filter, setFilter] = useState('pending');
     const [rejectModal, setRejectModal] = useState({ isOpen: false, vendorId: null, reason: '' });
     const [approveModal, setApproveModal] = useState({ isOpen: false, vendorId: null, taxType: 'vat_10' });
+    const [isChangeRoleOpen, setIsChangeRoleOpen] = useState(false);
+    const [roleChangeUser, setRoleChangeUser] = useState(null);
 
     const filtered = filter === 'all' ? vendors : vendors.filter(v => v.status === filter);
 
@@ -147,6 +150,23 @@ export default function VendorPanel({ vendors, onRefresh, supabase, showToast, i
                                         ✅ 재승인
                                     </button>
                                 )}
+                                {!isReadonly && (
+                                    <button
+                                        onClick={() => {
+                                            setRoleChangeUser({
+                                                id: vendor.user_id,
+                                                name: vendor.profiles?.name || vendor.company_name,
+                                                phone: vendor.phone || vendor.profiles?.phone,
+                                                role: 'vendor',
+                                                address: vendor.address || ''
+                                            });
+                                            setIsChangeRoleOpen(true);
+                                        }}
+                                        className="px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 text-sm font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                                    >
+                                        ⚙️ 직업 변경
+                                    </button>
+                                )}
                                 {isReadonly && (
                                     <span className="text-xs text-gray-400 flex items-center gap-1">🔒 열람 전용</span>
                                 )}
@@ -236,6 +256,17 @@ export default function VendorPanel({ vendors, onRefresh, supabase, showToast, i
                         </div>
                     </div>
                 </div>
+            )}
+             {isChangeRoleOpen && (
+                <RoleChangeModal
+                    isOpen={isChangeRoleOpen}
+                    onClose={() => {
+                        setIsChangeRoleOpen(false);
+                        setRoleChangeUser(null);
+                    }}
+                    user={roleChangeUser}
+                    onUpdate={onRefresh}
+                />
             )}
         </div>
     );

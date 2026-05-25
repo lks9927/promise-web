@@ -44,7 +44,7 @@ export default function PartnerApply() {
         business_address: ''
     });
 
-    // 전화번호 중복확인
+    // 전화번호 중복확인 (auth.users + profiles 모두 확인)
     const checkDuplicate = async () => {
         if (!formData.phone || formData.phone.length < 13) {
             alert('전화번호를 정확히 입력해주세요. (예: 010-1234-5678)');
@@ -52,19 +52,17 @@ export default function PartnerApply() {
         }
         setPhoneChecking(true);
         try {
-            // profiles 테이블에서 동일 전화번호 확인
-            const { data: existing, error } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('phone', formData.phone)
-                .limit(1);
+            const { data: isAvailable, error } = await supabase.rpc('check_phone_available', {
+                phone_number: formData.phone
+            });
 
             if (error) {
                 alert('중복확인 중 오류가 발생했습니다. 다시 시도해주세요.');
+                console.error('중복확인 에러:', error);
                 return;
             }
 
-            if (existing && existing.length > 0) {
+            if (!isAvailable) {
                 setPhoneAvailable(false);
                 setPhoneChecked(true);
                 alert('이미 등록된 전화번호입니다. 다른 번호를 사용해주세요.');
