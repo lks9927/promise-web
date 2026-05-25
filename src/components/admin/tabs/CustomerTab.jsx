@@ -64,6 +64,8 @@ export default function CustomerTab({ customers, loading, onRefresh }) {
                                 <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 text-xs font-bold uppercase tracking-wider">
                                     <th className="px-6 py-4">이름</th>
                                     <th className="px-6 py-4">연락처</th>
+                                    <th className="px-6 py-4">가입 기기(OS)</th>
+                                    <th className="px-6 py-4">활동 지역/주소</th>
                                     <th className="px-6 py-4">이메일</th>
                                     <th className="px-6 py-4">가입 일시 (최신순)</th>
                                     <th className="px-6 py-4 text-center">직업 및 역할 관리</th>
@@ -93,6 +95,22 @@ export default function CustomerTab({ customers, loading, onRefresh }) {
                                                     <Phone className="w-3.5 h-3.5 text-gray-400" />
                                                     <span>{c.phone || '없음'}</span>
                                                 </div>
+                                            </td>
+
+                                            {/* 가입 기기 (OS) */}
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                                                    c.os_type === 'android' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                                    c.os_type === 'ios' ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-gray-50 text-gray-600 border border-gray-200'
+                                                }`}>
+                                                    {c.os_type === 'android' ? '🤖 Android' :
+                                                     c.os_type === 'ios' ? '🍎 iPhone' : '💻 Web'}
+                                                </span>
+                                            </td>
+
+                                            {/* 활동 지역/주소 */}
+                                            <td className="px-6 py-4 text-gray-600 text-xs max-w-[200px] truncate" title={c.address || '입력 없음'}>
+                                                <span className="font-medium">{c.address || '입력 없음'}</span>
                                             </td>
                                             
                                             {/* 이메일 */}
