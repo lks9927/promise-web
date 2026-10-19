@@ -56,61 +56,25 @@ export default function TeamManagement({ user }) {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            // 0. Check Master's quota
-            const { data: masterData, error: masterError } = await supabase
-                .from('partners')
-                .select('max_subordinates')
-                .eq('user_id', user.id)
-                .single();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) throw new Error('로그인 세션이 없습니다. 다시 로그인해 주세요.');
 
-            if (masterError) throw masterError;
-            
-            const maxSubordinates = masterData?.max_subordinates ?? 10;
-            if (teamMembers.length >= maxSubordinates) {
-                showToast('error', '제한 초과', `허용된 식구 수(${maxSubordinates}명)를 초과하여 추가할 수 없습니다.`);
-                setIsSubmitting(false);
-                return;
-            }
-
-            // 1. 전화번호 중복 검사
-            const { data: existing } = await supabase
-                .from('profiles')
-                .select('id, name')
-                .eq('phone', formData.phone)
-                .maybeSingle();
-
-            if (existing) {
-                throw new Error(`이미 등록된 전화번호입니다. (${existing.name})`);
-            }
-
-            // 2. Generate UUID v4 for the new user profile
-            const newUserId = crypto.randomUUID();
-
-            // 3. Insert into profiles (비밀번호: 전화번호 뒷 6자리 자동 설정)
-            const defaultPassword = formData.phone.replace(/-/g, '').slice(-6);
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .insert({
-                    id: newUserId,
-                    role: 'leader',
+            const res = await fetch('/api/create-member', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
+                    kind: 'leader',
                     name: formData.name,
                     phone: formData.phone,
-                    password: defaultPassword, // 뒷 6자리 기본 비밀번호
-                    email: `leader_${Date.now()}@test.com`
-                });
-            if (profileError) throw profileError;
-
-            // 4. Insert into partners linking to this Master Team Leader
-            const { error: partnerError } = await supabase
-                .from('partners')
-                .insert({
-                    user_id: newUserId,
-                    master_id: user.id,
                     region: formData.region,
-                    grade: formData.grade,
-                    status: 'pending' // Admin approval required
-                });
-            if (partnerError) throw partnerError;
+                    grade: formData.grade
+                })
+            });
+            const result = await res.json().catch(() => ({}));
+            if (!res.ok || !result.success) throw new Error(result.message || '등록 중 문제가 발생했습니다.');
 
             showToast('success', '등록 요청 완료', `${formData.name} 팀원이 추가되었습니다. 관리자 승인 후 정상 활동이 가능합니다.`);
 

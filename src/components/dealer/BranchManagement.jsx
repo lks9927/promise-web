@@ -56,45 +56,25 @@ export default function BranchManagement({ user }) {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            // 0. 전화번호 중복 검사
-            const { data: existing } = await supabase
-                .from('profiles')
-                .select('id, name')
-                .eq('phone', formData.phone)
-                .maybeSingle();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) throw new Error('로그인 세션이 없습니다. 다시 로그인해 주세요.');
 
-            if (existing) {
-                throw new Error(`이미 등록된 전화번호입니다. (${existing.name})`);
-            }
-
-            // 1. Generate UUID v4 for the new user profile
-            const newUserId = crypto.randomUUID();
-
-            // 2. Insert into profiles (비밀번호: 전화번호 뒷 6자리 자동 설정)
-            const defaultPassword = formData.phone.replace(/-/g, '').slice(-6);
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .insert({
-                    id: newUserId,
-                    role: 'dealer',
+            const res = await fetch('/api/create-member', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
+                    kind: 'dealer',
                     name: formData.name,
                     phone: formData.phone,
-                    password: defaultPassword, // 뒷 6자리 기본 비밀번호
-                    email: `subdealer_${Date.now()}@test.com`
-                });
-            if (profileError) throw profileError;
-
-            // 3. Insert into partners linking to this Master Dealer
-            const { error: partnerError } = await supabase
-                .from('partners')
-                .insert({
-                    user_id: newUserId,
-                    master_id: user.id,
                     region: formData.region,
-                    grade: formData.grade,
-                    status: 'approved'
-                });
-            if (partnerError) throw partnerError;
+                    grade: formData.grade
+                })
+            });
+            const result = await res.json().catch(() => ({}));
+            if (!res.ok || !result.success) throw new Error(result.message || '등록 중 문제가 발생했습니다.');
 
             showToast('success', '등록 완료', `${formData.name} 딜러가 지점에 추가되었습니다.`);
 
