@@ -189,6 +189,12 @@ export default function AdminDashboard() {
         const hashedPassword = bcrypt.hashSync(newPassword, salt);
 
         try {
+            // 0. API 인증용 세션 확인 (없으면 DB를 바꾸기 전에 중단)
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) {
+                throw new Error('Supabase 로그인 세션이 없습니다. 다시 로그인해 주세요.');
+            }
+
             // 1. profiles 테이블 임시/폴백 비밀번호 업데이트
             const { error } = await supabase
                 .from('profiles')
@@ -203,7 +209,10 @@ export default function AdminDashboard() {
             // 2. Supabase 공식 Auth (auth.users) 비밀번호 업데이트 API 호출
             const response = await fetch('/api/reset-password', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`
+                },
                 body: JSON.stringify({ userId, newPassword }) // 평문 비밀번호 전달 (API에서 처리)
             });
 
