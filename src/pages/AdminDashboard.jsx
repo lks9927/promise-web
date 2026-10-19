@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { logout } from '../lib/logout';
-import bcrypt from 'bcryptjs';
 import { translateError } from '../lib/errorHandler';
 import {
     BarChart3,
@@ -185,10 +184,6 @@ export default function AdminDashboard() {
             newPassword = phone.replace(/[^0-9]/g, '').slice(-6);
         }
 
-        // Hash the new password before saving to DB
-        const salt = bcrypt.genSaltSync(10);
-        const hashedPassword = bcrypt.hashSync(newPassword, salt);
-
         try {
             // 0. API 인증용 세션 확인 (없으면 DB를 바꾸기 전에 중단)
             const { data: { session } } = await supabase.auth.getSession();
@@ -196,18 +191,7 @@ export default function AdminDashboard() {
                 throw new Error('Supabase 로그인 세션이 없습니다. 다시 로그인해 주세요.');
             }
 
-            // 1. profiles 테이블 임시/폴백 비밀번호 업데이트
-            const { error } = await supabase
-                .from('profiles')
-                .update({
-                    password: hashedPassword,
-                    password_reset_requested: false
-                })
-                .eq('id', userId);
-
-            if (error) throw error;
-
-            // 2. Supabase 공식 Auth (auth.users) 비밀번호 업데이트 API 호출
+            // 1. Supabase 공식 Auth (auth.users) 비밀번호 업데이트 API 호출
             const response = await fetch('/api/reset-password', {
                 method: 'POST',
                 headers: {
@@ -221,6 +205,17 @@ export default function AdminDashboard() {
             if (!data.success) {
                 throw new Error(data.message || 'Supabase Auth 비밀번호 동기화에 실패했습니다.');
             }
+
+            // 2. Auth 변경 성공 후 레거시 비밀번호를 제거하고 초기화 요청 상태 해제
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    password: null,
+                    password_reset_requested: false
+                })
+                .eq('id', userId);
+
+            if (error) throw error;
 
             if (isAdmin) {
                 alert(`✅ 초기화 완료!\n\n임시 비밀번호: [ ${newPassword} ]\n\n이 비밀번호를 ${name} 관리자님께 전달해주세요.`);

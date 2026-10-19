@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase'; // Ensure consistent import
 import { formatPhoneNumber } from '../utils/formatters';
 import { useNavigate } from 'react-router-dom';
 import { UserPlus, CheckCircle, Store, Briefcase, User, Truck } from 'lucide-react';
-import bcrypt from 'bcryptjs';
 import DaumPostcodeEmbed from 'react-daum-postcode';
 
 export default function PartnerApply() {
@@ -106,10 +105,6 @@ export default function PartnerApply() {
         setLoading(true);
         let newUserId = null;
         try {
-            // Hash the password for the profiles table backup
-            const salt = bcrypt.genSaltSync(10);
-            const hashedPassword = bcrypt.hashSync(formData.password, salt);
-            
             const signupEmail = `${formData.phone.replace(/[^0-9a-zA-Z]/g, '')}@promise10.com`;
 
             // 1. Create User in Supabase Auth
@@ -142,7 +137,6 @@ export default function PartnerApply() {
                         email: signupEmail,
                         name: formData.name,
                         phone: formData.phone,
-                        password: hashedPassword, // bcrypt hashed password
                         role: formData.role,
                         os_type: osType,
                         agreed_terms: agreements.terms,

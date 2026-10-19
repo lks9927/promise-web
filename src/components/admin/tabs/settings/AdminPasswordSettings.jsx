@@ -16,8 +16,8 @@ export function AdminPasswordSettings() {
             showToast('error', '오류', '비밀번호가 일치하지 않습니다.');
             return;
         }
-        if (newPw.length < 4) {
-            showToast('error', '오류', '비밀번호는 4자리 이상이어야 합니다.');
+        if (newPw.length < 6) {
+            showToast('error', '오류', '비밀번호는 6자리 이상이어야 합니다.');
             return;
         }
 
@@ -25,14 +25,20 @@ export function AdminPasswordSettings() {
         if (!user) return;
 
         if (confirm('비밀번호를 변경하시겠습니까?')) {
-            const { error } = await supabase
-                .from('profiles')
-                .update({ password: newPw })
-                .eq('id', user.id);
+            const { error } = await supabase.auth.updateUser({ password: newPw });
 
             if (error) {
                 showToast('error', '오류', '변경 중 오류가 발생했습니다.');
             } else {
+                const { error: legacyPasswordError } = await supabase
+                    .from('profiles')
+                    .update({ password: null })
+                    .eq('id', user.id);
+
+                if (legacyPasswordError) {
+                    console.error('Legacy password cleanup failed:', legacyPasswordError);
+                }
+
                 alert('비밀번호가 변경되었습니다. 다시 로그인해주세요.');
                 await logout();
                 window.location.href = '/login';
