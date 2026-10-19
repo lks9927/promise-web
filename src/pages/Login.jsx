@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import bcrypt from 'bcryptjs';
 import { requestPushPermission } from '../lib/firebase';
 import InstallGuideModal from '../components/common/InstallGuideModal';
 
@@ -44,7 +43,6 @@ const Login = () => {
             const sanitizedPhone = phone.replace(/[^0-9a-zA-Z]/g, '');
             const loginEmail = `${sanitizedPhone}@promise10.com`;
 
-            let authenticatedUser = null;
             let finalUserId = null;
 
             try {
@@ -57,29 +55,49 @@ const Login = () => {
                 if (!authError && authData?.user) {
                     finalUserId = authData.user.id;
                 }
-            } catch (ignored) {}
+            } catch {
+                finalUserId = null;
+            }
 
-            // 2. 만약 Supabase Auth 실패 시 (legacy 유저 또는 관리자 강제 비번 초기화 상태) profiles 폴백 검증
+            // 2. Supabase Auth 실패 시 서버에서 legacy 비밀번호 검증 및 Auth 마이그레이션
             if (!finalUserId) {
-                const { data: fallbackUsers } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('phone', phone);
-                
-                const profile = fallbackUsers?.[0];
-                if (profile) {
-                    let isMatch = false;
-                    // Check if it's hashed (bcrypt hashes start with $2a$, $2b$ or $2y$)
-                    if (profile.password?.startsWith('$2a$') || profile.password?.startsWith('$2b$')) {
-                        isMatch = bcrypt.compareSync(password, profile.password);
-                    } else {
-                        // Legacy plaintext comparison
-                        isMatch = (profile.password === password);
-                    }
+                let migrationResponse;
+                let migrationResult;
 
-                    if (isMatch) {
-                        finalUserId = profile.id;
+                try {
+                    migrationResponse = await fetch('/api/legacy-login-migrate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, password }),
+                    });
+                    migrationResult = await migrationResponse.json();
+                } catch {
+                    throw new Error('전화번호(아이디) 또는 비밀번호가 일치하지 않습니다.');
+                }
+
+                if (migrationResponse.status === 429) {
+                    throw new Error('로그인 시도 횟수가 너무 많습니다. 잠시 후 다시 시도해주세요.');
+                }
+
+                if (migrationResponse.status === 409) {
+                    throw new Error('계정 정보에 문제가 있습니다. 관리자에게 문의해주세요.');
+                }
+
+                if (migrationResponse.ok && migrationResult?.success) {
+                    try {
+                        const { data: retryAuthData, error: retryAuthError } = await supabase.auth.signInWithPassword({
+                            email: loginEmail,
+                            password: password,
+                        });
+
+                        if (!retryAuthError && retryAuthData?.user) {
+                            finalUserId = retryAuthData.user.id;
+                        }
+                    } catch {
+                        throw new Error('전화번호(아이디) 또는 비밀번호가 일치하지 않습니다.');
                     }
+                } else {
+                    throw new Error('전화번호(아이디) 또는 비밀번호가 일치하지 않습니다.');
                 }
             }
 
@@ -97,12 +115,14 @@ const Login = () => {
             if (error) throw error;
 
             if (data) {
+                const { password: _LegacyPassword, ...safeProfile } = data;
+
                 // 🔹 Check Partner Status (Approval)
-                if (data.role === 'leader' || data.role === 'dealer' || data.role === 'master') {
+                if (safeProfile.role === 'leader' || safeProfile.role === 'dealer' || safeProfile.role === 'master') {
                     const { data: partnerData } = await supabase
                         .from('partners')
                         .select('status')
-                        .eq('user_id', data.id)
+                        .eq('user_id', safeProfile.id)
                         .single();
 
                     if (partnerData) {
@@ -116,11 +136,11 @@ const Login = () => {
                 }
 
                 // 🔹 Check Vendor Status (Approval)
-                if (data.role === 'vendor') {
+                if (safeProfile.role === 'vendor') {
                     const { data: vendorData } = await supabase
                         .from('vendors')
                         .select('status')
-                        .eq('user_id', data.id)
+                        .eq('user_id', safeProfile.id)
                         .single();
 
                     if (vendorData) {
@@ -136,7 +156,7 @@ const Login = () => {
                     }
                 }
 
-                console.log('Login successful:', data);
+                console.log('Login successful:', safeProfile);
 
                 // 🔹 Capture OS Type
                 let osType = 'web';
@@ -147,7 +167,7 @@ const Login = () => {
                     osType = 'ios';
                 }
 
-                if (data.os_type !== osType || (osType === 'android' && !data.fcm_token)) {
+                if (safeProfile.os_type !== osType || (osType === 'android' && !safeProfile.fcm_token)) {
                     const updatePayload = { os_type: osType };
 
                     // 안드로이드일 경우 푸시 권한을 요청하고 토큰을 받아 DB에 함께 저장
@@ -155,7 +175,7 @@ const Login = () => {
                         const token = await requestPushPermission();
                         if (token) {
                             updatePayload.fcm_token = token;
-                            data.fcm_token = token;
+                            safeProfile.fcm_token = token;
                         }
                     }
 
@@ -164,21 +184,21 @@ const Login = () => {
                         .update(updatePayload)
                         .eq('id', finalUserId);
                         
-                    data.os_type = osType;
+                    safeProfile.os_type = osType;
                 }
 
                 // Store user session
-                localStorage.setItem('user', JSON.stringify(data));
+                localStorage.setItem('user', JSON.stringify(safeProfile));
 
                 // 기본 비밀번호(전화번호 뒤 6자리) 사용 여부 체크
-                const last6 = data.phone?.replace(/-/g, '').slice(-6);
+                const last6 = safeProfile.phone?.replace(/-/g, '').slice(-6);
                 if (last6 && password === last6) {
                     setDefaultPwWarning(true);
                     // 3초 후 대시보드로 이동
                     setTimeout(() => {
-                        switch (data.role) {
+                        switch (safeProfile.role) {
                             case 'admin':
-                                window.location.href = data.phone === 'manager' ? '/admin?role=operating' : '/admin?role=super';
+                                window.location.href = safeProfile.phone === 'manager' ? '/admin?role=operating' : '/admin?role=super';
                                 break;
                             case 'master': case 'leader': case 'dealer':
                                 window.location.href = '/dealer';
@@ -192,9 +212,9 @@ const Login = () => {
                 }
 
                 // Redirect based on role
-                switch (data.role) {
+                switch (safeProfile.role) {
                     case 'admin':
-                        if (data.phone === 'manager') {
+                        if (safeProfile.phone === 'manager') {
                             window.location.href = '/admin?role=operating';
                         } else {
                             window.location.href = '/admin?role=super';
@@ -334,7 +354,7 @@ const Login = () => {
                                     try {
                                         const { data, error } = await supabase
                                             .from('profiles')
-                                            .select('*')
+                                            .select('id, role')
                                             .eq('name', name)
                                             .eq('phone', phoneInput)
                                             .single();
@@ -344,36 +364,8 @@ const Login = () => {
                                             return;
                                         }
 
-                                        // 🔹 Master Key Logic for Admins
                                         if (data.role === 'admin') {
-                                            const masterKey = prompt(' 관리자 복구 키(Master Key)를 입력하세요.\n(시스템 설정에 저장된 키)');
-                                            if (!masterKey) return;
-
-                                            // Fetch key from config
-                                            const { data: configData } = await supabase
-                                                .from('system_config')
-                                                .select('value')
-                                                .eq('key', 'master_recovery_key')
-                                                .single();
-
-                                            if (configData && configData.value === masterKey) {
-                                                const newPw = prompt('새로운 비밀번호를 입력해주세요.');
-                                                if (!newPw) return;
-
-                                                // Hash before saving for reset
-                                                const salt = bcrypt.genSaltSync(10);
-                                                const hashedPw = bcrypt.hashSync(newPw, salt);
-
-                                                const { error: updateError } = await supabase
-                                                    .from('profiles')
-                                                    .update({ password: hashedPw })
-                                                    .eq('id', data.id);
-
-                                                if (updateError) throw updateError;
-                                                alert('비밀번호가 즉시 변경되었습니다. 로그인해주세요.');
-                                            } else {
-                                                alert('복구 키가 일치하지 않습니다.');
-                                            }
+                                            alert('관리자 계정의 비밀번호는 시스템 운영자에게 문의해 주세요.');
                                             return;
                                         }
 
