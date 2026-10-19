@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { logout } from '../lib/logout';
 import { useNavigate } from 'react-router-dom';
 import {
     Phone,
@@ -90,8 +91,8 @@ export default function CustomerStatus() {
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('user');
+    const handleLogout = async () => {
+        await logout();
         navigate('/login');
     };
 

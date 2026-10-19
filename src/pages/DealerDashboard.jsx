@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { logout } from '../lib/logout';
 import { translateError } from '../lib/errorHandler';
 import {
     TrendingUp,
@@ -139,8 +140,8 @@ export default function DealerDashboard() {
                     </div>
 
                     <button
-                        onClick={() => {
-                            localStorage.removeItem('user');
+                        onClick={async () => {
+                            await logout();
                             navigate('/login');
                         }}
                         className="flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors"

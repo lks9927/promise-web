@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { logout } from '../lib/logout';
 import bcrypt from 'bcryptjs';
 import { translateError } from '../lib/errorHandler';
 import {
@@ -336,8 +337,8 @@ export default function AdminDashboard() {
                 </nav>
                 <div className="p-4 border-t border-[#2C3E5D]">
                     <button
-                        onClick={() => {
-                            localStorage.removeItem('user');
+                        onClick={async () => {
+                            await logout();
                             window.location.href = '/login';
                         }}
                         className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-[#253550] rounded-lg transition-colors w-full"
@@ -376,8 +377,8 @@ export default function AdminDashboard() {
                             <MessageInbox isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} user={JSON.parse(localStorage.getItem('user') || '{}')} />
                         </div>
                         <button
-                            onClick={() => {
-                                localStorage.removeItem('user');
+                            onClick={async () => {
+                                await logout();
                                 window.location.href = '/login';
                             }}
                             className="flex items-center gap-1 text-gray-500 hover:text-red-500 transition-colors text-sm font-medium"

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { logout } from '../lib/logout';
 import { translateError } from '../lib/errorHandler';
 import { useNotification } from '../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
@@ -60,8 +61,8 @@ export default function VendorDashboard() {
         }
     }, [navigate]);
 
-    const handleLogout = () => {
-        localStorage.removeItem('user');
+    const handleLogout = async () => {
+        await logout();
         navigate('/');
     };
 

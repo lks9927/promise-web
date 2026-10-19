@@ -17,30 +17,96 @@ import MobileBriefing from './pages/MobileBriefing'
 
 // Security
 import { Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { supabase } from './lib/supabase';
+
+const roleRequestByUserId = new Map();
+
+const getRoleForUser = (userId) => {
+  if (!roleRequestByUserId.has(userId)) {
+    roleRequestByUserId.set(
+      userId,
+      supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data?.role) throw error || new Error('Profile role not found');
+          return data.role;
+        })
+        .catch((err) => {
+          // 실패 결과는 캐시하지 않아 다음 확인 때 다시 시도하게 한다
+          roleRequestByUserId.delete(userId);
+          throw err;
+        })
+    );
+  }
+
+  return roleRequestByUserId.get(userId);
+};
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const storedUser = localStorage.getItem('user');
-  if (!storedUser) {
-    return <Navigate to="/login" replace />;
+  const [authState, setAuthState] = useState({ status: 'checking', role: null });
+
+  useEffect(() => {
+    let active = true;
+
+    const checkAccess = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error || !session) {
+        localStorage.removeItem('user');
+        if (active) setAuthState({ status: 'unauthorized', role: null });
+        return;
+      }
+
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) {
+        if (active) setAuthState({ status: 'unauthorized', role: null });
+        return;
+      }
+
+      try {
+        JSON.parse(storedUser);
+      } catch {
+        localStorage.removeItem('user');
+        if (active) setAuthState({ status: 'unauthorized', role: null });
+        return;
+      }
+
+      try {
+        const role = await getRoleForUser(session.user.id);
+        if (active) setAuthState({ status: 'authorized', role });
+      } catch {
+        if (active) setAuthState({ status: 'unauthorized', role: null });
+      }
+    };
+
+    checkAccess().catch(() => {
+      if (active) setAuthState({ status: 'unauthorized', role: null });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (authState.status === 'checking') return null;
+  if (authState.status === 'unauthorized') return <Navigate to="/login" replace />;
+
+  if (allowedRoles && !allowedRoles.includes(authState.role)) {
+    // 권한이 없으면 자신의 대시보드나 홈으로 튕겨냄
+    switch(authState.role) {
+      case 'admin': return <Navigate to="/admin" replace />;
+      case 'master': return <Navigate to="/dealer" replace />;
+      case 'leader': return <Navigate to="/leader" replace />;
+      case 'dealer': return <Navigate to="/dealer" replace />;
+      default: return <Navigate to="/" replace />;
+    }
   }
 
-  try {
-    const user = JSON.parse(storedUser);
-    if (allowedRoles && !allowedRoles.includes(user.role)) {
-      // 권한이 없으면 자신의 대시보드나 홈으로 튕겨냄
-      switch(user.role) {
-        case 'admin': return <Navigate to="/admin" replace />;
-        case 'master': return <Navigate to="/dealer" replace />;
-        case 'leader': return <Navigate to="/leader" replace />;
-        case 'dealer': return <Navigate to="/dealer" replace />;
-        default: return <Navigate to="/" replace />;
-      }
-    }
-    return children;
-  } catch (e) {
-    localStorage.removeItem('user');
-    return <Navigate to="/login" replace />;
-  }
+  return children;
 };
 
 import { NotificationProvider, useNotification } from './contexts/NotificationContext'

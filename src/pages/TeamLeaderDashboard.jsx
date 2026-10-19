@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { logout } from '../lib/logout';
 import { translateError } from '../lib/errorHandler';
 import {
     User,
@@ -527,7 +528,7 @@ export default function TeamLeaderDashboard() {
                             </button>
                             <MessageInbox isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} user={user} />
                         </div>
-                        <button onClick={() => { localStorage.removeItem('user'); navigate('/login'); }} className="text-gray-400 hover:text-red-500 transition-colors">
+                        <button onClick={async () => { await logout(); navigate('/login'); }} className="text-gray-400 hover:text-red-500 transition-colors">
                             <LogOut className="w-6 h-6" />
                         </button>
                     </div>
