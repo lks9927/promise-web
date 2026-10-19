@@ -10,6 +10,13 @@ export default async function handler(req, res) {
         return res.status(405).json({ message: 'Method Not Allowed' });
     }
 
+    // 최소한의 인증: 사이트 자체에서 보낸 요청인지 확인 (완전한 보안은 아니지만, 외부 무작위 호출/스팸 발송은 막음)
+    const expectedToken = process.env.APP_API_TOKEN;
+    const providedToken = req.headers['x-app-token'];
+    if (!expectedToken || providedToken !== expectedToken) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const { to, subject = '[10년의 약속 알림]', text, isAlimtalk = false } = req.body;
 
     if (!to || !text) {

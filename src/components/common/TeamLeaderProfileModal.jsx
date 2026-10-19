@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { User, XCircle, Award, Briefcase, Phone, FileBadge, ZoomIn } from 'lucide-react';
 
 export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile, isMasked = false }) {
+    const [certZoomed, setCertZoomed] = useState(false);
+    const [bizZoomed, setBizZoomed] = useState(false);
+
     if (!isOpen || !leaderProfile) return null;
 
     const {
@@ -15,9 +18,6 @@ export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile,
         introduction,
         phone
     } = leaderProfile;
-
-    const [certZoomed, setCertZoomed] = useState(false);
-    const [bizZoomed, setBizZoomed] = useState(false);
 
     const maskName = (n) => n ? (n.length <= 2 ? n[0] + '*' : n[0] + '*'.repeat(n.length - 2) + n[n.length - 1]) : '';
     const displayName = isMasked ? maskName(name) : name;

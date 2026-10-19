@@ -187,7 +187,7 @@ export function NotificationProvider({ children }) {
             if (profile && profile.phone) {
                 await fetch('/api/send-message', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'x-app-token': import.meta.env.VITE_APP_API_TOKEN },
                     body: JSON.stringify({
                         to: profile.phone,
                         subject: `[10년의 약속 알림] ${title}`,

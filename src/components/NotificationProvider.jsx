@@ -51,7 +51,7 @@ export const NotificationProvider = ({ children }) => {
                 (payload) => {
                     console.log('New funeral case!', payload);
                     addNotification({
-                        id: date.now(),
+                        id: Date.now(),
                         message: '새로운 장례 접수가 도착했습니다!',
                         type: 'info'
                     });
