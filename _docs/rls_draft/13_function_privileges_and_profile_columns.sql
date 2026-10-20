@@ -24,16 +24,15 @@ update public.profiles set admin_level = null where role is distinct from 'admin
 -- 같은 이름의 얇은 함수가 호출자를 검증한 뒤 원본을 부른다. (다시 실행해도 안전)
 do $$
 begin
-  if exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace
-              and proname = 'accept_bidding' and pronargs = 2)
-     and not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace
-              and proname = 'accept_bidding_internal') then
+  -- 정확한 시그니처로 확인한다(같은 이름의 다른 버전이 있어도 엉뚱한 것을 바꾸지 않게).
+  -- 운영 DB 조회(2026-10-20): 이 두 함수를 부르는 다른 DB 함수/트리거는 없고, 예약 작업 3개는
+  -- check_report_delay_alarms / check_no_bid_alarms / process_bidding_timeouts 만 부른다.
+  if to_regprocedure('public.accept_bidding(uuid,uuid)') is not null
+     and to_regprocedure('public.accept_bidding_internal(uuid,uuid)') is null then
     alter function public.accept_bidding(uuid, uuid) rename to accept_bidding_internal;
   end if;
-  if exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace
-              and proname = 'pass_bidding' and pronargs = 3)
-     and not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace
-              and proname = 'pass_bidding_internal') then
+  if to_regprocedure('public.pass_bidding(uuid,uuid,text)') is not null
+     and to_regprocedure('public.pass_bidding_internal(uuid,uuid,text)') is null then
     alter function public.pass_bidding(uuid, uuid, text) rename to pass_bidding_internal;
   end if;
 end $$;

@@ -92,7 +92,11 @@ as $$
          or c.current_bidder_id = auth.uid()
          or public.is_my_report(c.dealer_id)
          or public.is_my_report(c.team_leader_id)
-         or (c.status = 'requested' and public.my_role() in ('master', 'leader'))
+         or (
+           c.status = 'requested'
+           and public.my_role() in ('master', 'leader')
+           and (c.current_bidder_id is null or c.current_bidder_id = auth.uid())
+         )
        )
   );
 $$;

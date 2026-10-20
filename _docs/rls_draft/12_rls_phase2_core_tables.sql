@@ -184,14 +184,12 @@ create policy funeral_cases_update on public.funeral_cases
   for update to authenticated
   using (
     (select public.is_admin())
-    or team_leader_id    = (select auth.uid())
-    or current_bidder_id = (select auth.uid())
+    or team_leader_id = (select auth.uid())
     or public.is_my_report(team_leader_id)
   )
   with check (
     (select public.is_admin())
-    or team_leader_id    = (select auth.uid())
-    or current_bidder_id = (select auth.uid())
+    or team_leader_id = (select auth.uid())
     or public.is_my_report(team_leader_id)
     or (status = 'requested' and team_leader_id is null)
   );
