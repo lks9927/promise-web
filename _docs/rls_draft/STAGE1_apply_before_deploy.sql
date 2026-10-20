@@ -159,9 +159,9 @@ $$;
 -- 승인된 파트너인가 (자가 가입 직후의 승인 대기 계정이 배정 대기 건을 보거나 수락하지 못하게 한다)
 create or replace function public.is_approved_partner()
 returns boolean language sql stable security definer set search_path = public, pg_temp
-as $
+as $$
   select exists (select 1 from public.partners pt where pt.user_id = auth.uid() and pt.status = 'approved');
-$;
+$$;
 revoke all on function public.is_approved_partner() from public, anon;
 grant execute on function public.is_approved_partner() to authenticated;
 
