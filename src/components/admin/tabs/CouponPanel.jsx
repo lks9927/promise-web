@@ -1,3 +1,4 @@
+import { SITE_URL } from '../../../config/site';
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Search, Download, Gift, Leaf, Award, Crown, Phone } from 'lucide-react';
 import html2canvas from 'html2canvas';
@@ -25,7 +26,6 @@ export default function CouponPanel({ coupons, onUpdate, supabase, isReadonly })
     const [linkAmount, setLinkAmount] = useState('30000');
     const [sendingLink, setSendingLink] = useState(false);
 
-    const SITE_URL = 'https://10promise.com';
 
     const issuanceStats = coupons ? Object.values(coupons.reduce((acc, curr) => {
         const issuer = curr.profiles?.name || '본사';

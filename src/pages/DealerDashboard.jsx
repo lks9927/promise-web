@@ -1,3 +1,4 @@
+import { SITE_URL } from '../config/site';
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { logout } from '../lib/logout';
@@ -37,7 +38,6 @@ import useRealtimeSubscription from '../hooks/useRealtimeSubscription';
 import PackageBottomSheet from '../components/common/PackageBottomSheet';
 import { formatPhoneNumber } from '../utils/formatters';
 
-const SITE_URL = 'https://10promise.com';
 
 export default function DealerDashboard() {
     const { showToast, unreadCount } = useNotification();

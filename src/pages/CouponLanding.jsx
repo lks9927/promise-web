@@ -1,3 +1,4 @@
+import { SITE_URL, SITE_HOST } from '../config/site';
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -227,7 +228,7 @@ export default function CouponLanding() {
                                             {coupon?.amount?.toLocaleString()}
                                         </span>
                                     </div>
-                                    <div className="text-[#999] text-xs mt-3 font-medium">10promise.co.kr</div>
+                                    <div className="text-[#999] text-xs mt-3 font-medium">{SITE_HOST}</div>
                                 </div>
                             </div>
                         </div>
@@ -381,7 +382,7 @@ export default function CouponLanding() {
                 <div className="text-center text-xs text-[#A69986] space-y-1 pb-8">
                     <p>© 2026 10년의 약속. All rights reserved.</p>
                     <p>
-                        <a href="https://10promise.com" className="underline hover:text-[#433831]">10promise.com</a>
+                        <a href={SITE_URL} className="underline hover:text-[#433831]">{SITE_HOST}</a>
                         {' | '}
                         24시간 연중무휴
                     </p>

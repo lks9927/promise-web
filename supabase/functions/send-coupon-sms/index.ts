@@ -27,7 +27,7 @@ serve(async (req) => {
             );
         }
 
-        const SITE_URL = "https://10promise.co.kr";
+        const SITE_URL = (Deno.env.get("SITE_URL") ?? "https://10promise.co.kr").replace(/\/+$/, "");
         const linkUrl = `${SITE_URL}/coupon/${couponCode}`;
 
         const smsContent = `[10년의약속] ${name}님, 캐시백 ${Number(amount).toLocaleString()}원 쿠폰이 도착했습니다.\n\n급한 일이 생기면 아래 링크를 눌러 바로 접수하세요.\n${linkUrl}`;
