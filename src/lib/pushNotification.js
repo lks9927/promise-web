@@ -97,9 +97,18 @@ export async function sendWebPush(userIds, title, body, url = '/') {
             return;
         }
 
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            console.warn('[Push] 세션 없음 - 발송 스킵');
+            return;
+        }
+
         const res = await fetch('/api/send-push', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+            },
             body: JSON.stringify({ subscriptions, title, body, url }),
         });
 
