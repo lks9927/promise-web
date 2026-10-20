@@ -352,29 +352,24 @@ const Login = () => {
 
                                 const requestReset = async () => {
                                     try {
-                                        const { data, error } = await supabase
-                                            .from('profiles')
-                                            .select('id, role')
-                                            .eq('name', name)
-                                            .eq('phone', phoneInput)
-                                            .single();
+                                        // 서버 함수가 이름+전화 확인과 요청 표시를 한 번에 처리한다.
+                                        const { data: result, error } = await supabase.rpc('request_password_reset', {
+                                            p_name: name,
+                                            p_phone: phoneInput
+                                        });
 
-                                        if (error || !data) {
+                                        if (error) throw error;
+
+                                        if (result === 'not_found' || !result) {
                                             alert('일치하는 사용자 정보가 없습니다.');
                                             return;
                                         }
 
-                                        if (data.role === 'admin') {
+                                        if (result === 'admin') {
                                             alert('관리자 계정의 비밀번호는 시스템 운영자에게 문의해 주세요.');
                                             return;
                                         }
 
-                                        const { error: updateError } = await supabase
-                                            .from('profiles')
-                                            .update({ password_reset_requested: true })
-                                            .eq('id', data.id);
-
-                                        if (updateError) throw updateError;
                                         alert('비밀번호 초기화 요청이 접수되었습니다.\n관리자 승인 후 연락처 뒤 6자리로 초기화됩니다.');
                                     } catch (err) {
                                         console.error(err);

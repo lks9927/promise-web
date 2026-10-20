@@ -1,11 +1,12 @@
 -- ============================================================================
--- STAGE1_apply_before_deploy.sql  (자동 조립 파일 - 원본: 01, 01b, 05, 07, 08)
+-- STAGE1_apply_before_deploy.sql  (자동 조립 파일 - 원본: 01, 01b, 05, 07, 08, 11)
 -- 새 코드를 "배포하기 전에" 적용한다. 기존 화면 동작은 바뀌지 않는다(추가만 한다):
 --   01 : 관리자/장례 담당 판별 도우미, 정산 계산 트리거 함수를 소유자 권한으로(본문 동일)
 --   01b: 발주/업체 도우미 함수
 --   05 : 수수료 정책을 관리자만 수정 (지금은 공개 키로 누구나 수정 가능 - 가장 급함)
 --   07 : 쿠폰 조회 함수
 --   08 : 배송기사 링크용 토큰 테이블과 함수
+--   11 : 비밀번호 초기화 요청 함수
 -- SQL Editor 에 파일 전체를 붙여넣고 Run. 오류가 나면 멈추고 오류 문구를 알려주세요.
 -- ============================================================================
 
@@ -432,3 +433,50 @@ commit;
 --   drop function if exists public.complete_delivery(uuid, text, uuid, text, text);
 --   drop function if exists public.get_order_delivery_token(uuid);
 --   drop table if exists public.order_delivery_tokens;
+
+-- ################ 11_password_reset_request_rpc.sql ################
+-- ============================================================================
+-- 11_password_reset_request_rpc.sql  (DRAFT - 추가만 하는 SQL, 새 코드 배포 "전에" 적용)
+-- 로그인 화면의 "비밀번호를 잊으셨나요? (초기화 요청)"이 로그인 없이 profiles 를 이름+전화로
+-- 직접 조회하고(select) 직접 수정(update)하던 것을 서버 함수 하나로 바꾼다.
+-- 결과값: 'ok' (요청 접수, 관리자 포함) | 'not_found'
+-- 이름과 전화번호가 모두 일치해야 한다(앞뒤 공백은 무시). 대량 호출 방어는 서버 앞단(IP 제한)에서 한다.
+-- 이 함수가 쓰이게 되면
+-- profiles 에 RLS 를 켤 때 로그인 없는 직접 조회를 막을 수 있다.
+-- ============================================================================
+create or replace function public.request_password_reset(p_name text, p_phone text)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id   uuid;
+  v_role text;
+begin
+  if p_name is null or p_phone is null
+     or char_length(btrim(p_name)) < 1 or char_length(p_name) > 50
+     or char_length(p_phone) < 3 or char_length(p_phone) > 40 then
+    return 'not_found';
+  end if;
+
+  select p.id, p.role into v_id, v_role
+    from public.profiles p
+   where p.name = btrim(p_name) and p.phone = btrim(p_phone)
+   limit 1;
+
+  if v_id is null then
+    return 'not_found';
+  end if;
+
+  -- 관리자 계정도 일반 계정과 같은 응답('ok')을 준다: 익명 호출자가 "이 이름/번호는 관리자"임을
+  -- 알아내지 못하게 한다. 요청 표시가 남으면 다른 관리자가 승인 화면에서 임시 비밀번호를 발급한다.
+  update public.profiles set password_reset_requested = true where id = v_id;
+  return 'ok';
+end;
+$$;
+
+revoke all on function public.request_password_reset(text, text) from public;
+grant execute on function public.request_password_reset(text, text) to anon, authenticated;
+
+-- 되돌리기: drop function if exists public.request_password_reset(text, text);
