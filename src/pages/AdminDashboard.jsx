@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { PROFILE_COLUMNS } from '../lib/profileColumns';
+import { VENDOR_COLUMNS } from '../lib/vendorColumns';
 import { logout } from '../lib/logout';
 import { translateError } from '../lib/errorHandler';
 import {
@@ -114,7 +115,7 @@ export default function AdminDashboard() {
     const fetchVendors = async () => {
         const { data } = await supabase
             .from('vendors')
-            .select('*, profiles:user_id ( name, phone )')
+            .select(`${VENDOR_COLUMNS}, profiles:user_id ( name, phone )`)
             .order('created_at', { ascending: false });
         setVendors(data || []);
     };

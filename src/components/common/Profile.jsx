@@ -204,8 +204,12 @@ export default function Profile({ user, onUpdate }) {
             // 은행 정보는 profiles가 아니라 partners(또는 vendors) 테이블에 저장됨
             let bankStr = '';
             if (user.role === 'vendor') {
-                const { data: vData } = await supabase.from('vendors').select('bank_account').eq('user_id', user.id).single();
-                if (vData) bankStr = vData.bank_account || '';
+                // 업체 계좌는 본인만 읽는 vendor_private 에 있다 (업체 id 로 조회)
+                const { data: vRow } = await supabase.from('vendors').select('id').eq('user_id', user.id).single();
+                if (vRow) {
+                    const { data: vData } = await supabase.from('vendor_private').select('bank_account').eq('vendor_id', vRow.id).maybeSingle();
+                    bankStr = vData?.bank_account || '';
+                }
             } else {
                 const { data: pData } = await supabase.from('partners').select('bank_account').eq('user_id', user.id).single();
                 if (pData) bankStr = pData.bank_account || '';
@@ -318,12 +322,14 @@ export default function Profile({ user, onUpdate }) {
         try {
             setSavingBank(true);
             const combinedBankAccount = `${bankInfo.bank_code} ${bankInfo.bank_account} ${bankInfo.bank_holder}`;
-            const table = user.role === 'vendor' ? 'vendors' : 'partners';
-
-            const { error } = await supabase
-                .from(table)
-                .update({ bank_account: combinedBankAccount })
-                .eq('user_id', user.id);
+            let error;
+            if (user.role === 'vendor') {
+                const { data: vRow, error: vErr } = await supabase.from('vendors').select('id').eq('user_id', user.id).single();
+                if (vErr) throw vErr;
+                ({ error } = await supabase.from('vendor_private').upsert({ vendor_id: vRow.id, bank_account: combinedBankAccount }));
+            } else {
+                ({ error } = await supabase.from('partners').update({ bank_account: combinedBankAccount }).eq('user_id', user.id));
+            }
 
             if (error) throw error;
             showToast('success', '저장 완료', '정산 계좌 정보가 저장되었습니다.');

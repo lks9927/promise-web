@@ -4,6 +4,7 @@ import { logout } from '../lib/logout';
 import { translateError } from '../lib/errorHandler';
 import { useNotification } from '../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
+import { VENDOR_COLUMNS } from '../lib/vendorColumns';
 import {
     Package, Plus, Edit2, Trash2, Truck, CheckCircle,
     Camera, Bell, Users, LogOut, X, Save, AlertCircle, ClipboardList, Link as LinkIcon, Copy,
@@ -76,7 +77,7 @@ export default function VendorDashboard() {
             // 업체 정보
             const { data: vendor, error: vendorError } = await supabase
                 .from('vendors')
-                .select('*')
+                .select(VENDOR_COLUMNS)
                 .eq('user_id', user.id)
                 .single();
 

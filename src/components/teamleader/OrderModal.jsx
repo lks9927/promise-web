@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { VENDOR_COLUMNS } from '../../lib/vendorColumns';
 import { useNotification } from '../../contexts/NotificationContext';
 import { X, ShoppingCart, Plus, Minus, Trash2, FileText, Truck, Package, Flower, Building } from 'lucide-react';
 
@@ -34,7 +35,7 @@ export default function OrderModal({ isOpen, onClose, caseData, teamLeaderId }) 
     const fetchVendors = async () => {
         const { data } = await supabase
             .from('vendors')
-            .select('*')
+            .select(VENDOR_COLUMNS)
             .eq('status', 'approved')
             .order('business_type');
         setVendors(data || []);

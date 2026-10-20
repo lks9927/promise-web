@@ -187,7 +187,7 @@ export default function PartnerApply() {
                 // alert handled below after all inserts
             } else if (formData.role === 'vendor') {
                 // Create Vendor Record
-                const { error: vendorError } = await supabase
+                const { data: newVendor, error: vendorError } = await supabase
                     .from('vendors')
                     .insert([
                         {
@@ -196,13 +196,22 @@ export default function PartnerApply() {
                             business_type: formData.businessType || 'other',
                             phone: formData.phone,
                             address: formData.address + (formData.detailAddress ? ' ' + formData.detailAddress : ''),
-                            bank_name: formData.bankName,
-                            bank_account: formData.bankAccount,
                             status: 'pending'
                         }
-                    ]);
+                    ])
+                    .select('id')
+                    .single();
 
                 if (vendorError) throw vendorError;
+
+                // 계좌는 본인과 관리자만 읽는 vendor_private 에 저장
+                if (formData.bankName || formData.bankAccount) {
+                    await supabase.from('vendor_private').upsert({
+                        vendor_id: newVendor.id,
+                        bank_name: formData.bankName,
+                        bank_account: formData.bankAccount
+                    });
+                }
             }
 
             // Unified success message
