@@ -235,9 +235,8 @@ export default function VendorDashboard() {
             await supabase.from('notifications').insert({
                 user_id: order.team_leader_id,
                 title: '납품 완료 알림 🚚',
-                body: `[${order.order_number}] ${vendorInfo.company_name}에서 납품이 완료되었습니다. 배송기사: ${selectedDriver?.name}`,
+                message: `[${order.order_number}] ${vendorInfo.company_name}에서 납품이 완료되었습니다. 배송기사: ${selectedDriver?.name}`,
                 type: 'delivery',
-                related_id: order.id,
             });
 
             showToast('success', '납품 완료', '팀장에게 완료 알림이 전송되었습니다.');
@@ -251,8 +250,13 @@ export default function VendorDashboard() {
     };
 
     // 기사용 전달 링크 복사
-    const handleCopyDriverLink = (orderId) => {
-        const url = `${window.location.origin}/delivery/${orderId}`;
+    const handleCopyDriverLink = async (order) => {
+        // 배송 토큰은 별도 테이블에 있어 권한이 있는 사용자에게만 함수로 돌려준다.
+        const { data: token, error } = await supabase.rpc('get_order_delivery_token', { p_order: order.id });
+        if (error || !token) {
+            return showToast('error', '링크 복사 실패', '배송 링크를 만들 수 없습니다. 잠시 후 다시 시도해주세요.');
+        }
+        const url = `${window.location.origin}/delivery/${order.id}?t=${token}`;
         navigator.clipboard.writeText(url);
         showToast('success', '주소 복사 완료', '배송기사용 전용 링크가 복사되었습니다.\n문자나 카카오톡으로 전달하세요.');
     };
@@ -486,7 +490,7 @@ export default function VendorDashboard() {
                                                         <CheckCircle className="w-4 h-4" /> (직접) 납품완료
                                                     </button>
                                                     <button
-                                                        onClick={() => handleCopyDriverLink(order.id)}
+                                                        onClick={() => handleCopyDriverLink(order)}
                                                         className="py-2.5 bg-gray-100 hover:bg-gray-200 transition-colors text-gray-700 font-bold rounded-xl text-sm flex items-center justify-center gap-1.5"
                                                     >
                                                         <Copy className="w-4 h-4" /> 기사 전용링크 복사

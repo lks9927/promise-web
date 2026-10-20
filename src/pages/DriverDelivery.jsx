@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { translateError } from '../lib/errorHandler';
 import { Camera, CheckCircle, Package, MapPin, Phone, Truck, AlertCircle, Navigation } from 'lucide-react';
@@ -7,10 +7,11 @@ import { useNotification } from '../contexts/NotificationContext';
 
 export default function DriverDelivery() {
     const { orderId } = useParams();
+    const [searchParams] = useSearchParams();
+    const token = searchParams.get('t');
     const { showToast } = useNotification();
     const [order, setOrder] = useState(null);
     const [drivers, setDrivers] = useState([]);
-    const [vendorUser, setVendorUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState('loading'); // loading | ready | completing | success | error | not_found
 
@@ -22,20 +23,19 @@ export default function DriverDelivery() {
 
     useEffect(() => {
         fetchOrderData();
-    }, [orderId]);
+    }, [orderId, token]);
 
     const fetchOrderData = async () => {
         try {
-            const { data: orderData, error: orderErr } = await supabase
-                .from('orders')
-                .select(`
-                    *,
-                    funeral_cases ( location, deceased_name, room_number, encoffinment_time, funeral_end_time ),
-                    vendor:vendor_id ( id, company_name, user_id, phone ),
-                    team_leader:team_leader_id ( name, phone )
-                `)
-                .eq('id', orderId)
-                .single();
+            if (!token) {
+                setStatus('not_found');
+                return;
+            }
+
+            const { data: orderData, error: orderErr } = await supabase.rpc('get_delivery_order', {
+                p_order: orderId,
+                p_token: token,
+            });
 
             if (orderErr) throw orderErr;
             if (!orderData) {
@@ -44,19 +44,12 @@ export default function DriverDelivery() {
             }
 
             setOrder(orderData);
-            setVendorUser(orderData.vendor.user_id);
+            setDrivers(orderData.drivers || []);
 
             if (orderData.status === 'delivered') {
                 setStatus('success');
             } else {
                 setStatus('ready');
-                // Fetch drivers for this vendor
-                const { data: driverData } = await supabase
-                    .from('delivery_drivers')
-                    .select('*')
-                    .eq('vendor_id', orderData.vendor.id)
-                    .eq('is_active', true);
-                setDrivers(driverData || []);
             }
         } catch (err) {
             console.error(err);
@@ -94,46 +87,15 @@ export default function DriverDelivery() {
             const { data: urlData } = supabase.storage.from('reports').getPublicUrl(fileName);
             photoUrl = urlData.publicUrl;
 
-            // 선택된 기사 정보 (없으면 직접입력 형태가 될 수 있으나 현재는 드롭다운만 제공)
-            const selectedDriver = drivers.find(d => d.id === selectedDriverId);
-
-            // 2. 납품(배송) 기록 인서트
-            await supabase.from('deliveries').insert({
-                order_id: order.id,
-                driver_id: selectedDriver ? selectedDriver.id : null,
-                driver_name: selectedDriver ? selectedDriver.name : '미확인 기사',
-                status: 'delivered',
-                delivery_photo_url: photoUrl,
-                notes,
-                completed_at: new Date().toISOString(),
+            const { error: completeErr } = await supabase.rpc('complete_delivery', {
+                p_order: order.id,
+                p_token: token,
+                p_driver: selectedDriverId || null,
+                p_photo_url: photoUrl,
+                p_notes: notes || null,
             });
 
-            // 3. 발주서 상태 업데이트
-            await supabase.from('orders').update({
-                status: 'delivered',
-                delivered_at: new Date().toISOString()
-            }).eq('id', order.id);
-
-            // 4. 팀장 및 외주업체 대표에게 알람 발송
-            const driverNameForNotif = selectedDriver ? selectedDriver.name : '배송기사';
-            const notifications = [
-                {
-                    user_id: order.team_leader_id, // 팀장
-                    title: '납품 완료 알림 🚚',
-                    body: `[${order.order_number}] ${order.vendor.company_name}에서 장례식장으로 납품이 완료되었습니다. (배송완료: ${driverNameForNotif})`,
-                    type: 'delivery',
-                    related_id: order.id,
-                },
-                {
-                    user_id: vendorUser, // 외주업체 대표
-                    title: '배송기사 납품 완료 확인 ✅',
-                    body: `[${order.order_number}] 배송기사(${driverNameForNotif})가 납품 완료 처리를 하였습니다.`,
-                    type: 'delivery',
-                    related_id: order.id,
-                }
-            ];
-
-            await supabase.from('notifications').insert(notifications);
+            if (completeErr) throw completeErr;
 
             setStatus('success');
             showToast('success', '배송 완료', '수고하셨습니다! 처리가 완료되었습니다.');
