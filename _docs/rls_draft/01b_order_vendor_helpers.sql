@@ -54,3 +54,52 @@ revoke all on function public.can_access_order(uuid)    from public, anon;
 grant execute on function public.my_role(), public.owns_vendor(uuid), public.vendor_is_approved(uuid),
                           public.is_order_leader(uuid), public.can_access_order(uuid)
   to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 도우미 함수 2 - 상하 관계와 장례 건 접근 (12 에서 옮겨 옴. SECURITY DEFINER: 정책끼리 서로 참조해 생기는 RLS 재귀를 피한다)
+-- ----------------------------------------------------------------------------
+-- 내 하위(partners.master_id = 나)인가
+create or replace function public.is_my_report(p_user uuid)
+returns boolean language sql stable security definer set search_path = public, pg_temp
+as $$
+  select p_user is not null and exists (
+    select 1 from public.partners pt where pt.user_id = p_user and pt.master_id = auth.uid()
+  );
+$$;
+
+-- 내 상위(나의 master)인가
+create or replace function public.is_my_master(p_user uuid)
+returns boolean language sql stable security definer set search_path = public, pg_temp
+as $$
+  select p_user is not null and exists (
+    select 1 from public.partners pt where pt.user_id = auth.uid() and pt.master_id = p_user
+  );
+$$;
+
+-- 이 장례 건을 볼 수 있는가: 관리자, 당사자(고객/딜러/담당 팀장/입찰 중인 팀장),
+-- 딜러·팀장의 상위 master, 또는 "접수 대기(requested)" 건(팀장/master 가 배정 대기 목록을 봄)
+create or replace function public.can_see_case(p_case uuid)
+returns boolean language sql stable security definer set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.funeral_cases c
+     where c.id = p_case
+       and (
+         public.is_admin()
+         or c.customer_id       = auth.uid()
+         or c.dealer_id         = auth.uid()
+         or c.team_leader_id    = auth.uid()
+         or c.current_bidder_id = auth.uid()
+         or public.is_my_report(c.dealer_id)
+         or public.is_my_report(c.team_leader_id)
+         or (c.status = 'requested' and public.my_role() in ('master', 'leader'))
+       )
+  );
+$$;
+
+revoke all on function public.is_my_report(uuid)  from public, anon;
+revoke all on function public.is_my_master(uuid)  from public, anon;
+revoke all on function public.can_see_case(uuid)  from public, anon;
+grant execute on function public.is_my_report(uuid), public.is_my_master(uuid), public.can_see_case(uuid)
+  to authenticated;
+

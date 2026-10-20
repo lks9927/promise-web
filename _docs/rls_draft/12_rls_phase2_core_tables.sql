@@ -18,53 +18,7 @@
 -- ============================================================================
 begin;
 
--- ----------------------------------------------------------------------------
--- 도우미 함수 (SECURITY DEFINER: 정책끼리 서로 참조해 생기는 RLS 재귀를 피한다)
--- ----------------------------------------------------------------------------
--- 내 하위(partners.master_id = 나)인가
-create or replace function public.is_my_report(p_user uuid)
-returns boolean language sql stable security definer set search_path = public, pg_temp
-as $$
-  select p_user is not null and exists (
-    select 1 from public.partners pt where pt.user_id = p_user and pt.master_id = auth.uid()
-  );
-$$;
-
--- 내 상위(나의 master)인가
-create or replace function public.is_my_master(p_user uuid)
-returns boolean language sql stable security definer set search_path = public, pg_temp
-as $$
-  select p_user is not null and exists (
-    select 1 from public.partners pt where pt.user_id = auth.uid() and pt.master_id = p_user
-  );
-$$;
-
--- 이 장례 건을 볼 수 있는가: 관리자, 당사자(고객/딜러/담당 팀장/입찰 중인 팀장),
--- 딜러·팀장의 상위 master, 또는 "접수 대기(requested)" 건(팀장/master 가 배정 대기 목록을 봄)
-create or replace function public.can_see_case(p_case uuid)
-returns boolean language sql stable security definer set search_path = public, pg_temp
-as $$
-  select exists (
-    select 1 from public.funeral_cases c
-     where c.id = p_case
-       and (
-         public.is_admin()
-         or c.customer_id       = auth.uid()
-         or c.dealer_id         = auth.uid()
-         or c.team_leader_id    = auth.uid()
-         or c.current_bidder_id = auth.uid()
-         or public.is_my_report(c.dealer_id)
-         or public.is_my_report(c.team_leader_id)
-         or (c.status = 'requested' and public.my_role() in ('master', 'leader'))
-       )
-  );
-$$;
-
-revoke all on function public.is_my_report(uuid)  from public, anon;
-revoke all on function public.is_my_master(uuid)  from public, anon;
-revoke all on function public.can_see_case(uuid)  from public, anon;
-grant execute on function public.is_my_report(uuid), public.is_my_master(uuid), public.can_see_case(uuid)
-  to authenticated;
+-- 도우미 함수(is_my_report, is_my_master, can_see_case)는 01b_order_vendor_helpers.sql 로 옮겼다. 01, 01b 를 먼저 적용해야 한다.
 
 -- 기존 정책 이름과 상관없이 대상 테이블의 정책을 전부 지우고 새로 만든다.
 create or replace function pg_temp.drop_all_policies(p_table regclass)
@@ -202,7 +156,12 @@ create policy funeral_cases_select on public.funeral_cases
     or current_bidder_id = (select auth.uid())
     or public.is_my_report(dealer_id)
     or public.is_my_report(team_leader_id)
-    or (status = 'requested' and (select public.my_role()) in ('master', 'leader'))
+    -- 배정 대기 건: 화면이 보여 주는 것(아직 입찰자가 없거나 나에게 온 건)만. 남에게 간 건은 안 보인다.
+    or (
+      status = 'requested'
+      and (select public.my_role()) in ('master', 'leader')
+      and (current_bidder_id is null or current_bidder_id = (select auth.uid()))
+    )
   );
 
 -- 팀장/master 가 만드는 "비공개(private) 장례". 일반 접수는 서버 함수(submit_emergency_case)가 만든다.
@@ -217,7 +176,10 @@ create policy funeral_cases_insert on public.funeral_cases
     )
   );
 
--- 수정: 담당/입찰 팀장, 그 팀장의 master, 배정 대기 건을 가져가는 팀장/master. 가져간 뒤에는 본인이 담당이어야 한다.
+-- 수정: 담당/입찰 팀장과 그 팀장의 master 만. 배정 대기 건을 "가져가는" 일은 직접 UPDATE 가 아니라
+--       accept_bidding 함수(13 에서 호출자 검증 추가)로만 한다(풀의 아무 건이나 수정해 가로채지 못하게).
+-- 수정 후에도 내가 담당이거나, 담당을 해제해 배정 대기(requested, 담당 없음)로 되돌리는 경우는 허용한다
+-- (팀장 화면의 "배정 취소": TeamLeaderDashboard 가 status='requested', team_leader_id=null 로 수정).
 create policy funeral_cases_update on public.funeral_cases
   for update to authenticated
   using (
@@ -225,14 +187,44 @@ create policy funeral_cases_update on public.funeral_cases
     or team_leader_id    = (select auth.uid())
     or current_bidder_id = (select auth.uid())
     or public.is_my_report(team_leader_id)
-    or (status = 'requested' and (select public.my_role()) in ('master', 'leader'))
   )
   with check (
     (select public.is_admin())
     or team_leader_id    = (select auth.uid())
     or current_bidder_id = (select auth.uid())
     or public.is_my_report(team_leader_id)
+    or (status = 'requested' and team_leader_id is null)
   );
+
+-- 관련 팀장/master 라도 장례 건의 "소유/금액" 열은 바꿀 수 없다(관리자와 DEFINER 함수/트리거만).
+-- 트리거는 이름순으로 실행되므로 이름을 trg_00_ 로 시작해 다른 트리거보다 먼저 돌게 한다
+-- (다른 트리거가 같은 UPDATE 안에서 바꾼 값을 "화면이 바꾼 것"으로 오해하지 않도록).
+-- 상태, 담당자(배정 해제 포함), 입찰 정보, 고인명/빈소/장소/시간 같은 진행 정보는 그대로 수정 가능.
+create or replace function public.funeral_cases_guard_non_admin()
+returns trigger language plpgsql security invoker set search_path = public, pg_temp
+as $$
+declare
+  k text;
+begin
+  if current_user = 'authenticated' and not public.is_admin() then
+    foreach k in array array[
+      'customer_id', 'dealer_id', 'coupon_code', 'funnel_type', 'is_private',
+      'final_price', 'commission_amount', 'usage_fee', 'is_remitted', 'deducted_from_deposit',
+      'additional_income_total', 'additional_income_rate', 'additional_income_settled',
+      'master_rating', 'customer_rating'
+    ] loop
+      if (to_jsonb(new) -> k) is distinct from (to_jsonb(old) -> k) then
+        raise exception 'funeral_cases: % 항목은 변경할 수 없습니다.', k using errcode = '42501';
+      end if;
+    end loop;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_00_funeral_cases_guard_non_admin on public.funeral_cases;
+create trigger trg_00_funeral_cases_guard_non_admin
+  before update on public.funeral_cases
+  for each row execute function public.funeral_cases_guard_non_admin();
 
 create policy funeral_cases_delete on public.funeral_cases
   for delete to authenticated
@@ -253,9 +245,18 @@ create policy coupons_select on public.coupons
     or (case_id is not null and public.can_see_case(case_id))
   );
 
+-- 발급: 본인 명의로, 사용 전(issued) 상태의 새 쿠폰만. 이미 사용된 것처럼 만들거나 장례 건에 미리 연결할 수 없다.
 create policy coupons_insert on public.coupons
   for insert to authenticated
-  with check ((select public.is_admin()) or issued_by = (select auth.uid()));
+  with check (
+    (select public.is_admin())
+    or (
+      issued_by = (select auth.uid())
+      and status = 'issued'
+      and case_id is null
+      and (select public.my_role()) in ('dealer', 'leader', 'master')
+    )
+  );
 
 -- 수정: 관리자, 또는 연결된 장례 건을 볼 수 있는 팀장/master (TeamLeaderDashboard 의 쿠폰 상태 처리)
 create policy coupons_update on public.coupons
@@ -272,6 +273,24 @@ create policy coupons_update on public.coupons
 create policy coupons_delete on public.coupons
   for delete to authenticated
   using ((select public.is_admin()));
+
+-- 관리자가 아닌 직접 수정은 쿠폰의 "상태(status)"만 바꿀 수 있다 (코드, 금액, 발급자, 연결 건 변조 방지).
+create or replace function public.coupons_guard_non_admin()
+returns trigger language plpgsql security invoker set search_path = public, pg_temp
+as $$
+begin
+  if current_user = 'authenticated' and not public.is_admin() then
+    if (to_jsonb(new) - 'status') is distinct from (to_jsonb(old) - 'status') then
+      raise exception 'coupons: 상태 외의 값은 변경할 수 없습니다.' using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_00_coupons_guard_non_admin on public.coupons;
+create trigger trg_00_coupons_guard_non_admin
+  before update on public.coupons
+  for each row execute function public.coupons_guard_non_admin();
 
 -- ============================================================================
 -- notifications   (정책 없음/RLS 꺼짐 -> 켬)
@@ -336,7 +355,21 @@ create index if not exists coupons_issued_by_idx                on public.coupon
 create index if not exists coupons_case_id_idx                  on public.coupons (case_id);
 create index if not exists notifications_user_id_idx            on public.notifications (user_id);
 create index if not exists notifications_sender_id_idx          on public.notifications (sender_id);
-create index if not exists partners_user_id_idx                 on public.partners (user_id);
+create index if not exists partners_master_user_idx             on public.partners (master_id, user_id);
+create index if not exists funeral_cases_coupon_code_idx        on public.funeral_cases (coupon_code);
+
+-- Realtime(화면 자동 갱신)이 이 테이블들의 변경을 계속 받도록 publication 에 있는지 확인하고, 없으면 추가한다.
+do $$
+declare t text;
+begin
+  foreach t in array array['funeral_cases', 'notifications'] loop
+    if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+       and not exists (select 1 from pg_publication_tables
+                        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
 
 commit;
 
@@ -355,6 +388,10 @@ commit;
 --  drop trigger if exists trg_profiles_guard_non_admin on public.profiles;
 --  drop trigger if exists trg_partners_guard_non_admin on public.partners;
 --  drop trigger if exists trg_notifications_guard_non_admin on public.notifications;
+--  drop trigger if exists trg_00_funeral_cases_guard_non_admin on public.funeral_cases;
+--  drop trigger if exists trg_00_coupons_guard_non_admin on public.coupons;
+--  drop function if exists public.funeral_cases_guard_non_admin();
+--  drop function if exists public.coupons_guard_non_admin();
 --  drop function if exists public.profiles_guard_non_admin();
 --  drop function if exists public.partners_guard_non_admin();
 --  drop function if exists public.notifications_guard_non_admin();

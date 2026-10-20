@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { PROFILE_COLUMNS } from '../lib/profileColumns';
 import { requestPushPermission } from '../lib/firebase';
 import InstallGuideModal from '../components/common/InstallGuideModal';
 
@@ -108,7 +109,7 @@ const Login = () => {
             // 3. 프로필 상세 정보 다시 로딩
             const { data, error } = await supabase
                 .from('profiles')
-                .select('*')
+                .select(PROFILE_COLUMNS)
                 .eq('id', finalUserId)
                 .single();
 

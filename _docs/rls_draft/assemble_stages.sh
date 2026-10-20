@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # STAGE1/STAGE2 묶음 SQL 을 원본 파일에서 다시 조립한다. (원본을 고친 뒤 실행)
 #   STAGE1 (새 코드 배포 전): 01, 01b, 05, 07, 08, 11   -> 화면 동작이 바뀌지 않는다(추가만)
-#   STAGE2 (새 코드 배포 후): 03, 02, 06, 09, 10
+#   STAGE2 (새 코드 배포 후): 13, 03, 02, 06, 09, 10, 12
 cd "$(dirname "$0")"
 add() { echo; echo "-- ################ $1 ################"; cat "$1"; }
 {
@@ -24,18 +24,20 @@ add 07_coupon_public_rpc.sql; add 08_delivery_rpc.sql; add 11_password_reset_req
 {
 cat <<'H'
 -- ============================================================================
--- STAGE2_apply_after_deploy.sql  (자동 조립 파일 - 원본: 03, 02, 06, 09, 10)
+-- STAGE2_apply_after_deploy.sql  (자동 조립 파일 - 원본: 13, 03, 02, 06, 09, 10, 12)
 -- 새 코드를 "배포한 뒤에" 적용한다. STAGE1 이 먼저 적용돼 있어야 한다.
+--   13: 로그인 없이도 실행되던 서버 함수 정리, 입찰 함수 호출자 검증, 비밀번호 열 숨김
 --   03: 장례 등록 함수 보강(쿠폰 검증, 중복 방지, 딜러 변조 방지)
 --   02: RLS 1단계(정산 등 6개 테이블)
 --   06: 열려 있던 정책 정리(발주 항목, 업체 상품, 업체 수정 등)
 --   09: 발주/배송 정책 닫기 (공개 키로 주문 목록 전체를 읽던 구멍)
 --   10: system_config 에 RLS (공개 키로 모든 설정이 읽히고 쓰이던 구멍)
+--   12: 핵심 테이블 RLS (profiles, partners, funeral_cases, coupons, notifications)
 -- 적용 직후 홈 화면의 장례 접수, 쿠폰 링크 접수, 관리자 정산, 업체/팀장 발주 화면, 새 배송 링크를 확인한다.
 -- 문제가 생기면 99_rollback_phase1_rls.sql -> 98_rollback_function_changes.sql (09 되돌리기는 09 파일 맨 아래).
 -- ============================================================================
 H
-add 03_submit_emergency_case_v2.sql; add 02_rls_phase1.sql; add 06_tighten_open_tables.sql
-add 09_close_delivery_policies.sql; add 10_system_config_policies.sql
+add 13_function_privileges_and_profile_columns.sql; add 03_submit_emergency_case_v2.sql; add 02_rls_phase1.sql; add 06_tighten_open_tables.sql
+add 09_close_delivery_policies.sql; add 10_system_config_policies.sql; add 12_rls_phase2_core_tables.sql
 } > STAGE2_apply_after_deploy.sql
 wc -l STAGE1_apply_before_deploy.sql STAGE2_apply_after_deploy.sql

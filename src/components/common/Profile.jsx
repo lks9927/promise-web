@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { PROFILE_COLUMNS } from '../../lib/profileColumns';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
 import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck, FileBadge, Image as ImageIcon, Plus, Trash2, Search, X } from 'lucide-react';
@@ -186,7 +187,7 @@ export default function Profile({ user, onUpdate }) {
             setLoading(true);
             const { data, error } = await supabase
                 .from('profiles')
-                .select('*')
+                .select(PROFILE_COLUMNS)
                 .eq('id', user.id)
                 .single();
             if (error) throw error;

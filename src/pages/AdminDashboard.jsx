@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { PROFILE_COLUMNS } from '../lib/profileColumns';
 import { logout } from '../lib/logout';
 import { translateError } from '../lib/errorHandler';
 import {
@@ -127,9 +128,9 @@ export default function AdminDashboard() {
                 supabase.from('funeral_cases').select('*, profiles!funeral_cases_customer_id_fkey (name, phone), team_leader:profiles!funeral_cases_team_leader_id_fkey (name, phone), dealer:profiles!funeral_cases_dealer_id_fkey (name, phone)').order('created_at', { ascending: false }),
                 supabase.from('partners').select('*, profiles:user_id (name, phone, role, email)'),
                 supabase.from('system_config').select('*'),
-                supabase.from('profiles').select('*').eq('password_reset_requested', true),
+                supabase.from('profiles').select(PROFILE_COLUMNS).eq('password_reset_requested', true),
                 supabase.from('coupons').select('*, profiles:issued_by(name)').order('created_at', { ascending: false }),
-                supabase.from('profiles').select('*').eq('role', 'customer').order('created_at', { ascending: false })
+                supabase.from('profiles').select(PROFILE_COLUMNS).eq('role', 'customer').order('created_at', { ascending: false })
             ]);
 
             const [settlementRes, caseRes, partnerRes, configRes, requestRes, couponRes, customerRes] = results.map(r => r.status === 'fulfilled' ? r.value : { data: null });
