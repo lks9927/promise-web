@@ -52,11 +52,9 @@ export default function Home() {
         try {
             let linkedCoupon = null;
             if (formData.couponCode && formData.couponCode.trim()) {
-                const { data: coupon, error: couponError } = await supabase
-                    .from('coupons')
-                    .select('*')
-                    .eq('code', formData.couponCode.trim().toUpperCase())
-                    .single();
+                const { data: coupon, error: couponError } = await supabase.rpc('get_coupon_public', {
+                    p_code: formData.couponCode.trim().toUpperCase()
+                });
 
                 if (couponError || !coupon) {
                     throw new Error('유효하지 않은 쿠폰 번호입니다.');

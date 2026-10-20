@@ -30,11 +30,9 @@ export default function CouponLanding() {
     const fetchCoupon = async () => {
         setLoading(true);
         try {
-            const { data, error: fetchError } = await supabase
-                .from('coupons')
-                .select('*')
-                .eq('code', code?.toUpperCase())
-                .single();
+            const { data, error: fetchError } = await supabase.rpc('get_coupon_public', {
+                p_code: code?.toUpperCase()
+            });
 
             if (fetchError || !data) {
                 setError('invalid');
