@@ -10,7 +10,9 @@
 | 1 | `01_prerequisites.sql` | 관리자/장례 담당 판별 도우미, 정산 계산 트리거를 DEFINER 로 | 없음 |
 | 2 | `03_submit_emergency_case_v2.sql` | 장례 등록 함수 보강 (쿠폰 검증, 중복 방지, 딜러 변조 방지) | 아래 참조 |
 | 3 | `02_rls_phase1.sql` | 6개 테이블에 RLS | 로그인 없는 접근이 없는 테이블만 |
-| 4 | `04_indexes.sql` | 인덱스 (선택) | 없음 |
+| 4 | `05_close_commission_policies.sql` | 수수료 정책을 **관리자만 수정**, 로그인한 사용자만 읽기 (**가장 급함, 독립 적용 가능**) | 없음(로그인 없는 사용 없음) |
+| 5 | `06_tighten_open_tables.sql` | 열려 있던 정책 6개 테이블 정리(추가수입, 맞춤 패키지, 발주 항목, 업체 상품, 배송기사 쓰기, 업체 수정) | 아래 "06 적용 후 확인" |
+| 6 | `04_indexes.sql` | 인덱스 (선택) | 없음 |
 | 되돌리기 | `99_rollback_phase1_rls.sql` -> `98_rollback_function_changes.sql` | RLS 끄기 -> 함수 원복 | |
 
 각 파일은 한 번에 하나씩 실행하고, 실행마다 아래 확인을 한다. SQL Editor 에서 **파일 전체를 붙여넣어 한 번에 실행**한다
@@ -70,12 +72,35 @@
 그다음에 `profiles`(본인/master의 하위/관리자), `funeral_cases`(딜러/팀장/master/관리자별), `partners` 정책을 쓴다.
 팀장 화면이 요청 건을 DB 에서 전부 읽고 브라우저에서 거르는 부분, Realtime 구독도 함께 손봐야 한다.
 
-## 별도로 급한 것 (12개 테이블 밖)
+## 12개 테이블 밖의 열린 정책 (RLS 는 이미 켜져 있고 정책이 `USING true`)
 
-정책이 `USING true`(누구나 허용)인 테이블이 더 있다. 특히 **`commission_policies`: 누구나 UPDATE 가능**
-(수수료 정책을 아무나 바꿀 수 있다). 그 밖에 `deliveries`, `orders`, `order_items`, `delivery_drivers`,
-`vendor_products`, `vendors`, `custom_packages`, `additional_income_items`, `funeral_progress_reports`(읽기).
-이번 12개 작업과 별개로 다음에 정리한다.
+운영 DB 확인(2026-10-20): 아래 테이블들은 RLS 가 **이미 켜져 있어서 열린 정책이 지금 실제로 작동**한다.
+공개 키로 `commission_policies` 3행이 읽히는 것을 확인했다(수정 정책도 같은 식으로 열려 있음).
+
+| 테이블 | 처리 |
+|---|---|
+| `commission_policies` | **05 로 닫음** (수정은 관리자만) |
+| `additional_income_items`, `custom_packages`, `order_items`, `vendor_products` | **06 으로 닫음** (로그인 없는 사용 없음) |
+| `delivery_drivers` | 06: 쓰기는 업체 본인/관리자, 읽기는 활성 기사만. 다른 업체의 활성 기사 목록은 아직 공개 |
+| `vendors` | 06: 수정은 관리자/본인(계좌만), 로그인 없는 사용자는 4개 열만 읽기. 가입 INSERT 와 로그인한 사용자 간 노출은 그대로 |
+| `orders`, `deliveries`, `funeral_progress_reports` | **아직 열림.** 아래 "코드 수정이 필요한 것" |
+
+### 코드 수정이 필요한 것 (이번 SQL 로 못 닫는 이유)
+
+- **배송기사 `/delivery/:orderId`**: 로그인 없이 주문을 읽고(`orders`), 배송 완료를 기록(`deliveries` INSERT)하고 주문 상태를 수정(`orders` UPDATE)한다.
+  주문 ID 는 무작위 UUID 라 링크를 모르면 추측할 수 없지만, 정책이 열려 있어 **공개 키로 주문 목록 전체를 나열**할 수 있다.
+  -> 서버 발급 토큰이 붙은 링크 + RPC 2개(조회, 완료 처리)로 바꾼 뒤 정책을 닫는다.
+- **고객 `/mypage` 타임라인**: `funeral_progress_reports` 를 로그인 없이 읽고 실시간 구독한다. 사례별 접근 토큰 + RPC 로 바꾼 뒤 닫는다.
+- 공개 `vendors` 읽기, `delivery_drivers` 공개 목록은 위 배송 RPC 로 대체되면 함께 닫힌다.
+
+## 06 적용 후 확인 (로그인 계정으로)
+
+1. **배송기사 링크(`/delivery/주문ID`)** 가 그대로 열리고(주문 정보, 업체명, 기사 목록) 완료 처리가 된다.
+   -> `vendors` 의 열 제한 때문에 가장 먼저 깨질 수 있는 곳이다.
+2. 업체 로그인: 상품 등록/수정/삭제, 기사 등록/수정, 받은 발주 목록, 계좌 정보 수정. 업체가 자기 승인 상태를 바꿀 수는 없다.
+3. 팀장 로그인: 발주 화면에서 승인된 업체의 상품이 보이고 발주가 된다. 장례 진행 보고서의 추가수입 항목 추가/삭제.
+4. 관리자 로그인: 업체 승인/반려, 맞춤 패키지 승인, 수수료 설정 저장.
+5. 문제가 생기면 06 파일 맨 아래의 되돌리기 SQL.
 
 ## 알려진 한계
 

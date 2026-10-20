@@ -25,8 +25,11 @@ as $$
   );
 $$;
 
-revoke all on function public.is_admin() from public;
-grant execute on function public.is_admin() to anon, authenticated;
+-- 정책은 모두 authenticated 에게만 적용되므로 anon 의 실행 권한은 주지 않는다.
+-- (장례 등록 함수는 DEFINER 라서 내부에서 호출해도 anon 권한이 필요 없다.
+--  2단계에서 anon 정책이 이 함수를 써야 하면 그때 그 정책에 맞춰 부여한다.)
+revoke all on function public.is_admin() from public, anon;
+grant execute on function public.is_admin() to authenticated;
 
 -- 1-2) 장례 건의 "관리 권한" 판별: 담당 팀장 본인, 또는 그 팀장의 상위 master.
 --      DEFINER 로 만들어 funeral_cases/partners 의 RLS(2단계에서 켬)와 무관하게 동작하고,
@@ -48,8 +51,8 @@ as $$
   );
 $$;
 
-revoke all on function public.is_case_manager(uuid) from public;
-grant execute on function public.is_case_manager(uuid) to anon, authenticated;
+revoke all on function public.is_case_manager(uuid) from public, anon;
+grant execute on function public.is_case_manager(uuid) to authenticated;
 
 -- 2) 정산 계산 트리거 함수를 SECURITY DEFINER 로 전환.
 --    (함수 본문은 그대로, 실행 권한만 소유자로 바뀐다. 소유자는 RLS 를 우회한다.)
