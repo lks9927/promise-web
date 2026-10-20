@@ -49,7 +49,9 @@ begin
      or not (public.is_admin() or p_leader_id = auth.uid() or public.is_my_report(p_leader_id)) then
     raise exception '권한이 없습니다.' using errcode = '42501';
   end if;
-  if not exists (select 1 from public.profiles pr where pr.id = p_leader_id and pr.role in ('leader', 'master')) then
+  -- 대상은 팀장/master 이면서 승인된 파트너여야 한다(승인 대기 계정은 수락할 수 없다)
+  if not exists (select 1 from public.profiles pr where pr.id = p_leader_id and pr.role in ('leader', 'master'))
+     or not exists (select 1 from public.partners pt where pt.user_id = p_leader_id and pt.status = 'approved') then
     return 'NOT_AVAILABLE';
   end if;
   return public.accept_bidding_internal(p_case_id, p_leader_id);
@@ -153,6 +155,7 @@ commit;
 --              and not exists (select 1 from pg_depend d where d.objid=p.oid and d.deptype='e') loop
 --       execute format('grant execute on function %s to public, anon, authenticated, service_role', r.sig);
 --     end loop; end $$;
+--   alter default privileges for role postgres in schema public grant execute on functions to public;
 --   alter default privileges for role postgres in schema public grant execute on functions to anon;
 --   -- profiles 열 권한 원복
 --   grant select on public.profiles to anon, authenticated;

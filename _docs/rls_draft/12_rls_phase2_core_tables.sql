@@ -121,6 +121,8 @@ create policy partners_delete on public.partners
   using ((select public.is_admin()));
 
 -- 본인은 계좌, 근무 상태, 주소/지역만 바꿀 수 있다 (등급, 승인 상태, 상위, 하위 한도는 관리자만).
+-- (허용 목록 방식이라 partners/coupons/notifications 에 새 열을 추가해 화면에서 수정하게 되면 이 목록에도 넣어야 한다.
+--  새 열이 자동으로 보호되는 쪽(실패하면 막힘)을 일부러 택했다. 현재 이 테이블들에는 updated_at 같은 자동 갱신 열이 없다.)
 create or replace function public.partners_guard_non_admin()
 returns trigger language plpgsql security invoker set search_path = public, pg_temp
 as $$
@@ -160,6 +162,7 @@ create policy funeral_cases_select on public.funeral_cases
     or (
       status = 'requested'
       and (select public.my_role()) in ('master', 'leader')
+      and public.is_approved_partner()
       and (current_bidder_id is null or current_bidder_id = (select auth.uid()))
     )
   );
@@ -209,7 +212,8 @@ begin
       'customer_id', 'dealer_id', 'coupon_code', 'funnel_type', 'is_private',
       'final_price', 'commission_amount', 'usage_fee', 'is_remitted', 'deducted_from_deposit',
       'additional_income_total', 'additional_income_rate', 'additional_income_settled',
-      'master_rating', 'customer_rating'
+      'master_rating', 'customer_rating',
+      'current_bidder_id', 'bid_timeout_at', 'previous_bidders', 'current_bidder_pings'   -- 입찰 내부 값은 함수만 바꾼다
     ] loop
       if (to_jsonb(new) -> k) is distinct from (to_jsonb(old) -> k) then
         raise exception 'funeral_cases: % 항목은 변경할 수 없습니다.', k using errcode = '42501';
@@ -253,6 +257,7 @@ create policy coupons_insert on public.coupons
       and status = 'issued'
       and case_id is null
       and (select public.my_role()) in ('dealer', 'leader', 'master')
+      and public.is_approved_partner()
     )
   );
 

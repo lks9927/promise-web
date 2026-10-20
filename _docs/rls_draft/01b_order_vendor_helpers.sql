@@ -76,6 +76,15 @@ as $$
   );
 $$;
 
+-- 승인된 파트너인가 (자가 가입 직후의 승인 대기 계정이 배정 대기 건을 보거나 수락하지 못하게 한다)
+create or replace function public.is_approved_partner()
+returns boolean language sql stable security definer set search_path = public, pg_temp
+as $
+  select exists (select 1 from public.partners pt where pt.user_id = auth.uid() and pt.status = 'approved');
+$;
+revoke all on function public.is_approved_partner() from public, anon;
+grant execute on function public.is_approved_partner() to authenticated;
+
 -- 이 장례 건을 볼 수 있는가: 관리자, 당사자(고객/딜러/담당 팀장/입찰 중인 팀장),
 -- 딜러·팀장의 상위 master, 또는 "접수 대기(requested)" 건(팀장/master 가 배정 대기 목록을 봄)
 create or replace function public.can_see_case(p_case uuid)
@@ -95,6 +104,7 @@ as $$
          or (
            c.status = 'requested'
            and public.my_role() in ('master', 'leader')
+           and public.is_approved_partner()
            and (c.current_bidder_id is null or c.current_bidder_id = auth.uid())
          )
        )
