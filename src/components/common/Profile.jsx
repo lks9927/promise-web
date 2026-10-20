@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { PROFILE_COLUMNS } from '../../lib/profileColumns';
+import { PROFILE_COLUMNS, PRIVATE_COLUMNS } from '../../lib/profileColumns';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
 import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck, FileBadge, Image as ImageIcon, Plus, Trash2, Search, X } from 'lucide-react';
@@ -185,12 +185,13 @@ export default function Profile({ user, onUpdate }) {
     const fetchProfile = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('profiles')
-                .select(PROFILE_COLUMNS)
-                .eq('id', user.id)
-                .single();
-            if (error) throw error;
+            // 주소/사업자 정보는 본인만 읽는 profile_private 에 있다 (두 요청을 동시에)
+            const [profileRes, privateRes] = await Promise.all([
+                supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', user.id).single(),
+                supabase.from('profile_private').select(PRIVATE_COLUMNS).eq('id', user.id).maybeSingle()
+            ]);
+            if (profileRes.error) throw profileRes.error;
+            const data = { ...profileRes.data, ...(privateRes.data || {}) };
             setProfileData(data);
             setProfileDetails({
                 introduction: data.introduction || '',
@@ -403,12 +404,14 @@ export default function Profile({ user, onUpdate }) {
                 .from('profiles')
                 .update({
                     introduction: profileDetails.introduction,
-                    experience_years: parseInt(profileDetails.experience_years) || 0,
-                    address: profileDetails.address,
-                    address_detail: profileDetails.address_detail
+                    experience_years: parseInt(profileDetails.experience_years) || 0
                 })
                 .eq('id', user.id);
             if (error) throw error;
+            const { error: privError } = await supabase
+                .from('profile_private')
+                .upsert({ id: user.id, address: profileDetails.address, address_detail: profileDetails.address_detail });
+            if (privError) throw privError;
             showToast('success', '저장 완료', '프로필 상세 정보가 저장되었습니다.');
         } catch (error) {
             console.error(error);
@@ -883,9 +886,13 @@ function BizInfoModal({ profileData, setProfileData, userId, showToast, onClose 
             setSaving(true);
             const { error } = await supabase
                 .from('profiles')
-                .update({ ...form, has_business: true })
+                .update({ has_business: true })
                 .eq('id', userId);
             if (error) throw error;
+            const { error: privError } = await supabase
+                .from('profile_private')
+                .upsert({ id: userId, ...form });
+            if (privError) throw privError;
             setProfileData(prev => ({ ...prev, ...form, has_business: true }));
             showToast('success', '저장 완료', '사업자 정보가 저장되었습니다.');
             onClose();

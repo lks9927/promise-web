@@ -4,8 +4,13 @@
 export const PROFILE_COLUMNS = [
   'id', 'email', 'role', 'admin_level', 'name', 'phone', 'introduction', 'experience_years',
   'created_at', 'password_reset_requested', 'certificate_url', 'gallery_urls', 'business_license_url',
-  'address', 'address_detail', 'os_type', 'fcm_token', 'bank_code', 'bank_account', 'bank_holder',
-  'avatar_url', 'has_business', 'business_number', 'business_name', 'ceo_name', 'business_type',
-  'business_item', 'tax_email', 'business_address', 'agreed_terms', 'agreed_privacy',
+  'os_type', 'fcm_token', 'avatar_url', 'has_business', 'agreed_terms', 'agreed_privacy',
   'agreed_marketing', 'agreed_at'
+].join(', ');
+
+// 주소/계좌/사업자 정보는 profiles 가 아니라 본인과 관리자만 읽는 profile_private 테이블에 있다.
+// (DB: _docs/rls_draft/14a, 14b). profiles 에서 이 열들을 읽거나 쓰면 오류가 난다.
+export const PRIVATE_COLUMNS = [
+  'address', 'address_detail', 'bank_code', 'bank_account', 'bank_holder', 'business_number',
+  'business_name', 'ceo_name', 'business_type', 'business_item', 'tax_email', 'business_address'
 ].join(', ');

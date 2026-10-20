@@ -144,7 +144,12 @@ export default function AdminDashboard() {
             }
             if (requestRes.data) setPasswordRequests(requestRes.data);
             if (couponRes.data) setCoupons(couponRes.data);
-            if (customerRes && customerRes.data) setCustomers(customerRes.data);
+            if (customerRes && customerRes.data) {
+                // 주소는 profiles 가 아니라 관리자만 읽는 profile_private 에 있다 (고객 목록에 합쳐서 보여준다)
+                const { data: privRows } = await supabase.from('profile_private').select('id, address');
+                const addrById = new Map((privRows || []).map(r => [r.id, r.address]));
+                setCustomers(customerRes.data.map(c => ({ ...c, address: addrById.get(c.id) || '' })));
+            }
 
         } catch (error) {
             console.error('Error fetching data:', error);

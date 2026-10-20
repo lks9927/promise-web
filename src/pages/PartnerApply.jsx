@@ -154,8 +154,9 @@ export default function PartnerApply() {
 
             // 3-a. Save business registration info if provided
             if (formData.role === 'leader' || (formData.role === 'dealer' && formData.has_business)) {
+                await supabase.from('profiles').update({ has_business: true }).eq('id', newUserId);
                 const bizUpdate = {
-                    has_business: true,
+                    id: newUserId,
                     business_number: formData.business_number,
                     business_name: formData.business_name,
                     ceo_name: formData.ceo_name,
@@ -164,7 +165,7 @@ export default function PartnerApply() {
                     tax_email: formData.tax_email,
                     business_address: formData.business_address,
                 };
-                await supabase.from('profiles').update(bizUpdate).eq('id', newUserId);
+                await supabase.from('profile_private').upsert(bizUpdate);
             }
 
             // 3. Create Partner Record (Only for Leader/Dealer)
