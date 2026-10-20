@@ -507,7 +507,7 @@ function HomeTab({ user }) {
                                     try {
                                         const smsRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-coupon-sms`, {
                                             method: 'POST',
-                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` },
                                             body: JSON.stringify({ phone: recipientPhone.trim(), name: recipientName.trim(), couponCode: code, amount: parseInt(linkAmount) })
                                         });
                                         console.log('SMS result:', await smsRes.json());

@@ -17,47 +17,70 @@ serve(async (req) => {
         return new Response("ok", { headers: corsHeaders });
     }
 
-    try {
-        const { phone, name, couponCode, amount } = await req.json();
+    const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-        if (!phone || !name || !couponCode || !amount) {
-            return new Response(
-                JSON.stringify({ error: "phone, name, couponCode, amount 모두 필수입니다." }),
-                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
+    try {
+        // 1) 로그인한 사용자만. (공개 키만으로는 호출할 수 없다)
+        const bearer = (req.headers.get("authorization") ?? "").match(/^Bearer\s+(\S+)$/i);
+        if (!bearer) return json({ error: "Unauthorized" }, 401);
+
+        const supabase = createClient(
+            Deno.env.get("SUPABASE_URL") || "",
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+        );
+        const { data: authData, error: authError } = await supabase.auth.getUser(bearer[1]);
+        if (authError || !authData?.user?.id) return json({ error: "Unauthorized" }, 401);
+        const callerId = authData.user.id;
+
+        const { couponCode } = await req.json();
+        if (typeof couponCode !== "string" || !/^[A-Za-z0-9]{4,32}$/.test(couponCode)) {
+            return json({ error: "couponCode 가 올바르지 않습니다." }, 400);
+        }
+
+        // 2) 수신번호/이름/금액은 요청값이 아니라 DB 의 쿠폰에서 가져온다 (임의 번호로 발송 불가)
+        const { data: coupon, error: couponError } = await supabase
+            .from("coupons")
+            .select("code, amount, status, issued_by, recipient_name, recipient_phone, created_at")
+            .eq("code", couponCode.toUpperCase())
+            .maybeSingle();
+        if (couponError || !coupon || !coupon.recipient_phone || !coupon.recipient_name) {
+            return json({ error: "쿠폰을 찾을 수 없습니다." }, 404);
+        }
+
+        // 3) 발급자 본인 또는 관리자만, 발급 직후(10분 이내)에만 발송
+        const { data: callerProfile } = await supabase.from("profiles").select("role").eq("id", callerId).maybeSingle();
+        const isAdmin = callerProfile?.role === "admin";
+        if (!isAdmin && coupon.issued_by !== callerId) return json({ error: "Forbidden" }, 403);
+        if (coupon.status !== "issued") return json({ error: "발송할 수 없는 쿠폰입니다." }, 409);
+        if (!isAdmin && Date.now() - new Date(coupon.created_at).getTime() > 10 * 60 * 1000) {
+            return json({ error: "발급 후 10분이 지나 발송할 수 없습니다." }, 409);
         }
 
         const SITE_URL = (Deno.env.get("SITE_URL") ?? "https://10promise.co.kr").replace(/\/+$/, "");
-        const linkUrl = `${SITE_URL}/coupon/${couponCode}`;
+        const linkUrl = `${SITE_URL}/coupon/${coupon.code}`;
 
-        const smsContent = `[10년의약속] ${name}님, 캐시백 ${Number(amount).toLocaleString()}원 쿠폰이 도착했습니다.\n\n급한 일이 생기면 아래 링크를 눌러 바로 접수하세요.\n${linkUrl}`;
+        const smsContent = `[10년의약속] ${coupon.recipient_name}님, 캐시백 ${Number(coupon.amount).toLocaleString()}원 쿠폰이 도착했습니다.
+
+급한 일이 생기면 아래 링크를 눌러 바로 접수하세요.
+${linkUrl}`;
 
         // Naver SENS API로 SMS 발송
         const result = await sendNaverSms({
-            phone,
+            phone: coupon.recipient_phone,
             content: smsContent,
         });
 
         // 발송 결과를 coupons 테이블에도 기록
-        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-        const supabase = createClient(supabaseUrl, supabaseKey);
-
         await supabase
             .from("coupons")
             .update({ link_sent_at: new Date().toISOString() })
-            .eq("code", couponCode);
+            .eq("code", coupon.code);
 
-        return new Response(
-            JSON.stringify({ success: true, message: `${name}님에게 SMS 발송 완료`, result }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return json({ success: true, message: `${coupon.recipient_name}님에게 SMS 발송 완료`, result });
     } catch (err) {
         console.error("send-coupon-sms error:", err);
-        return new Response(
-            JSON.stringify({ error: err.message || "SMS 발송 실패" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return json({ error: "SMS 발송 실패" }, 500);
     }
 });
 
