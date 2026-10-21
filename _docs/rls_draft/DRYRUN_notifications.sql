@@ -5,8 +5,7 @@
 --
 -- 지금 정책(12): 발신자를 "비우거나 본인"으로만 만들 수 있다.
 --   -> 다른 사람 이름으로 위조는 막혀 있지만, 발신자를 비우면 "시스템 알림"처럼 보이는 가짜 알림을 만들 수 있다.
---   -> link(눌렀을 때 이동 경로)에 외부 주소를 넣어 피싱 링크를 보낼 수 있다.
--- 변경: 관리자가 아니면 (1) 발신자는 반드시 본인, (2) link 는 비우거나 앱 안의 경로('/...')만.
+-- 변경: 관리자가 아니면 발신자는 반드시 본인.
 -- DB 함수/트리거(DEFINER)가 만드는 시스템 알림은 영향 없음.
 -- 하나의 트랜잭션. 되돌리기는 파일 맨 아래.
 -- ============================================================================
@@ -17,10 +16,7 @@ create policy notifications_insert on public.notifications
   for insert to authenticated
   with check (
     (select public.is_admin())
-    or (
-      sender_id = (select auth.uid())
-      and (link is null or (link like '/%' and link not like '//%'))
-    )
+    or sender_id = (select auth.uid())
   );
 
 
@@ -61,12 +57,9 @@ begin
   loop
     select id into other from public.profiles where id <> r.id and role <> 'admin' limit 1;
     res := res || E'\n== ' || r.role || E' ==';
-    res := res || E'\n  본인 발신 + 앱 내 링크(허용): ' || pg_temp.try(format('insert into public.notifications(user_id, sender_id, type, title, message, link) values (%L, %L, ''info'', ''t'', ''m'', ''/leader'')', other, r.id), r.id, 'authenticated');
-    res := res || E'\n  본인 발신 + 링크 없음(허용): ' || pg_temp.try(format('insert into public.notifications(user_id, sender_id, type, title, message) values (%L, %L, ''info'', ''t'', ''m'')', other, r.id), r.id, 'authenticated');
+    res := res || E'\n  본인 발신(허용): ' || pg_temp.try(format('insert into public.notifications(user_id, sender_id, type, title, message) values (%L, %L, ''info'', ''t'', ''m'')', other, r.id), r.id, 'authenticated');
     res := res || E'\n  발신자 비움(관리자만 OK): ' || pg_temp.try(format('insert into public.notifications(user_id, type, title, message) values (%L, ''info'', ''t'', ''m'')', other), r.id, 'authenticated');
     res := res || E'\n  남 이름으로 발신(관리자만 OK): ' || pg_temp.try(format('insert into public.notifications(user_id, sender_id, type, title, message) values (%L, %L, ''info'', ''t'', ''m'')', other, other), r.id, 'authenticated');
-    res := res || E'\n  외부 링크(관리자만 OK): ' || pg_temp.try(format('insert into public.notifications(user_id, sender_id, type, title, message, link) values (%L, %L, ''info'', ''t'', ''m'', ''https://evil.example'')', other, r.id), r.id, 'authenticated');
-    res := res || E'\n  // 로 시작하는 링크(관리자만 OK): ' || pg_temp.try(format('insert into public.notifications(user_id, sender_id, type, title, message, link) values (%L, %L, ''info'', ''t'', ''m'', ''//evil.example'')', other, r.id), r.id, 'authenticated');
   end loop;
   res := res || E'\n== 로그인 없음(anon) ==';
   res := res || E'\n  알림 만들기(막혀야 함): ' || pg_temp.try('insert into public.notifications(type, title, message) values (''info'', ''t'', ''m'')', null, 'anon');

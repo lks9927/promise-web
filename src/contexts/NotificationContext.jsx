@@ -174,7 +174,7 @@ export function NotificationProvider({ children }) {
     const sendNotification = async (targetUserId, type, title, message, link = null, senderId = user?.id ?? null) => {
         try {
             await supabase.from('notifications').insert([
-                { user_id: targetUserId, sender_id: senderId, type, title, message, link }
+                { user_id: targetUserId, sender_id: senderId, type, title, message } // 운영 DB 의 notifications 에는 link 열이 없다
             ]);
 
             // Attempt to send Kakao/SMS via Solapi API

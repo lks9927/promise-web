@@ -117,7 +117,6 @@ export default function OrderModal({ isOpen, onClose, caseData, teamLeaderId }) 
                 title: '신규 발주서 도착',
                 message: `[${order.order_number}] ${caseData.location || '장소미정'}에서 발주서가 도착했습니다. 총 ${totalAmount.toLocaleString()}원`,
                 type: 'info',
-                link: '/vendor',
             });
 
             showToast('success', '발주 완료', `발주번호 ${order.order_number} 발송되었습니다.`);
