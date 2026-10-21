@@ -6,8 +6,8 @@
 -- 문제: 쿠폰 최대 금액(system_config.max_coupon_amount, 현재 50000)을 "화면"에서만 검사한다.
 --       딜러/팀장이 화면을 거치지 않고 직접 요청하면 어떤 금액(예: 1천만 원)의 쿠폰도 발급할 수 있다.
 -- 해결: 쿠폰 발급 정책(coupons_insert)에 금액 검사를 추가한다. 관리자는 제한 없음.
---       비관리자는 1원 이상 ~ system_config.max_coupon_amount 이하만(설정이 없거나 숫자가 아니면 50000).
---       한도는 관리자가 설정 화면에서 바꾸면 바로 반영된다.
+--       비관리자는 1원 이상 ~ system_config.max_coupon_amount 이하만. 숫자는 SQL 에 박지 않고 설정값만 쓴다
+--       (설정이 없거나 숫자가 아니면 비관리자는 발급 불가). 한도는 관리자 설정 화면에서 바꾸면 바로 반영된다.
 -- 12 의 coupons_insert 와 조건이 같고 금액 검사만 추가했다. 하나의 트랜잭션. 되돌리기는 파일 맨 아래.
 -- ============================================================================
 
@@ -21,10 +21,8 @@ set search_path = public, pg_temp
 as $$
   select p_amount is not null
      and p_amount > 0
-     and p_amount <= coalesce(
-           (select nullif(regexp_replace(c.value, '[^0-9]', '', 'g'), '')::integer
-              from public.system_config c where c.key = 'max_coupon_amount'),
-           50000);
+     and p_amount <= (select nullif(regexp_replace(c.value, '[^0-9]', '', 'g'), '')::integer
+                        from public.system_config c where c.key = 'max_coupon_amount');
 $$;
 
 revoke all on function public.coupon_amount_ok(integer) from public, anon;
@@ -90,9 +88,9 @@ declare
   r record;
   amt int;
 begin
-  res := res || E'\n한도 설정값: ' || coalesce((select value from public.system_config where key = 'max_coupon_amount'), '(없음 -> 50000)');
-  res := res || E'\n함수 판정: 1원=' || public.coupon_amount_ok(1) || ', 한도=' || public.coupon_amount_ok(coalesce((select nullif(value,'')::int from public.system_config where key = 'max_coupon_amount'), 50000))
-        || ', 한도+1=' || public.coupon_amount_ok(coalesce((select nullif(value,'')::int from public.system_config where key = 'max_coupon_amount'), 50000) + 1)
+  res := res || E'\n한도 설정값: ' || coalesce((select value from public.system_config where key = 'max_coupon_amount'), '(없음 -> 비관리자 발급 불가)');
+  res := res || E'\n함수 판정: 1원=' || public.coupon_amount_ok(1) || ', 한도=' || public.coupon_amount_ok((select nullif(value,'')::int from public.system_config where key = 'max_coupon_amount'))
+        || ', 한도+1=' || public.coupon_amount_ok((select nullif(value,'')::int from public.system_config where key = 'max_coupon_amount') + 1)
         || ', 0=' || public.coupon_amount_ok(0) || ', -1=' || public.coupon_amount_ok(-1) || ', null=' || coalesce(public.coupon_amount_ok(null)::text, 'null');
   -- 42501 = 정책이 막음, 그 외(예: 23502 필수 열 없음, 23505 중복)는 정책을 통과했다는 뜻이다.
   for r in
