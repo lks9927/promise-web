@@ -235,6 +235,7 @@ export default function VendorDashboard() {
             // 팀장에게 알림
             await supabase.from('notifications').insert({
                 user_id: order.team_leader_id,
+                sender_id: user.id,
                 title: '납품 완료 알림 🚚',
                 message: `[${order.order_number}] ${vendorInfo.company_name}에서 납품이 완료되었습니다. 배송기사: ${selectedDriver?.name}`,
                 type: 'delivery',
