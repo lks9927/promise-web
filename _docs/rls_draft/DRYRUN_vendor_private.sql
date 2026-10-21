@@ -164,7 +164,7 @@ begin
   for r in
     select 'vendor'::text as role, uid as id where uid is not null
     union all
-    select distinct on (role) role, id from public.profiles where role in ('admin','leader','dealer','customer') order by role, created_at
+    select s.role, s.id from (select distinct on (role) role, id from public.profiles where role in ('admin','leader','dealer','customer') order by role, created_at) s
   loop
     res := res || E'\n== ' || r.role || E' ==';
     res := res || E'\n  vendors 열 목록 읽기(허용): ' || pg_temp.try('select ' || cols_list || ' from public.vendors', r.id, 'authenticated');
