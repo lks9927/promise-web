@@ -173,9 +173,10 @@ export function NotificationProvider({ children }) {
     // but for this MVP, client triggers are fine)
     const sendNotification = async (targetUserId, type, title, message, link = null, senderId = user?.id ?? null) => {
         try {
-            await supabase.from('notifications').insert([
+            const { error: insertErr } = await supabase.from('notifications').insert([
                 { user_id: targetUserId, sender_id: senderId, type, title, message } // 운영 DB 의 notifications 에는 link 열이 없다
             ]);
+            if (insertErr) console.error('알림 저장 실패:', insertErr);
 
             // Attempt to send Kakao/SMS via Solapi API
             const { data: profile } = await supabase

@@ -154,7 +154,8 @@ export default function PartnerApply() {
 
             // 3-a. Save business registration info if provided
             if (formData.role === 'leader' || (formData.role === 'dealer' && formData.has_business)) {
-                await supabase.from('profiles').update({ has_business: true }).eq('id', newUserId);
+                const { error: flagErr } = await supabase.from('profiles').update({ has_business: true }).eq('id', newUserId);
+                if (flagErr) console.error('has_business 저장 실패:', flagErr);
                 const bizUpdate = {
                     id: newUserId,
                     business_number: formData.business_number,
@@ -165,7 +166,8 @@ export default function PartnerApply() {
                     tax_email: formData.tax_email,
                     business_address: formData.business_address,
                 };
-                await supabase.from('profile_private').upsert(bizUpdate);
+                const { error: bizErr } = await supabase.from('profile_private').upsert(bizUpdate);
+                if (bizErr) console.error('사업자 정보 저장 실패:', bizErr);
             }
 
             // 3. Create Partner Record (Only for Leader/Dealer)
@@ -206,11 +208,12 @@ export default function PartnerApply() {
 
                 // 계좌는 본인과 관리자만 읽는 vendor_private 에 저장
                 if (formData.bankName || formData.bankAccount) {
-                    await supabase.from('vendor_private').upsert({
+                    const { error: bankErr } = await supabase.from('vendor_private').upsert({
                         vendor_id: newVendor.id,
                         bank_name: formData.bankName,
                         bank_account: formData.bankAccount
                     });
+                    if (bankErr) console.error('업체 계좌 저장 실패:', bankErr);
                 }
             }
 

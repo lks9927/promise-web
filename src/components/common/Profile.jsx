@@ -191,6 +191,7 @@ export default function Profile({ user, onUpdate }) {
                 supabase.from('profile_private').select(PRIVATE_COLUMNS).eq('id', user.id).maybeSingle()
             ]);
             if (profileRes.error) throw profileRes.error;
+            if (privateRes.error) throw privateRes.error; // 실패를 빈 값으로 처리하면 저장 시 기존 정보를 덮어쓸 수 있다
             const data = { ...profileRes.data, ...(privateRes.data || {}) };
             setProfileData(data);
             setProfileDetails({
