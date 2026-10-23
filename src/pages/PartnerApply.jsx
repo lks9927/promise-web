@@ -152,6 +152,16 @@ export default function PartnerApply() {
                 }
             }
 
+            // 2-b. 가입 화면에서 입력한 주소는 모든 역할(고객 포함)이 본인·관리자만 읽는 profile_private 에 저장
+            if (formData.address) {
+                const { error: addrErr } = await supabase.from('profile_private').upsert({
+                    id: newUserId,
+                    address: formData.address,
+                    address_detail: formData.detailAddress || null,
+                });
+                if (addrErr) console.error('주소 저장 실패:', addrErr);
+            }
+
             // 3-a. Save business registration info if provided
             if (formData.role === 'leader' || (formData.role === 'dealer' && formData.has_business)) {
                 const { error: flagErr } = await supabase.from('profiles').update({ has_business: true }).eq('id', newUserId);
