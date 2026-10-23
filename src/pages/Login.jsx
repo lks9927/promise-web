@@ -60,48 +60,6 @@ const Login = () => {
                 finalUserId = null;
             }
 
-            // 2. Supabase Auth 실패 시 서버에서 legacy 비밀번호 검증 및 Auth 마이그레이션
-            if (!finalUserId) {
-                let migrationResponse;
-                let migrationResult;
-
-                try {
-                    migrationResponse = await fetch('/api/legacy-login-migrate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, password }),
-                    });
-                    migrationResult = await migrationResponse.json();
-                } catch {
-                    throw new Error('전화번호(아이디) 또는 비밀번호가 일치하지 않습니다.');
-                }
-
-                if (migrationResponse.status === 429) {
-                    throw new Error('로그인 시도 횟수가 너무 많습니다. 잠시 후 다시 시도해주세요.');
-                }
-
-                if (migrationResponse.status === 409) {
-                    throw new Error('계정 정보에 문제가 있습니다. 관리자에게 문의해주세요.');
-                }
-
-                if (migrationResponse.ok && migrationResult?.success) {
-                    try {
-                        const { data: retryAuthData, error: retryAuthError } = await supabase.auth.signInWithPassword({
-                            email: loginEmail,
-                            password: password,
-                        });
-
-                        if (!retryAuthError && retryAuthData?.user) {
-                            finalUserId = retryAuthData.user.id;
-                        }
-                    } catch {
-                        throw new Error('전화번호(아이디) 또는 비밀번호가 일치하지 않습니다.');
-                    }
-                } else {
-                    throw new Error('전화번호(아이디) 또는 비밀번호가 일치하지 않습니다.');
-                }
-            }
-
             if (!finalUserId) {
                 throw new Error('전화번호(아이디) 또는 비밀번호가 일치하지 않습니다.');
             }
@@ -116,7 +74,7 @@ const Login = () => {
             if (error) throw error;
 
             if (data) {
-                const { password: _LegacyPassword, ...safeProfile } = data;
+                const safeProfile = { ...data };
 
                 // 🔹 Check Partner Status (Approval)
                 if (safeProfile.role === 'leader' || safeProfile.role === 'dealer' || safeProfile.role === 'master') {

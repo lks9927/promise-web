@@ -213,11 +213,10 @@ export default function AdminDashboard() {
                 throw new Error(data.message || 'Supabase Auth 비밀번호 동기화에 실패했습니다.');
             }
 
-            // 2. Auth 변경 성공 후 레거시 비밀번호를 제거하고 초기화 요청 상태 해제
+            // 2. Auth 변경 성공 후 초기화 요청 상태 해제
             const { error } = await supabase
                 .from('profiles')
                 .update({
-                    password: null,
                     password_reset_requested: false
                 })
                 .eq('id', userId);
