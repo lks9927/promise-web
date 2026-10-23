@@ -30,15 +30,6 @@ export function AdminPasswordSettings() {
             if (error) {
                 showToast('error', '오류', '변경 중 오류가 발생했습니다.');
             } else {
-                const { error: legacyPasswordError } = await supabase
-                    .from('profiles')
-                    .update({ password: null })
-                    .eq('id', user.id);
-
-                if (legacyPasswordError) {
-                    console.error('Legacy password cleanup failed:', legacyPasswordError);
-                }
-
                 alert('비밀번호가 변경되었습니다. 다시 로그인해주세요.');
                 await logout();
                 window.location.href = '/login';

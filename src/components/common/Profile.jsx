@@ -6,6 +6,7 @@ import imageCompression from 'browser-image-compression';
 import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck, FileBadge, Image as ImageIcon, Plus, Trash2, Search, X } from 'lucide-react';
 import { useRef } from 'react';
 import SendMessageModal from './SendMessageModal';
+import PasswordChange from './PasswordChange';
 import ImageBlurEditor from './ImageBlurEditor';
 import DaumPostcode from 'react-daum-postcode';
 
@@ -808,10 +809,12 @@ export default function Profile({ user, onUpdate }) {
                     </div>
                 </div>
 
+                <PasswordChange phone={profileData?.phone} />
+
                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                     <p className="text-xs text-gray-400 font-bold mb-1">안내사항</p>
                     <p className="text-sm text-gray-600">
-                        계좌번호 외의 정보(소속, 비밀번호 등) 변경은 관리자를 통해서만 가능합니다.
+                        계좌번호와 비밀번호 외의 정보(소속 등) 변경은 관리자를 통해서만 가능합니다.
                     </p>
                 </div>
             </div>
