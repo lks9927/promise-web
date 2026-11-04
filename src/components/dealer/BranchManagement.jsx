@@ -4,6 +4,8 @@ import { Users, UserPlus, Phone, MapPin, Award, Trash2, Briefcase, Loader2, Plus
 import { useNotification } from '../../contexts/NotificationContext';
 import { formatPhoneNumber } from '../../utils/formatters';
 import SendMessageModal from '../common/SendMessageModal';
+import { isTopTier } from '../../lib/partnerGrade';
+import RepresentativeOverview from '../common/RepresentativeOverview';
 
 export default function BranchManagement({ user }) {
     const { showToast } = useNotification();
@@ -32,18 +34,20 @@ export default function BranchManagement({ user }) {
             // Fetch partners where the master_id is the current user's ID
             const { data, error } = await supabase
                 .from('partners')
-                .select(`
-    *,
-    profiles!partners_user_id_fkey(
-        name, phone, role,
-        funeral_cases!funeral_cases_customer_id_fkey(status)
-    )
-                `)
+                .select('*, profiles!partners_user_id_fkey(name, phone, role)')
                 .eq('master_id', user.id)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setSubDealers(data || []);
+            const dealerIds = (data || []).map(row => row.user_id);
+            const { data: caseRows, error: caseError } = dealerIds.length
+                ? await supabase.from('funeral_cases').select('dealer_id, status').in('dealer_id', dealerIds)
+                : { data: [], error: null };
+            if (caseError) throw caseError;
+            const casesByDealer = (caseRows || []).reduce((map, row) => {
+                (map[row.dealer_id] ||= []).push(row); return map;
+            }, {});
+            setSubDealers((data || []).map(row => ({ ...row, caseRows: casesByDealer[row.user_id] || [] })));
         } catch (error) {
             console.error('하위 딜러 조회 오류:', error);
             showToast('error', '불러오기 실패', '하위 지점 목록을 불러오지 못했습니다.');
@@ -98,17 +102,13 @@ export default function BranchManagement({ user }) {
         const dealersWithStats = subDealers.map(dealer => {
             // Defensively ensure cases is an array
             let rawCases = [];
-            if (dealer.profiles && Array.isArray(dealer.profiles.funeral_cases)) {
-                rawCases = dealer.profiles.funeral_cases;
-            } else if (dealer.profiles && dealer.profiles[0] && Array.isArray(dealer.profiles[0].funeral_cases)) {
-                rawCases = dealer.profiles[0].funeral_cases;
-            }
+            rawCases = dealer.caseRows || [];
 
             return {
                 ...dealer,
                 inProgressCount: rawCases.filter(c => c && ['requested', 'assigned', 'consulting', 'in_progress'].includes(c.status)).length,
                 completedCount: rawCases.filter(c => c && ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length,
-                canceledCount: rawCases.filter(c => c && c.status === 'canceled').length,
+                canceledCount: rawCases.filter(c => c && c.status === 'cancelled').length,
             };
         });
 
@@ -136,6 +136,7 @@ export default function BranchManagement({ user }) {
 
     return (
         <div className="space-y-6">
+            {isTopTier(user?.grade) && <RepresentativeOverview user={user} title="딜러 대표마스터 조회" />}
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">

@@ -41,6 +41,7 @@ import OrderModal from '../components/teamleader/OrderModal';
 import { useMultiRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import PackageBottomSheet from '../components/common/PackageBottomSheet';
 import CustomPackageProposalModal from '../components/teamleader/CustomPackageProposalModal';
+import { isMasterOrAbove } from '../lib/partnerGrade';
 
 export default function TeamLeaderDashboard() {
     const { showToast, sendNotification, unreadCount } = useNotification();
@@ -78,7 +79,7 @@ export default function TeamLeaderDashboard() {
     // 신규 추가: 개인 장례 탭 및 등록 모달 상태
     const [profileTab, setProfileTab] = useState('settings'); // 'settings', 'private_active', 'private_completed'
     const [privateRegisterModalOpen, setPrivateRegisterModalOpen] = useState(false);
-    const [privateCaseInput, setPrivateCaseInput] = useState({ deceased_name: '', room_number: '', location: '', encoffinment_time: '', funeral_end_time: '' });
+    const [privateCaseInput, setPrivateCaseInput] = useState({ deceased_name: '', room_number: '', location: '', encoffinment_time: '', funeral_end_time: '', publicity_consent: false });
 
     const navigate = useNavigate();
 
@@ -201,7 +202,7 @@ export default function TeamLeaderDashboard() {
         try {
             // 1. Determine Target Team IDs
             let targetTeamIds = [user.id];
-            if (user.grade === 'Master' || user.grade === 'S') {
+            if (isMasterOrAbove(user.grade)) {
                 const { data: subMembers } = await supabase
                     .from('partners')
                     .select('user_id')
@@ -216,7 +217,7 @@ export default function TeamLeaderDashboard() {
             const results = await Promise.allSettled([
                 supabase.from('funeral_cases').select('*, profiles:customer_id(name, phone)').eq('status', 'requested').order('created_at', { ascending: false }),
                 supabase.from('funeral_cases').select('*, profiles:customer_id(name, phone), team_leader:team_leader_id(id, name, role), funeral_progress_reports(id), orders(*, vendors(company_name), deliveries(*))').in('status', ['assigned', 'consulting', 'in_progress', 'team_settling', 'hq_check', 'completed']).in('team_leader_id', targetTeamIds).order('created_at', { ascending: false }),
-                user.grade === 'Master' ? supabase.from('partners').select('*, profiles:user_id(name, phone)').eq('master_id', user.id) : Promise.resolve({ data: null })
+                isMasterOrAbove(user.grade) ? supabase.from('partners').select('*, profiles:user_id(name, phone)').eq('master_id', user.id) : Promise.resolve({ data: null })
             ]);
 
             const [reqRes, myRes, teamRes] = results.map(r => r.status === 'fulfilled' ? r.value : { data: null, error: r.reason });
@@ -467,11 +468,12 @@ export default function TeamLeaderDashboard() {
                 location: privateCaseInput.location,
                 encoffinment_time: privateCaseInput.encoffinment_time || null,
                 funeral_end_time: privateCaseInput.funeral_end_time || null,
+                publicity_consent: !!privateCaseInput.publicity_consent,
             }]);
             if(error) throw error;
             showToast('success', '등록 완료', '개인 장례가 성공적으로 등록되었습니다.');
             setPrivateRegisterModalOpen(false);
-            setPrivateCaseInput({ deceased_name: '', room_number: '', location: '', encoffinment_time: '', funeral_end_time: '' });
+            setPrivateCaseInput({ deceased_name: '', room_number: '', location: '', encoffinment_time: '', funeral_end_time: '', publicity_consent: false });
             fetchData();
             if (myStatus !== 'working') {
                 await handleStatusChange('working', false);
@@ -482,7 +484,7 @@ export default function TeamLeaderDashboard() {
     };
 
     if (!user) return <div className="p-4 text-center">Loading...</div>;
-    const isMaster = user.grade === 'Master';
+const isMasterUser = isMasterOrAbove(user.grade);
     const getStatusInfo = (status) => {
         switch (status) {
             case 'waiting': return { label: '출동 대기', color: 'bg-green-100 text-green-700', icon: 'bg-green-500' };
@@ -514,7 +516,7 @@ export default function TeamLeaderDashboard() {
                         {activeTab === 'my_cases' && '내 진행/정산 현황'}
                         {activeTab === 'team' && '내 팀원 관리'}
                         {activeTab === 'profile' && '내 기본 정보'}
-                        {isMaster && <Crown className="w-5 h-5 text-yellow-500 fill-current" />}
+{isMasterUser && <Crown className="w-5 h-5 text-yellow-500 fill-current" />}
                     </h1>
                     <div className="flex items-center gap-3">
                         <div className="relative">
@@ -562,7 +564,7 @@ export default function TeamLeaderDashboard() {
                         <button onClick={() => setActiveTab('available')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'available' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Briefcase className="w-4 h-4" />입찰가능</button>
                         <button onClick={() => setActiveTab('my_cases')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'my_cases' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />내 현황</button>
                         <button onClick={() => setActiveTab('wallet')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><DollarSign className="w-4 h-4" />지갑</button>
-                        {user?.grade === 'Master' && (
+{isMasterOrAbove(user?.grade) && (
                             <button onClick={() => setActiveTab('team')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'team' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Users className="w-4 h-4" />팀 관리</button>
                         )}
                         <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 min-w-[100px] ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><User className="w-4 h-4" />프로필</button>
@@ -570,7 +572,7 @@ export default function TeamLeaderDashboard() {
                 )}
 
                 {loading ? <div className="text-center py-10 text-gray-400">데이터를 불러오는 중...</div> : activeTab === 'available' ? (
-                    <AvailableList cases={availableCases} onBid={handleBid} onPass={handlePass} userId={user.id} isMaster={isMaster} onOpenAssignModal={(caseId) => setAssignModal({ isOpen: true, caseId })} />
+<AvailableList cases={availableCases} onBid={handleBid} onPass={handlePass} userId={user.id} isMaster={isMasterUser} onOpenAssignModal={(caseId) => setAssignModal({ isOpen: true, caseId })} />
                 ) : activeTab === 'my_cases' ? (
                     <div className="space-y-4">
                         <div className="flex bg-gray-100 rounded-lg p-1 mx-1">
@@ -619,7 +621,7 @@ export default function TeamLeaderDashboard() {
                             <div className="space-y-4">
                                 <Profile user={user} onUpdate={setUser} />
                                 
-                                {user?.grade === 'Master' && (
+{isMasterOrAbove(user?.grade) && (
                                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                         <div className="flex items-center gap-3 mb-3">
                                             <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
@@ -726,7 +728,7 @@ export default function TeamLeaderDashboard() {
                     <DollarSign className={`w-6 h-6 ${activeTab === 'wallet' ? 'fill-current' : ''}`} />
                     <span className="text-xs font-bold">지갑</span>
                 </button>
-                {user?.grade === 'Master' && (
+{isMasterOrAbove(user?.grade) && (
                     <button onClick={() => setActiveTab('team')} className={`flex flex-col items-center gap-1 min-w-[64px] ${activeTab === 'team' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
                         <Users className={`w-6 h-6 ${activeTab === 'team' ? 'fill-current' : ''}`} />
                         <span className="text-xs font-bold">팀 관리</span>
@@ -1025,6 +1027,24 @@ export default function TeamLeaderDashboard() {
                                 </div>
                             </div>
                             <div className="pt-2">
+                                {privateRegisterModalOpen && (
+                                    <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-1">
+                                        <label className="flex items-start gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={!!privateCaseInput.publicity_consent}
+                                                onChange={e => setPrivateCaseInput({ ...privateCaseInput, publicity_consent: e.target.checked })}
+                                                className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer shrink-0"
+                                            />
+                                            <span className="text-xs font-bold text-gray-700 leading-snug">
+                                                유족이 홍보 자료(보안·익명 처리된 진행 화면, 블로그)로 공개하는 데 동의했습니다 (선택)
+                                            </span>
+                                        </label>
+                                        <p className="text-[11px] text-gray-500 pl-6 leading-relaxed">
+                                            동의 시에도 이름·장소 등은 익명·보안 처리 후에만 사용됩니다. 동의하지 않으면 공개되지 않습니다.
+                                        </p>
+                                    </div>
+                                )}
                                 <button
                                     type="submit"
                                     className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl hover:bg-indigo-700 shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"

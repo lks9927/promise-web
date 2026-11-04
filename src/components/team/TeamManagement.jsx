@@ -4,6 +4,8 @@ import { Users, UserPlus, Phone, MapPin, Award, Trash2, Briefcase, Loader2, Plus
 import { useNotification } from '../../contexts/NotificationContext';
 import { formatPhoneNumber } from '../../utils/formatters';
 import SendMessageModal from '../common/SendMessageModal';
+import { isTopTier } from '../../lib/partnerGrade';
+import RepresentativeOverview from '../common/RepresentativeOverview';
 
 export default function TeamManagement({ user }) {
     const { showToast } = useNotification();
@@ -32,18 +34,20 @@ export default function TeamManagement({ user }) {
             // Fetch partners where the master_id is the current user's ID
             const { data, error } = await supabase
                 .from('partners')
-                .select(`
-                    *,
-                    profiles!partners_user_id_fkey(
-                        name, phone, role,
-                        funeral_cases!funeral_cases_team_leader_id_fkey(status)
-                    )
-                `)
+                .select('*, profiles!partners_user_id_fkey(name, phone, role)')
                 .eq('master_id', user.id)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setTeamMembers(data || []);
+            const leaderIds = (data || []).map(row => row.user_id);
+            const { data: caseRows, error: caseError } = leaderIds.length
+                ? await supabase.from('funeral_cases').select('team_leader_id, status').in('team_leader_id', leaderIds)
+                : { data: [], error: null };
+            if (caseError) throw caseError;
+            const casesByLeader = (caseRows || []).reduce((map, row) => {
+                (map[row.team_leader_id] ||= []).push(row); return map;
+            }, {});
+            setTeamMembers((data || []).map(row => ({ ...row, caseRows: casesByLeader[row.user_id] || [] })));
         } catch (error) {
             console.error('팀원 조회 오류:', error);
             showToast('error', '불러오기 실패', '팀원 목록을 불러오지 못했습니다.');
@@ -97,18 +101,13 @@ export default function TeamManagement({ user }) {
     const getSortedMembers = () => {
         const membersWithStats = teamMembers.map(member => {
             // Defensively ensure cases is an array
-            let rawCases = [];
-            if (member.profiles && Array.isArray(member.profiles.funeral_cases)) {
-                rawCases = member.profiles.funeral_cases;
-            } else if (member.profiles && member.profiles[0] && Array.isArray(member.profiles[0].funeral_cases)) {
-                rawCases = member.profiles[0].funeral_cases;
-            }
+            const rawCases = member.caseRows || [];
 
             return {
                 ...member,
                 inProgressCount: rawCases.filter(c => c && ['assigned', 'consulting', 'in_progress'].includes(c.status)).length,
                 completedCount: rawCases.filter(c => c && ['team_settling', 'settling', 'hq_check', 'completed'].includes(c.status)).length,
-                canceledCount: rawCases.filter(c => c && c.status === 'canceled').length,
+                canceledCount: rawCases.filter(c => c && c.status === 'cancelled').length,
             };
         });
 
@@ -136,6 +135,7 @@ export default function TeamManagement({ user }) {
 
     return (
         <div className="space-y-6">
+            {isTopTier(user?.grade) && <RepresentativeOverview user={user} title="팀장 대표마스터 조회" />}
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">

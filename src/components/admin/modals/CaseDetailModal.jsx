@@ -4,6 +4,7 @@ import TimelineView from '../../../components/common/TimelineView';
 import { supabase } from '../../../lib/supabase';
 import { useNotification } from '../../../contexts/NotificationContext';
 import { translateError } from '../../../lib/errorHandler';
+import { isMasterOrAbove } from '../../../lib/partnerGrade';
 
 export default function CaseDetailModal({ caseItem, partners, onClose, isReadonly }) {
     const { showToast, sendNotification } = useNotification();
@@ -50,15 +51,15 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
     const availableLeaders = partners
         .filter(p => p.profiles?.role === 'leader' && (p.status === 'approved' || p.status === 'active'))
         .sort((a, b) => {
-            const isAMaster = ['Master', 'S'].includes(a.grade);
-            const isBMaster = ['Master', 'S'].includes(b.grade);
+            const isAMaster = isMasterOrAbove(a.grade);
+            const isBMaster = isMasterOrAbove(b.grade);
             if (isAMaster && !isBMaster) return -1;
             if (!isAMaster && isBMaster) return 1;
             return 0;
         });
 
     const getLeaderLabel = (p) => {
-        const isMaster = ['Master', 'S'].includes(p.grade);
+        const isMaster = isMasterOrAbove(p.grade);
         const prefix = isMaster ? '[마스터 팀장]' : '[일반 팀장]';
         return `${prefix} ${p.profiles?.name} (${p.region || '전국'})`;
     };

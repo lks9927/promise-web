@@ -1,8 +1,10 @@
 /* global process */
 import { createClient } from '@supabase/supabase-js';
+import { GRADE, canParent as hierarchyCanParent, isMaster as gradeIsMaster } from '../src/lib/partnerGrade.js';
 
 const VALID_KINDS = new Set(['dealer', 'leader']);
-const VALID_GRADES = new Set(['A', 'B', 'C']);
+const VALID_GRADES = new Set([GRADE.GENERAL]);
+
 
 function safeErrorDetails(error) {
     return {
@@ -112,7 +114,7 @@ export default async function handler(req, res) {
         }
 
         const isAdmin = callerProfile.role === 'admin';
-        const isMasterGrade = callerPartner?.grade === 'Master';
+        const isMasterGrade = gradeIsMaster(callerPartner?.grade, callerProfile.role);
         const canCreateDealer = isAdmin
             || callerProfile.role === 'master'
             || callerProfile.role === 'leader'
@@ -121,6 +123,11 @@ export default async function handler(req, res) {
 
         if ((kind === 'dealer' && !canCreateDealer) || (kind === 'leader' && !canCreateLeader)) {
             return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
+        const parentId = isAdmin ? null : callerProfile.id;
+        if (!isAdmin && !hierarchyCanParent(callerProfile.role, callerPartner?.grade, kind, grade)) {
+            return res.status(400).json({ success: false, message: 'Invalid parent hierarchy' });
         }
 
         // 하이픈 유무가 달라도 같은 번호로 취급한다 (Auth 이메일은 숫자만 사용하기 때문)
@@ -139,12 +146,13 @@ export default async function handler(req, res) {
             });
         }
 
-        if (kind === 'leader') {
-            const maxSubordinates = callerPartner?.max_subordinates ?? 10;
+        // 딜러와 팀장 등록 모두 같은 소속장 한도를 사용한다. NULL은 무제한이다.
+        if (callerPartner?.max_subordinates != null) {
+            const maxSubordinates = callerPartner.max_subordinates;
             const { count, error: countError } = await supabaseAdmin
                 .from('partners')
                 .select('*', { count: 'exact', head: true })
-                .eq('master_id', callerProfile.id);
+                .eq('master_id', parentId);
 
             if (countError) throw countError;
             if ((count ?? 0) >= maxSubordinates) {
@@ -189,7 +197,7 @@ export default async function handler(req, res) {
             .from('partners')
             .insert({
                 user_id: createdUserId,
-                master_id: callerProfile.id,
+                master_id: parentId,
                 region,
                 grade,
                 status: kind === 'dealer' ? 'approved' : 'pending'

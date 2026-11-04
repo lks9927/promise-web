@@ -7,8 +7,10 @@ import { Camera, User, Loader2, CreditCard, Save, Send, ShieldCheck, FileBadge, 
 import { useRef } from 'react';
 import SendMessageModal from './SendMessageModal';
 import PasswordChange from './PasswordChange';
+import LeaderAlertRegions from './LeaderAlertRegions';
 import ImageBlurEditor from './ImageBlurEditor';
 import DaumPostcode from 'react-daum-postcode';
+import { gradeLabel, isMasterOrAbove } from '../../lib/partnerGrade';
 
 export default function Profile({ user, onUpdate }) {
     const { showToast } = useNotification();
@@ -203,7 +205,7 @@ export default function Profile({ user, onUpdate }) {
             });
             setGalleryUrls(data.gallery_urls || []);
 
-            // 은행 정보는 profiles가 아니라 partners(또는 vendors) 테이블에 저장됨
+            // 파트너 계좌는 본인/관리자 전용 partner_bank_accounts에 저장한다.
             let bankStr = '';
             if (user.role === 'vendor') {
                 // 업체 계좌는 본인만 읽는 vendor_private 에 있다 (업체 id 로 조회)
@@ -213,12 +215,15 @@ export default function Profile({ user, onUpdate }) {
                     bankStr = vData?.bank_account || '';
                 }
             } else {
-                const { data: pData } = await supabase.from('partners').select('bank_account').eq('user_id', user.id).single();
-                if (pData) bankStr = pData.bank_account || '';
+                const { data: pData } = await supabase.from('partner_bank_accounts').select('bank_code, bank_account, bank_holder').eq('partner_id', user.id).maybeSingle();
+                if (pData) {
+                    setBankInfo({ bank_code: pData.bank_code || '', bank_account: pData.bank_account || '', bank_holder: pData.bank_holder || '' });
+                    bankStr = null;
+                }
             }
 
             // bankStr 예상 형식: "국민은행 123-123-123 홍길동"
-            const parts = bankStr.split(' ');
+            const parts = typeof bankStr === 'string' ? bankStr.split(' ') : [];
             if (parts.length >= 3) {
                 setBankInfo({
                     bank_code: parts[0],
@@ -236,7 +241,7 @@ export default function Profile({ user, onUpdate }) {
             }
             setGalleryUrls(data.gallery_urls || []);
 
-            if (['leader', 'dealer', 'morning', 'meal', '아침', '식사'].includes(user.role) && user.grade !== 'Master') {
+            if (['leader', 'dealer', 'morning', 'meal', '아침', '식사'].includes(user.role) && !isMasterOrAbove(user.grade)) {
                 const { data: pData } = await supabase.from('partners').select('master_id').eq('user_id', user.id).single();
                 if (pData?.master_id) {
                     const { data: mData } = await supabase.from('profiles').select('id, name, phone, role').eq('id', pData.master_id).single();
@@ -330,7 +335,13 @@ export default function Profile({ user, onUpdate }) {
                 if (vErr) throw vErr;
                 ({ error } = await supabase.from('vendor_private').upsert({ vendor_id: vRow.id, bank_account: combinedBankAccount }));
             } else {
-                ({ error } = await supabase.from('partners').update({ bank_account: combinedBankAccount }).eq('user_id', user.id));
+                ({ error } = await supabase.from('partner_bank_accounts').upsert({
+                    partner_id: user.id,
+                    bank_code: bankInfo.bank_code,
+                    bank_account: bankInfo.bank_account,
+                    bank_holder: bankInfo.bank_holder,
+                    updated_at: new Date().toISOString()
+                }));
             }
 
             if (error) throw error;
@@ -475,8 +486,8 @@ export default function Profile({ user, onUpdate }) {
                 <p className="text-sm text-gray-500">
                     {user.role === 'admin' ? '관리자' :
                         user.role === 'master' ? '본사 마스터' :
-                            user.role === 'leader' ? (user.grade === 'Master' ? '마스터팀장' : '팀장') :
-                                user.role === 'dealer' ? (user.grade === 'Master' ? '마스터딜러' : '파트너딜러') :
+user.role === 'leader' ? gradeLabel(user.role, user.grade) :
+user.role === 'dealer' ? gradeLabel(user.role, user.grade) :
                                     '사용자'} ({profileData?.phone || user.phone})
                 </p>
             </div>
@@ -811,6 +822,8 @@ export default function Profile({ user, onUpdate }) {
 
                 <PasswordChange phone={profileData?.phone} />
 
+                <LeaderAlertRegions userId={user.id} role={profileData?.role || user.role} />
+
                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                     <p className="text-xs text-gray-400 font-bold mb-1">안내사항</p>
                     <p className="text-sm text-gray-600">
@@ -894,17 +907,12 @@ function BizInfoModal({ profileData, setProfileData, userId, showToast, onClose 
         }
         try {
             setSaving(true);
-            const { error } = await supabase
-                .from('profiles')
-                .update({ has_business: true })
-                .eq('id', userId);
-            if (error) throw error;
             const { error: privError } = await supabase
                 .from('profile_private')
                 .upsert({ id: userId, ...form });
             if (privError) throw privError;
-            setProfileData(prev => ({ ...prev, ...form, has_business: true }));
-            showToast('success', '저장 완료', '사업자 정보가 저장되었습니다.');
+            setProfileData(prev => ({ ...prev, ...form }));
+            showToast('success', '저장 완료', '사업자 정보가 저장되었습니다. 관리자 확인 후 사업자 여부가 반영됩니다.');
             onClose();
         } catch (e) {
             showToast('error', '저장 실패', e.message);

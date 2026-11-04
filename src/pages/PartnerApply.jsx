@@ -164,8 +164,6 @@ export default function PartnerApply() {
 
             // 3-a. Save business registration info if provided
             if (formData.role === 'leader' || (formData.role === 'dealer' && formData.has_business)) {
-                const { error: flagErr } = await supabase.from('profiles').update({ has_business: true }).eq('id', newUserId);
-                if (flagErr) console.error('has_business 저장 실패:', flagErr);
                 const bizUpdate = {
                     id: newUserId,
                     business_number: formData.business_number,

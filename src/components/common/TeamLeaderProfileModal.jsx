@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, XCircle, Award, Briefcase, Phone, FileBadge, ZoomIn } from 'lucide-react';
+import { gradeLabel, isTopTier, isMaster } from '../../lib/partnerGrade';
 
 export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile, isMasked = false }) {
     const [certZoomed, setCertZoomed] = useState(false);
@@ -25,7 +26,8 @@ export default function TeamLeaderProfileModal({ isOpen, onClose, leaderProfile,
 
     const getRoleBadge = () => {
         if (role === 'admin' || role === 'master') return <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-1 rounded">본사 마스터</span>;
-        if (grade === 'Master') return <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-1 rounded">마스터 팀장</span>;
+        if (isTopTier(grade)) return <span className="bg-violet-100 text-violet-800 text-xs font-bold px-2 py-1 rounded">{gradeLabel(role, grade)}</span>;
+        if (isMaster(grade, role)) return <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-1 rounded">{gradeLabel(role, grade)}</span>;
         return <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">전문 팀장</span>;
     };
 

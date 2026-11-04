@@ -6,6 +6,7 @@ import { Phone, Leaf, MapPin, CheckCircle, AlertTriangle, Gift } from 'lucide-re
 import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import { formatPhoneNumber } from '../utils/formatters';
+import { RegionSelect } from '../components/common/RegionSelect';
 
 export default function CouponLanding() {
     const { code } = useParams();
@@ -20,7 +21,7 @@ export default function CouponLanding() {
         name: '',
         phone: '',
         location: '',
-        packageName: ''
+        packageName: '', regionId: null
     });
 
     useEffect(() => {
@@ -88,7 +89,7 @@ export default function CouponLanding() {
                 p_phone: formData.phone,
                 p_location: formData.location || '미정',
                 p_package_name: formData.packageName,
-                p_coupon_code: code.toUpperCase()
+                p_coupon_code: code.toUpperCase(), p_region_id: formData.regionId || null
             });
 
             if (submitError) throw submitError;
@@ -324,6 +325,7 @@ export default function CouponLanding() {
                                         ))}
                                     </ul>
                                 )}
+                                <div className="mt-3"><label className="block text-sm font-bold text-gray-700 mb-1">장례식장 지역 <span className="text-xs font-normal text-gray-500">(선택, 장례식장이 있는 곳 기준)</span></label><RegionSelect value={formData.regionId} onChange={regionId => setFormData({ ...formData, regionId })} /></div>
                             </div>
 
                             <div>

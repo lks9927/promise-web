@@ -30,13 +30,14 @@ import BranchManagement from '../components/dealer/BranchManagement';
 import Profile from '../components/common/Profile';
 import { useNotification } from '../contexts/NotificationContext';
 import MessageInbox from '../components/common/MessageInbox';
-import TeamLeaderProfileModal from '../components/common/TeamLeaderProfileModal';
 import TimelineView from '../components/common/TimelineView';
 import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES } from '../data/funeralHomes';
 import useRealtimeSubscription from '../hooks/useRealtimeSubscription';
 import PackageBottomSheet from '../components/common/PackageBottomSheet';
 import { formatPhoneNumber } from '../utils/formatters';
+import { isMasterOrAbove } from '../lib/partnerGrade';
+import { RegionSelect } from '../components/common/RegionSelect';
 
 
 export default function DealerDashboard() {
@@ -166,7 +167,7 @@ export default function DealerDashboard() {
                 <NavButton icon={PlusCircle} label="접수하기" active={activeTab === 'register'} onClick={() => setActiveTab('register')} />
                 <NavButton icon={List} label="접수현황" active={activeTab === 'status'} onClick={() => setActiveTab('status')} />
                 <NavButton icon={DollarSign} label="정산관리" active={activeTab === 'settlement'} onClick={() => setActiveTab('settlement')} />
-                {(user?.role === 'master' || user?.grade === 'Master' || user?.role === 'leader') && (
+                {(user?.role === 'master' || isMasterOrAbove(user?.grade) || user?.role === 'leader') && (
                     <NavButton icon={Users} label="지점관리" active={activeTab === 'branch'} onClick={() => setActiveTab('branch')} />
                 )}
                 <NavButton icon={User} label="프로필" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
@@ -706,7 +707,7 @@ function RegisterTab({ user, onSuccess }) {
     const [formData, setFormData] = useState({
         customerName: '',
         customerPhone: '',
-        location: '',
+        location: '', regionId: null,
         packageName: '',
         memo: '',
         couponCode: ''
@@ -763,6 +764,7 @@ function RegisterTab({ user, onSuccess }) {
                 p_location: formData.location || '미정',
                 p_package_name: formData.packageName,
                 p_coupon_code: formData.couponCode ? formData.couponCode.trim().toUpperCase() : null,
+                p_region_id: formData.regionId || null,
                 p_dealer_id: user.id
             });
 
@@ -853,6 +855,7 @@ function RegisterTab({ user, onSuccess }) {
                             </ul>
                         )}
                     </div>
+                    <div className="mt-3"><label className="block text-sm font-bold text-gray-700 mb-1">장례식장 지역 <span className="text-xs font-normal text-gray-500">(선택, 장례식장이 있는 곳 기준)</span></label><RegionSelect value={formData.regionId} onChange={regionId => setFormData({ ...formData, regionId })} /></div>
                 </div>
                 <div>
                     <label className="block text-base font-bold text-gray-900 mb-2">장례 상품 (선택)</label>
@@ -955,8 +958,6 @@ const SimpleProgress = ({ status }) => {
 function StatusTab({ user }) {
     const [myCases, setMyCases] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [profileModalOpen, setProfileModalOpen] = useState(false);
-    const [selectedLeader, setSelectedLeader] = useState(null);
 
     useEffect(() => {
         fetchMyCases();
@@ -967,7 +968,7 @@ function StatusTab({ user }) {
         let targetIds = [user.id];
 
         // If user is a Master Dealer, fetch cases for their sub-dealers as well
-        if (user.grade === 'Master' || user.grade === 'S') {
+            if (isMasterOrAbove(user.grade)) {
             const { data: subDealers } = await supabase
                 .from('partners')
                 .select('user_id')
@@ -981,14 +982,7 @@ function StatusTab({ user }) {
         const selectQuery = `
                 *,
                 profiles:customer_id (name, phone),
-                team_leader:profiles!funeral_cases_team_leader_id_fkey (
-                    name,
-                    phone,
-                    role,
-                    avatar_url,
-                    experience_years,
-                    introduction
-                )
+                team_leader_id
             `;
 
         const { data: myCoupons } = await supabase.from('coupons').select('code').in('issued_by', targetIds);
@@ -1059,23 +1053,12 @@ function StatusTab({ user }) {
                                 }
                                 createdAt={item.created_at}
                             />
-
                             <SimpleProgress status={item.status} />
                         </div>
                     );
                 })
             )}
 
-            {/* Modal */}
-            <TeamLeaderProfileModal
-                isOpen={profileModalOpen}
-                onClose={() => {
-                    setProfileModalOpen(false);
-                    setSelectedLeader(null);
-                }}
-                leaderProfile={selectedLeader}
-                isMasked={true}
-            />
         </div>
     );
 }

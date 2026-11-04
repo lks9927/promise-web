@@ -46,6 +46,7 @@ import DashboardSummaryBar from '../components/admin/tabs/StatCard';
 import PackagePanel from '../components/admin/tabs/PackagePanel';
 import ApiKeyPanel from '../components/admin/tabs/ApiKeyPanel';
 import CustomerTab from '../components/admin/tabs/CustomerTab';
+import { isMasterOrAbove } from '../lib/partnerGrade';
 
 export default function AdminDashboard() {
     const { showToast, sendNotification, unreadCount } = useNotification();
@@ -477,16 +478,16 @@ function PreviewPanel({ partners }) {
     const filtered = partners.filter(p => {
         if (roleFilter === 'all') return true;
         if (roleFilter === 'master_dealer') {
-            return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && ['Master', 'S'].includes(p.grade));
+            return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
         }
         if (roleFilter === 'dealer') {
-            return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !['Master', 'S'].includes(p.grade);
+            return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
         }
         if (roleFilter === 'master_leader') {
-            return p.profiles?.role === 'leader' && ['Master', 'S'].includes(p.grade);
+            return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
         }
         if (roleFilter === 'leader') {
-            return p.profiles?.role === 'leader' && !['Master', 'S'].includes(p.grade);
+            return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
         }
         return false;
     });
@@ -535,10 +536,10 @@ function PreviewPanel({ partners }) {
                     >
                         {label} ({partners.filter(p => {
                             if (role === 'all') return true;
-                            if (role === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && ['Master', 'S'].includes(p.grade));
-                            if (role === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !['Master', 'S'].includes(p.grade);
-                            if (role === 'master_leader') return p.profiles?.role === 'leader' && ['Master', 'S'].includes(p.grade);
-                            if (role === 'leader') return p.profiles?.role === 'leader' && !['Master', 'S'].includes(p.grade);
+                            if (role === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
+                            if (role === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
+                            if (role === 'master_leader') return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
+                            if (role === 'leader') return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
                             return false;
                         }).length}명)
                     </button>

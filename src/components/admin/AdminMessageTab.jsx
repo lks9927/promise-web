@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { isMasterOrAbove, isTopTier, isMaster } from '../../lib/partnerGrade';
 import { Send, Users, User, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNotification } from '../../contexts/NotificationContext';
 import { sendWebPush } from '../../lib/pushNotification';
@@ -15,7 +16,7 @@ export default function AdminMessageTab({ partners, isReadonly }) {
     const [isSending, setIsSending] = useState(false);
 
     // Filter masters for the dropdown
-    const masters = partners.filter(p => p.grade === 'Master' || p.grade === 'S');
+    const masters = partners.filter(p => isMasterOrAbove(p.grade));
 
     const handleSend = async (e) => {
         e.preventDefault();
@@ -36,10 +37,10 @@ export default function AdminMessageTab({ partners, isReadonly }) {
                 targetUserIds = partners.map(p => p.user_id);
             } else if (targetType === 'group') {
                 targetUserIds = partners.filter(p => {
-                    if (targetGroup === 'leader') return p.profiles?.role === 'leader' && p.grade !== 'Master' && p.grade !== 'S';
-                    if (targetGroup === 'master_leader') return p.profiles?.role === 'leader' && (p.grade === 'Master' || p.grade === 'S');
-                    if (targetGroup === 'dealer') return ['dealer', 'morning', 'meal'].includes(p.profiles?.role) && p.grade !== 'Master' && p.grade !== 'S';
-                    if (targetGroup === 'master_dealer') return ['dealer', 'morning', 'meal'].includes(p.profiles?.role) && (p.grade === 'Master' || p.grade === 'S');
+        if (targetGroup === 'leader') return p.profiles?.role === 'leader' && !isMaster(p.grade) && !isTopTier(p.grade);
+        if (targetGroup === 'master_leader') return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
+        if (targetGroup === 'dealer') return ['dealer', 'morning', 'meal'].includes(p.profiles?.role) && !isMaster(p.grade) && !isTopTier(p.grade);
+        if (targetGroup === 'master_dealer') return ['dealer', 'morning', 'meal'].includes(p.profiles?.role) && isMasterOrAbove(p.grade);
                     return false;
                 }).map(p => p.user_id);
             } else if (targetType === 'master_team') {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
 import { useNotification } from '../../../../contexts/NotificationContext';
 import { supabase } from '../../../../lib/supabase';
+import { isTopTier, isMaster } from '../../../../lib/partnerGrade';
 
 export function DispatchOrderSettings({ config, onUpdate, partners }) {
     const { showToast } = useNotification();
@@ -128,8 +129,8 @@ export function DispatchOrderSettings({ config, onUpdate, partners }) {
                                 <div className="font-bold text-gray-900 flex items-center gap-2">
                                     {leader.profiles?.name}
                                     <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${
-                                        leader.grade === 'Master' ? 'bg-yellow-100 text-yellow-700' :
-                                        leader.grade === 'S' ? 'bg-purple-100 text-purple-700' :
+                                        isTopTier(leader.grade) ? 'bg-violet-100 text-violet-700' :
+                                        isMaster(leader.grade, leader.profiles?.role) ? 'bg-yellow-100 text-yellow-700' :
                                         leader.grade === 'A' ? 'bg-blue-100 text-blue-700' :
                                         'bg-gray-100 text-gray-600'
                                     }`}>{leader.grade || '일반'}</span>

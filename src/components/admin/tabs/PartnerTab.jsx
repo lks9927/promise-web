@@ -4,13 +4,17 @@ import { supabase } from '../../../lib/supabase';
 import { translateError } from '../../../lib/errorHandler';
 import { useNotification } from '../../../contexts/NotificationContext';
 import RoleChangeModal from './RoleChangeModal';
+import PromotionRequestsPanel from '../PromotionRequestsPanel';
+import { GRADE, canParent, gradeLabel, isTopTier, isMaster, isMasterOrAbove } from '../../../lib/partnerGrade';
 
 // ─── 역할 배지 컴포넌트 ──────────────────────────────────
 function RoleBadge({ role, grade, large = false }) {
     let key = role;
-    if (role === 'leader' && (grade === 'Master' || grade === 'S' || grade === 'master')) {
+    if (isTopTier(grade)) {
+        key = role === 'leader' ? 's_leader' : 's_dealer';
+    } else if (role === 'leader' && isMaster(grade, role)) {
         key = 'master_leader';
-    } else if (['dealer', 'morning', 'meal', '아침', '식사'].includes(role) && (grade === 'Master' || grade === 'S')) {
+    } else if (['dealer', 'morning', 'meal', '아침', '식사'].includes(role) && isMaster(grade, role)) {
         key = 'master_dealer';
     } else if (['dealer', 'morning', 'meal', '아침', '식사'].includes(role)) {
         key = 'dealer';
@@ -26,7 +30,9 @@ function RoleBadge({ role, grade, large = false }) {
         leader: { label: '팀장', bg: 'bg-sky-100', text: 'text-sky-700', dot: 'bg-sky-400' },
         team_leader: { label: '팀장', bg: 'bg-sky-100', text: 'text-sky-700', dot: 'bg-sky-400' },
     };
-    const c = config[key] || config.dealer;
+    const c = config[key] || (isTopTier(grade)
+        ? { label: gradeLabel(role, grade), bg: 'bg-violet-100', text: 'text-violet-700', dot: 'bg-violet-400' }
+        : config.dealer);
     return (
         <span className={`inline-flex items-center whitespace-nowrap flex-shrink-0 ${c.bg} ${c.text} ${large ? 'gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold' : 'gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold'}`}>
             <span className={`flex-shrink-0 rounded-full ${c.dot} ${large ? 'w-2 h-2' : 'w-1.5 h-1.5'}`}></span>
@@ -109,10 +115,10 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
 
     const getRoleDisplayName = (role, grade) => {
         if (role === 'leader') {
-            return (grade === 'S' || grade === 'Master') ? '마스터 팀장' : '팀장';
+            return isMaster(grade, role) ? '마스터 팀장' : '팀장';
         }
         if (['dealer', 'morning', 'meal', '아침', '식사'].includes(role)) {
-            return (grade === 'S' || grade === 'Master') ? '마스터 딜러' : '딜러';
+            return isMaster(grade, role) ? '마스터 딜러' : '딜러';
         }
         if (role === 'master') return '마스터 딜러';
         return role;
@@ -142,19 +148,20 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
         // Determine actual DB role and if grade needs changing
         if (pseudoRole === 'master_leader') {
             newDbRole = 'leader';
-            if (!['Master', 'S'].includes(currentGrade)) willPromoteGrade = true;
+            if (!isMaster(currentGrade, currentDbRole)) willPromoteGrade = true;
         } else if (pseudoRole === 'leader') {
             newDbRole = 'leader';
-            if (['Master', 'S'].includes(currentGrade)) willDemoteGrade = true;
+            if (isMaster(currentGrade, currentDbRole)) willDemoteGrade = true;
         } else if (pseudoRole === 'master_dealer') {
             newDbRole = currentDbRole === 'master' ? 'master' : (['morning', 'meal', '아침', '식사'].includes(currentDbRole) ? currentDbRole : 'dealer');
-            if (currentDbRole !== 'master' && !['Master', 'S'].includes(currentGrade)) willPromoteGrade = true;
+            if (currentDbRole !== 'master' && !isMaster(currentGrade, currentDbRole)) willPromoteGrade = true;
         } else if (pseudoRole === 'dealer') {
             newDbRole = currentDbRole === 'master' ? 'dealer' : currentDbRole;
-            if (['Master', 'S'].includes(currentGrade) || currentDbRole === 'master') willDemoteGrade = true;
+            if (isMaster(currentGrade, currentDbRole) || currentDbRole === 'master') willDemoteGrade = true;
         }
 
-        const finalMasterId = (pseudoRole.includes('master') || newMasterId === 'none') ? null : newMasterId;
+        // S has no parent; Master may be attached only to same-line S.
+        const finalMasterId = pseudoRole.includes('manager') || newMasterId === 'none' ? null : newMasterId;
 
         let confirmMessage = `${roleModal.name}님의 직급/소속을 변경하시겠습니까?`;
         
@@ -167,38 +174,17 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
 
         if (confirm(confirmMessage)) {
             try {
-                // 1. Update profiles.role
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .update({ role: newDbRole })
-                    .eq('id', roleModal.partnerId);
-                
-                if (profileError) throw profileError;
-
-                // 2. Update partners.master_id and grade
-                let updatePayload = { master_id: finalMasterId };
-                if (willDemoteGrade) updatePayload.grade = 'C';
-                if (willPromoteGrade) updatePayload.grade = 'Master';
-
-                const { error: partnerError } = await supabase
-                    .from('partners')
-                    .update(updatePayload)
-                    .eq('user_id', roleModal.partnerId);
-
+                // 역할/등급/소속/하위 해제/이력은 한 번의 서버 트랜잭션에서 처리한다.
+                const targetGrade = willPromoteGrade ? 'Master' : 'C';
+                const { error: partnerError } = await supabase.rpc('change_partner_grade', {
+                    p_partner_id: roleModal.partnerId,
+                    p_to_grade: targetGrade,
+                    p_reason: '관리자 직급/소속 변경',
+                    p_master_id: finalMasterId,
+                    p_new_role: newDbRole,
+                    p_change_master: true
+                });
                 if (partnerError) throw partnerError;
-
-                // 3. 연쇄 강등 로직: 마스터에서 강등 시 산하 파트너들의 소속을 일괄 '독립(NULL)' 처리
-                if (willDemoteGrade) {
-                    const { error: cascadeError } = await supabase
-                        .from('partners')
-                        .update({ master_id: null })
-                        .eq('master_id', roleModal.partnerId);
-                        
-                    if (cascadeError) {
-                        console.error('Cascade Master Reset Error:', cascadeError);
-                        showToast('error', '하위 소속 해제 실패', '주의: 하위 파트너 소속 해제 중 오류가 발생했습니다.');
-                    }
-                }
 
                 showToast('success', '변경 완료', '직급 및 소속 상태가 일괄 업데이트되었습니다.');
                 onRefresh();
@@ -214,10 +200,13 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
         if (!gradeModal.partnerId) return;
 
         if (confirm(`${gradeModal.name}님의 등급을 '${gradeModal.currentGrade}' → '${newGrade}'(으)로 변경하시겠습니까?`)) {
-            const { error } = await supabase
-                .from('partners')
-                .update({ grade: newGrade })
-                .eq('user_id', gradeModal.partnerId);
+            const { error } = await supabase.rpc('change_partner_grade', {
+                p_partner_id: gradeModal.partnerId,
+                p_to_grade: newGrade,
+                p_reason: '관리자 등급 변경',
+                p_master_id: null,
+                p_change_master: false
+            });
 
             if (error) {
                 console.error('Grade Update Error:', error);
@@ -233,10 +222,11 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
     const displayPartners = partners
         .filter(p => {
             if (partnerFilter === 'all') return true;
-            if (partnerFilter === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && ['Master', 'S'].includes(p.grade));
-            if (partnerFilter === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !['Master', 'S'].includes(p.grade);
-            if (partnerFilter === 'master_leader') return p.profiles?.role === 'leader' && ['Master', 'S'].includes(p.grade);
-            if (partnerFilter === 'leader') return p.profiles?.role === 'leader' && !['Master', 'S'].includes(p.grade);
+            if (partnerFilter === 's') return isTopTier(p.grade);
+            if (partnerFilter === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
+            if (partnerFilter === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
+            if (partnerFilter === 'master_leader') return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
+            if (partnerFilter === 'leader') return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
             return true;
         })
         .filter(p => {
@@ -259,7 +249,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                 const subs = partners.filter(p => 
                     p.master_id === master.user_id && 
                     p.profiles?.role === 'leader' &&
-                    !['Master', 'S'].includes(p.grade)
+                    !isMasterOrAbove(p.grade)
                 );
                 result.push({ ...master, _subCount: subs.length });
                 subs.forEach(sub => result.push({ ...sub, _isSubordinate: true }));
@@ -271,10 +261,16 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
 
     return (
         <div>
+            {!isReadonly && (
+                <div className="px-6 pt-4">
+                    <PromotionRequestsPanel onActionCompleted={onRefresh} />
+                </div>
+            )}
             <div className="px-6 pt-4 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center mb-4">
                 <div className="flex flex-wrap gap-2">
                     {Object.entries({
                         all: '전체',
+                        s: '대표마스터',
                         master_dealer: '마스터 딜러',
                         dealer: '딜러',
                         master_leader: '마스터 팀장',
@@ -287,10 +283,11 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                         >
                             {label} ({partners.filter(p => {
                                 if (role === 'all') return true;
-                                if (role === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && ['Master', 'S'].includes(p.grade));
-                                if (role === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !['Master', 'S'].includes(p.grade);
-                                if (role === 'master_leader') return p.profiles?.role === 'leader' && ['Master', 'S'].includes(p.grade);
-                                if (role === 'leader') return p.profiles?.role === 'leader' && !['Master', 'S'].includes(p.grade);
+                                if (role === 's') return isTopTier(p.grade);
+                                if (role === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
+                                if (role === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
+                                if (role === 'master_leader') return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
+                                if (role === 'leader') return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
                                 return false;
                             }).length}명)
                         </button>
@@ -383,7 +380,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                     <td className="px-6 py-4 text-gray-600">{partner.region}</td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col gap-2 items-start">
-                                            {!(partner.grade === 'Master' || partner.grade === 'S') && (
+                                            {!isMasterOrAbove(partner.grade) && (
                                                 <button
                                                     onClick={() => !isReadonly && openGradeModal(partner.user_id, partner.grade, partner.profiles?.name)}
                                                     disabled={isReadonly}
@@ -398,21 +395,20 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                                 </button>
                                             )}
                                             
-                                            {(partner.grade === 'Master' || partner.grade === 'S') && (
+                                            {isMasterOrAbove(partner.grade) && (
                                                 <button
                                                     onClick={() => {
                                                         if (isReadonly) return;
-                                                        const newVal = prompt(`${partner.profiles?.name} 마스터의 식구 제한 수를 입력하세요.`, partner.max_subordinates || 10);
-                                                        if (newVal !== null && !isNaN(newVal)) {
-                                                            // Calls the parent provided function to update
-                                                            onUpdateMaxSubordinates(partner.user_id, parseInt(newVal));
+                                                        const newVal = prompt(`${partner.profiles?.name} 마스터의 식구 제한 수를 입력하세요. 빈칸은 무제한입니다.`, partner.max_subordinates ?? '');
+                                                        if (newVal !== null && (newVal.trim() === '' || !isNaN(newVal))) {
+                                                            onUpdateMaxSubordinates(partner.user_id, newVal.trim() === '' ? null : parseInt(newVal));
                                                         }
                                                     }}
                                                     disabled={isReadonly}
                                                     className="font-bold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded text-xs transition-colors flex items-center gap-1"
                                                     title={isReadonly ? '🔒 열람 전용 모드' : '식구 보유 허용량 변경'}
                                                 >
-                                                    T/O: {partner.max_subordinates || 10}명 {isReadonly ? '🔒' : '📝'}
+                                                    T/O: {partner.max_subordinates ?? '무제한'} {partner.max_subordinates != null && '명'} {isReadonly ? '🔒' : '📝'}
                                                 </button>
                                             )}
                                         </div>
@@ -482,7 +478,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                 </div>
                             </div>
                             <div className="pt-4 mt-3 border-t border-gray-50 flex justify-between items-center">
-                                {!(partner.grade === 'Master' || partner.grade === 'S') && (
+                                {!isMasterOrAbove(partner.grade) && (
                                     <button
                                         onClick={() => !isReadonly && openGradeModal(partner.user_id, partner.grade, partner.profiles?.name)}
                                         disabled={isReadonly}
@@ -493,13 +489,13 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                         {partner.grade || 'N/A'} <span className="opacity-50">{isReadonly ? '🔒' : '✏️'}</span>
                                     </button>
                                 )}
-                                {(partner.grade === 'Master' || partner.grade === 'S') && (
+                                {isMasterOrAbove(partner.grade) && (
                                     <button
                                         onClick={() => {
                                             if (isReadonly) return;
-                                            const newVal = prompt(`${partner.profiles?.name} 마스터의 식구 제한 수를 입력하세요.`, partner.max_subordinates || 10);
-                                            if (newVal !== null && !isNaN(newVal)) {
-                                                onUpdateMaxSubordinates(partner.user_id, parseInt(newVal));
+                                            const newVal = prompt(`${partner.profiles?.name} 마스터의 식구 제한 수를 입력하세요. 빈칸은 무제한입니다.`, partner.max_subordinates ?? '');
+                                            if (newVal !== null && (newVal.trim() === '' || !isNaN(newVal))) {
+                                                onUpdateMaxSubordinates(partner.user_id, newVal.trim() === '' ? null : parseInt(newVal));
                                             }
                                         }}
                                         disabled={isReadonly}
@@ -507,7 +503,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                             isReadonly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-amber-100 text-amber-700'
                                         }`}
                                     >
-                                        T/O: {partner.max_subordinates || 10}명 <span className="opacity-50">{isReadonly ? '🔒' : '📝'}</span>
+                                        T/O: {partner.max_subordinates ?? '무제한'} {partner.max_subordinates != null && '명'} <span className="opacity-50">{isReadonly ? '🔒' : '📝'}</span>
                                     </button>
                                 )}
                                 {!isReadonly && (
@@ -535,7 +531,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                         </p>
 
                         <div className="grid grid-cols-2 gap-3 mb-4">
-                            {['A', 'B', 'C'].map((grade) => (
+                            {[GRADE.GENERAL, GRADE.MASTER, GRADE.S].map((grade) => (
                                 <button
                                     key={grade}
                                     onClick={() => confirmGradeChange(grade)}
@@ -591,8 +587,8 @@ const RoleCompanyModal = ({ isOpen, partnerId, currentRole, currentMasterId, nam
     const isDealerFamily = ['dealer', 'morning', 'meal', '아침', '식사', 'master'].includes(currentRole);
 
     const getInitialPseudoRole = () => {
-        if (isLeaderFamily) return ['Master', 'S'].includes(currentGrade) ? 'master_leader' : 'leader';
-        if (isDealerFamily) return (currentRole === 'master' || ['Master', 'S'].includes(currentGrade)) ? 'master_dealer' : 'dealer';
+        if (isLeaderFamily) return isMasterOrAbove(currentGrade) ? 'master_leader' : 'leader';
+        if (isDealerFamily) return (currentRole === 'master' || isMasterOrAbove(currentGrade)) ? 'master_dealer' : 'dealer';
         return 'dealer';
     };
 
@@ -609,12 +605,20 @@ const RoleCompanyModal = ({ isOpen, partnerId, currentRole, currentMasterId, nam
 
     if (!isOpen) return null;
 
-    const availableMasters = selectedRole.includes('leader') 
-        ? partners.filter(p => p.profiles?.role === 'leader' && ['Master', 'S'].includes(p.grade) && p.user_id !== partnerId)
-        : partners.filter(p => (p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && ['Master', 'S'].includes(p.grade))) && p.user_id !== partnerId);
+    // A Master can only select same-line S. C members keep selecting Masters.
+    const selectingMaster = selectedRole.includes('master');
+    const legacyAvailableMasters = selectedRole.includes('leader')
+        ? partners.filter(p => p.profiles?.role === 'leader' && (selectingMaster ? isTopTier(p.grade) : isMaster(p.grade)) && p.user_id !== partnerId)
+        : partners.filter(p => ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && (selectingMaster ? isTopTier(p.grade) : isMaster(p.grade)) && p.user_id !== partnerId);
 
     const masterLabel = selectedRole.includes('leader') ? '마스터 팀장' : '마스터 딜러';
-    const isMasterSelected = selectedRole.includes('master');
+    const selectedGrade = selectedRole.includes('s') ? GRADE.S
+        : selectedRole.includes('master') ? GRADE.MASTER : GRADE.GENERAL;
+    const availableMasters = partners.filter((p) =>
+        p.user_id !== partnerId
+        && canParent(p.profiles?.role, p.grade, currentRole, selectedGrade)
+    );
+    const isMasterSelected = selectedRole.includes('s');
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] animate-fadeIn">

@@ -13,7 +13,9 @@ const DEFAULT_POLICY = {
     sales_leader_regular: 500000,
     sales_leader_master_direct: 700000,
     exec_leader_master_override: 100000,
-    exec_leader_master_direct: 200000
+    exec_leader_master_direct: 200000,
+    s_dealer_management_fee: 0,
+    s_leader_management_fee: 0,
 };
 
 const DEFAULT_PACKAGES = [
@@ -35,8 +37,92 @@ const ROWS = [
     { label: '팀장 직접 영업', name: 'sales_leader_regular', tag: '팀장', tagColor: 'purple' },
     { label: '마스터팀장 직접 영업', name: 'sales_leader_master_direct', tag: '팀장', tagColor: 'purple' },
     { label: '마스터팀장 직속 관리수수료', name: 'exec_leader_master_override', tag: '팀장', tagColor: 'purple' },
-    { label: '마스터팀장 직접 관리수수료', name: 'exec_leader_master_direct', tag: '팀장', tagColor: 'purple' },
+    { label: '마스터팀장 직접 영업수수료', name: 'exec_leader_master_direct', tag: '팀장', tagColor: 'purple' },
+    { label: '딜러 대표마스터 관리수수료', name: 's_dealer_management_fee', tag: '딜러', tagColor: 'blue' },
+    { label: '팀장 대표마스터 관리수수료', name: 's_leader_management_fee', tag: '팀장', tagColor: 'purple' },
 ];
+
+const ROW_GROUPS = [
+    {
+        id: 'dealer',
+        title: '딜러 라인',
+        headerClass: 'bg-blue-50/80 text-blue-900 border-t border-b border-blue-200',
+        dotClass: 'bg-blue-600',
+        names: [
+            'sales_dealer_regular',
+            'sales_dealer_master_override',
+            'sales_dealer_master_direct',
+            's_dealer_management_fee',
+        ],
+    },
+    {
+        id: 'leader',
+        title: '팀장 라인',
+        headerClass: 'bg-purple-50/80 text-purple-900 border-t border-b border-purple-200',
+        dotClass: 'bg-purple-600',
+        names: [
+            'sales_leader_regular',
+            'sales_leader_master_direct',
+            'exec_leader_master_override',
+            'exec_leader_master_direct',
+            's_leader_management_fee',
+        ],
+    },
+    {
+        id: 'expense',
+        title: '지출 (고객 페이백)',
+        headerClass: 'bg-red-50/80 text-red-900 border-t border-b border-red-200',
+        dotClass: 'bg-red-600',
+        names: [
+            'customer_payback',
+        ],
+    },
+];
+
+const ROW_DESC = {
+    customer_payback: {
+        desc: '고객이 쿠폰을 입력하여 장례가 접수되고 진행 시작될 때 본사가 고객에게 직접 페이백으로 지급합니다.',
+        needsCheck: false,
+    },
+    sales_dealer_regular: {
+        desc: '일반 딜러가 장례를 직접 유치(직접 접수 또는 쿠폰 접수)했을 때 영업수수료로 지급합니다. (원천징수 3.3% 공제)',
+        needsCheck: false,
+    },
+    sales_dealer_master_override: {
+        desc: '직속 산하 딜러가 장례를 유치했을 때 마스터딜러에게 관리수수료로 지급합니다. (원천징수 3.3% 공제)',
+        needsCheck: false,
+    },
+    sales_dealer_master_direct: {
+        desc: '마스터딜러가 직접 장례를 유치했을 때 받는 수수료입니다. (화면 시뮬레이션 기준)',
+        needsCheck: true,
+    },
+    s_dealer_management_fee: {
+        desc: '딜러 대표마스터(S등급)가 산하 전체 딜러 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)',
+        needsCheck: false,
+    },
+    sales_leader_regular: {
+        desc: '의전팀장이 직접 장례를 유치하고 다른 팀장이 진행할 때 받는 영업수수료입니다. (화면 시뮬레이션 기준)',
+        needsCheck: true,
+    },
+    sales_leader_master_direct: {
+        desc: '마스터팀장이 직접 장례도 유치하고 의전도 진행했을 때 받는 수수료입니다. (화면 시뮬레이션 기준)',
+        needsCheck: true,
+    },
+    exec_leader_master_override: {
+        desc: '직속 산하 일반 팀장이 의전을 진행했을 때 마스터팀장에게 관리수수료로 지급합니다. (면세)',
+        needsCheck: false,
+    },
+    exec_leader_master_direct: {
+        desc: '마스터팀장이 직접 의전을 진행했을 때 받는 수수료입니다. (화면 시뮬레이션 기준)',
+        needsCheck: true,
+    },
+    s_leader_management_fee: {
+        desc: '팀장 대표마스터(S등급)가 산하 전체 팀장 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)',
+        needsCheck: false,
+    },
+};
+
+const ROW_MAP = Object.fromEntries(ROWS.map(r => [r.name, r]));
 
 export default function CommissionSettings({ supabase }) {
     const { showToast } = useNotification();
@@ -180,7 +266,9 @@ export default function CommissionSettings({ supabase }) {
             const policyId = idx + 1;
             const { data, error } = await db.from('commission_policies').select('*').eq('id', policyId).single();
             if (error && error.code !== 'PGRST116') throw error;
-            setPolicy(data || { ...DEFAULT_POLICY, id: policyId });
+            // The new representative-master columns are absent before P3c is applied.
+            // Keep their display/edit state at zero until the migration is available.
+            setPolicy({ ...DEFAULT_POLICY, ...(data || {}), id: policyId });
         } catch (e) {
             showToast('error', '로드 실패', '수수료 정책을 불러오지 못했습니다.');
         } finally {
@@ -199,7 +287,13 @@ export default function CommissionSettings({ supabase }) {
                 Object.entries({ ...policy, id: policyId, updated_at: new Date().toISOString() })
                     .filter(([k]) => !k.endsWith('_pct'))
             );
-            const { error: policyError } = await db.from('commission_policies').upsert(toSave);
+            let { error: policyError } = await db.from('commission_policies').upsert(toSave);
+            // Before P3c reaches the DB, retain the existing settings-save path and omit
+            // only the two unavailable columns. The visible values remain safely at zero.
+            if (policyError && /s_(dealer|leader)_management_fee|column/i.test(policyError.message || '')) {
+                const { s_dealer_management_fee, s_leader_management_fee, ...legacyPolicy } = toSave;
+                ({ error: policyError } = await db.from('commission_policies').upsert(legacyPolicy));
+            }
             if (policyError) throw policyError;
 
             // 2. 항목표(패키지) 저장
@@ -520,6 +614,7 @@ export default function CommissionSettings({ supabase }) {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
                     <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100">
                         <span className="text-xs font-bold text-indigo-700">💰 {currentPkg?.label || currentPkg?.value} 수수료 설정</span>
+                        <p className="mt-1 text-xs text-amber-700">대표마스터 관리수수료는 변호사 확인 전에는 0원으로 유지하세요. 기존 정산 경로는 변경하지 않습니다.</p>
                     </div>
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
@@ -565,42 +660,77 @@ export default function CommissionSettings({ supabase }) {
                                     </div>
                                 </td>
                             </tr>
-                            {ROWS.map(row => {
-                                const amount = getAmount(row.name);
-                                const pct = getPct(row.name);
-                                const calcFromPct = Math.round(policy.base_margin * pct / 100);
-                                return (
-                                    <tr key={row.name} className="hover:bg-gray-50">
-                                        <td className="px-4 py-3">
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${TAG_COLORS[row.tagColor]}`}>{row.tag}</span>
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-700">{row.label}</td>
-                                        <td className="px-3 py-2">
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₩</span>
-                                                <input type="text" inputMode="numeric"
-                                                    value={Number(amount).toLocaleString()}
-                                                    onChange={e => handleAmountChange(row.name, e.target.value)}
-                                                    className={`w-full pl-6 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2 bg-white
-                                                        ${!isPct ? 'border-indigo-300 focus:ring-indigo-400' : 'border-gray-200 focus:ring-gray-300 text-gray-400'}`} />
-                                            </div>
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            <div className="flex items-center gap-2">
-                                                <div className="relative w-24 flex-shrink-0">
-                                                    <input type="number" step="0.1" min="0" max="100"
-                                                        value={pct}
-                                                        onChange={e => handlePctChange(row.name, e.target.value)}
-                                                        className={`w-full pl-2 pr-7 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2
-                                                            ${isPct ? 'border-indigo-300 bg-indigo-50 text-indigo-700 focus:ring-indigo-400' : 'border-blue-100 bg-blue-50 text-blue-600 focus:ring-blue-300'}`} />
-                                                    <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold ${isPct ? 'text-indigo-400' : 'text-blue-400'}`}>%</span>
-                                                </div>
-                                                <span className="text-xs text-gray-400 whitespace-nowrap">= ₩{calcFromPct.toLocaleString()}</span>
+                            {ROW_GROUPS.map(group => (
+                                <React.Fragment key={group.id}>
+                                    {/* 그룹 헤더 행 (색 띠) */}
+                                    <tr className={group.headerClass}>
+                                        <td colSpan="4" className="px-4 py-2">
+                                            <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider">
+                                                <span className={`w-2 h-2 rounded-full ${group.dotClass}`}></span>
+                                                <span>{group.title}</span>
                                             </div>
                                         </td>
                                     </tr>
-                                );
-                            })}
+                                    {/* 그룹 안의 행들 */}
+                                    {group.names.map(name => {
+                                        const row = ROW_MAP[name];
+                                        if (!row) return null;
+                                        const descInfo = ROW_DESC[name];
+                                        const amount = getAmount(row.name);
+                                        const pct = getPct(row.name);
+                                        const calcFromPct = Math.round(policy.base_margin * pct / 100);
+
+                                        return (
+                                            <React.Fragment key={row.name}>
+                                                <tr className="hover:bg-gray-50/70 transition-colors">
+                                                    <td className="px-4 py-2.5 align-middle">
+                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${TAG_COLORS[row.tagColor]}`}>{row.tag}</span>
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-gray-800 font-semibold align-middle">{row.label}</td>
+                                                    <td className="px-3 py-2 align-middle">
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₩</span>
+                                                            <input type="text" inputMode="numeric"
+                                                                value={Number(amount).toLocaleString()}
+                                                                onChange={e => handleAmountChange(row.name, e.target.value)}
+                                                                className={`w-full pl-6 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2 bg-white
+                                                                    ${!isPct ? 'border-indigo-300 focus:ring-indigo-400' : 'border-gray-200 focus:ring-gray-300 text-gray-400'}`} />
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-2 align-middle">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="relative w-24 flex-shrink-0">
+                                                                <input type="number" step="0.1" min="0" max="100"
+                                                                    value={pct}
+                                                                    onChange={e => handlePctChange(row.name, e.target.value)}
+                                                                    className={`w-full pl-2 pr-7 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2
+                                                                        ${isPct ? 'border-indigo-300 bg-indigo-50 text-indigo-700 focus:ring-indigo-400' : 'border-blue-100 bg-blue-50 text-blue-600 focus:ring-blue-300'}`} />
+                                                                <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold ${isPct ? 'text-indigo-400' : 'text-blue-400'}`}>%</span>
+                                                            </div>
+                                                            <span className="text-xs text-gray-400 whitespace-nowrap">= ₩{calcFromPct.toLocaleString()}</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {/* 행 아래 설명 줄 */}
+                                                {descInfo && (
+                                                    <tr className="border-b border-gray-100 bg-gray-50/20">
+                                                        <td colSpan="4" className="px-4 pt-0.5 pb-2.5">
+                                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 pl-3 border-l-2 border-gray-200 leading-relaxed">
+                                                                <span>{descInfo.desc}</span>
+                                                                {descInfo.needsCheck && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+                                                                        확인 필요: 지금 정산 계산이 이 금액을 읽지 않음
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </React.Fragment>
+                            ))}
                         </tbody>
                     </table>
                 </div>

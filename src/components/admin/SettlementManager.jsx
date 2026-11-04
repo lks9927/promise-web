@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, CheckCircle, Edit2, Save, X, ExternalLink, Users, FileText, RefreshCw, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { isMasterOrAbove } from '../../lib/partnerGrade';
 
 // ─── 순수 SVG 도넛 차트 ────────────────────────────────
 function DonutChart({ data, size = 140, margin = 0 }) {
@@ -94,7 +95,7 @@ function TripleBarChart({ data }) {
 // ─── 역할 배지 컴포넌트 ──────────────────────────────────
 function RoleBadge({ role, grade, large = false }) {
     let key = role;
-    if (role === 'leader' && (grade === 'Master' || grade === 'S' || grade === 'master')) {
+    if (role === 'leader' && (isMasterOrAbove(grade) || grade === 'master')) {
         key = 'master_leader';
     }
 

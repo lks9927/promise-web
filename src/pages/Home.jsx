@@ -9,10 +9,11 @@ import {
 import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import { formatPhoneNumber } from '../utils/formatters';
+import { RegionSelect } from '../components/common/RegionSelect';
 
 export default function Home() {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [formData, setFormData] = useState({ name: '', phone: '', location: '', packageName: '', couponCode: '' });
+    const [formData, setFormData] = useState({ name: '', phone: '', location: '', packageName: '', couponCode: '', regionId: null });
     const [loading, setLoading] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
     const [packages, setPackages] = useState([]);
@@ -71,14 +72,15 @@ export default function Home() {
                 p_phone: formData.phone,
                 p_location: formData.location,
                 p_package_name: formData.packageName,
-                p_coupon_code: formData.couponCode ? formData.couponCode.trim().toUpperCase() : null
+                p_coupon_code: formData.couponCode ? formData.couponCode.trim().toUpperCase() : null,
+                p_region_id: formData.regionId || null
             });
 
             if (submitError) throw submitError;
 
             alert('긴급 접수가 완료되었습니다.\n마스터가 곧 연락드리겠습니다.');
             setIsModalOpen(false);
-            setFormData({ name: '', phone: '', location: '', packageName: packages.length > 0 ? packages[0].value : '', couponCode: '' });
+            setFormData({ name: '', phone: '', location: '', packageName: packages.length > 0 ? packages[0].value : '', couponCode: '', regionId: null });
         } catch (error) {
             console.error(error);
             alert('접수 중 오류가 발생했습니다. 대표번호로 연락주세요.');
@@ -544,6 +546,7 @@ export default function Home() {
                                         ))}
                                     </ul>
                                 )}
+                                <div className="mt-3"><label className="block text-sm font-bold text-gray-700 mb-1">장례식장 지역 <span className="text-xs font-normal text-gray-500">(선택, 장례식장이 있는 곳 기준)</span></label><RegionSelect value={formData.regionId} onChange={regionId => setFormData({ ...formData, regionId })} /></div>
                             </div>
                             <div className="relative">
                                 <label className="block text-base font-black text-gray-900 mb-2">희망 상품</label>

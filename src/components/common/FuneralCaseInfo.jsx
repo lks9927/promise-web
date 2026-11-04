@@ -38,7 +38,7 @@ export default function FuneralCaseInfo({
     children
 }) {
     const shortId = caseId ? caseId.split('-')[0] : '';
-    const isManager = variant === 'manager';
+    const isAdminVariant = variant === 'manager';
     const formattedDate = date || (createdAt ? new Date(createdAt).toLocaleDateString('ko-KR') : '');
 
     // ── 공통 핵심 정보 박스 ──
@@ -76,7 +76,7 @@ export default function FuneralCaseInfo({
     );
 
     // ── 딜러용 ──
-    if (!isManager) {
+    if (!isAdminVariant) {
         return (
             <div className="space-y-2">
                 {statusBadge && (

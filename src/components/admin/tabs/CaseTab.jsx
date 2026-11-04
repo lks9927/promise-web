@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import TimelineView from '../../common/TimelineView';
 import CaseDetailModal from '../modals/CaseDetailModal';
+import { isMasterOrAbove } from '../../../lib/partnerGrade';
 
 export default function CaseTab({ cases, partners, coupons = [], loading, isReadonly }) {
     const [selectedCase, setSelectedCase] = useState(null);
@@ -52,7 +53,7 @@ export default function CaseTab({ cases, partners, coupons = [], loading, isRead
         if (!dealerId) return null;
         const p = partners.find(p => p.user_id === dealerId);
         if (!p) return null;
-        if (p.grade === 'Master' || p.grade === 'S') return { name: p.profiles?.name, isSelf: true };
+        if (isMasterOrAbove(p.grade)) return { name: p.profiles?.name, isSelf: true };
         if (p.master_id) {
             const m = partners.find(mp => mp.user_id === p.master_id);
             return m ? { name: m.profiles?.name, isSelf: false } : null;
@@ -148,7 +149,7 @@ export default function CaseTab({ cases, partners, coupons = [], loading, isRead
                                                 if (!item.team_leader_id) return <span className="text-gray-400" style={{ fontSize: '12px' }}>-</span>;
                                                 const p = partners.find(p => p.user_id === item.team_leader_id);
                                                 if (!p) return '-';
-                                                if (p.grade === 'Master') return <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded" style={{ fontSize: '12px' }}>본인 (Master)</span>;
+if (isMasterOrAbove(p.grade)) return <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded" style={{ fontSize: '12px' }}>본인 (Master)</span>;
                                                 if (p.master_id) {
                                                     const m = partners.find(mp => mp.user_id === p.master_id);
                                                     return m ? <span className="font-medium text-gray-700">{m.profiles?.name}</span> : <span className="text-red-400" style={{ fontSize: '12px' }}>마스터 정보 없음</span>;
@@ -250,7 +251,7 @@ export default function CaseTab({ cases, partners, coupons = [], loading, isRead
                                                 if (!item.team_leader_id) return '-';
                                                 const p = partners.find(p => p.user_id === item.team_leader_id);
                                                 if (!p) return '-';
-                                                if (p.grade === 'Master') return '본인(Master)';
+if (isMasterOrAbove(p.grade)) return '본인(Master)';
                                                 if (p.master_id) {
                                                     const m = partners.find(mp => mp.user_id === p.master_id);
                                                     return m ? m.profiles?.name : '없음';

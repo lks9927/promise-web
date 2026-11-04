@@ -37,7 +37,7 @@ serve(async (req) => {
             .in('key', [
                 'ios_bidding_sms_only', 'all_users_bidding_sms',
                 'sms_alert_signup', 'sms_alert_funeral', 'sms_alert_emergency',
-                'sms_alert_phones'
+                'sms_alert_phones', 'regional_alert_mode'
             ]);
 
         let iosBiddingSmsOnly = true;
@@ -46,6 +46,7 @@ serve(async (req) => {
         let smsAlertFuneral = false;
         let smsAlertEmergency = false;
         let smsAlertPhones: string[] = [];
+        let regionalAlertMode = 'off';
 
         if (configs) {
             const conf1 = configs.find(c => c.key === 'ios_bidding_sms_only');
@@ -67,6 +68,8 @@ serve(async (req) => {
             if (confPhones && confPhones.value) {
                 smsAlertPhones = confPhones.value.split(',').map((p: string) => p.trim().replace(/[^0-9]/g, '')).filter((p: string) => p.length > 0);
             }
+            const confRegional = configs.find(c => c.key === 'regional_alert_mode');
+            if (confRegional && ['sido', 'sigungu'].includes(confRegional.value)) regionalAlertMode = confRegional.value;
         }
 
         // 3. 알림 대상자 조회 (역할 포함)
@@ -189,6 +192,21 @@ serve(async (req) => {
                 JSON.stringify({ success: true, message: "Non-bidding UPDATE ignored" }),
                 { headers: { "Content-Type": "application/json" } }
             );
+        }
+
+        // Off keeps the exact existing recipient path.  When enabled, the database
+        // owns the single regional rule; an unexpected non-match escalates to HQ.
+        if (isBiddingAlarm && newBidder && regionalAlertMode !== 'off') {
+            const { data: allowed, error: regionError } = await supabase.rpc('leader_passes_region_filter', {
+                p_leader: newBidder, p_case_id: record.id
+            });
+            // 지역 판정이 실패해도 알림 전체를 막지 않는다(기존처럼 그대로 발송: fail-open).
+            if (regionError) console.error('[Webhook Alert] regional filter failed; sending as before:', regionError);
+            if (!regionError && !allowed) {
+                targetUserIds.delete(newBidder);
+                targets.filter(t => t.role === 'admin').forEach(t => targetUserIds.add(t.id));
+                console.log('[Webhook Alert] No regional leader target; escalated to admins.');
+            }
         }
 
         let pushCount = 0;
