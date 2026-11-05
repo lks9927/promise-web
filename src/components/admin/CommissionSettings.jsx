@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNotification } from '../../contexts/NotificationContext';
 import { Save, Calculator, Plus, X, Pencil, Check, Trash2, Eye, EyeOff } from 'lucide-react';
 import { supabase as supabaseClient } from '../../lib/supabase';
+import { GRADE_LABELS } from '../../lib/partnerGrade';
 
 const DEFAULT_POLICY = {
     base_margin: 1000000,
@@ -38,8 +39,8 @@ const ROWS = [
     { label: '마스터팀장 직접 영업', name: 'sales_leader_master_direct', tag: '팀장', tagColor: 'purple' },
     { label: '마스터팀장 직속 관리수수료', name: 'exec_leader_master_override', tag: '팀장', tagColor: 'purple' },
     { label: '마스터팀장 직접 영업수수료', name: 'exec_leader_master_direct', tag: '팀장', tagColor: 'purple' },
-    { label: '딜러 대표마스터 관리수수료', name: 's_dealer_management_fee', tag: '딜러', tagColor: 'blue' },
-    { label: '팀장 대표마스터 관리수수료', name: 's_leader_management_fee', tag: '팀장', tagColor: 'purple' },
+    { label: `${GRADE_LABELS.dealer.S} 관리수수료`, name: 's_dealer_management_fee', tag: '딜러', tagColor: 'blue' },
+    { label: `${GRADE_LABELS.leader.S} 관리수수료`, name: 's_leader_management_fee', tag: '팀장', tagColor: 'purple' },
 ];
 
 const ROW_GROUPS = [
@@ -97,7 +98,7 @@ const ROW_DESC = {
         needsCheck: true,
     },
     s_dealer_management_fee: {
-        desc: '딜러 대표마스터(S등급)가 산하 전체 딜러 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)',
+        desc: `${GRADE_LABELS.dealer.S}가 산하 전체 딜러 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)`,
         needsCheck: false,
     },
     sales_leader_regular: {
@@ -117,7 +118,7 @@ const ROW_DESC = {
         needsCheck: true,
     },
     s_leader_management_fee: {
-        desc: '팀장 대표마스터(S등급)가 산하 전체 팀장 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)',
+        desc: `${GRADE_LABELS.leader.S}가 산하 전체 팀장 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)`,
         needsCheck: false,
     },
 };
@@ -614,7 +615,7 @@ export default function CommissionSettings({ supabase }) {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
                     <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100">
                         <span className="text-xs font-bold text-indigo-700">💰 {currentPkg?.label || currentPkg?.value} 수수료 설정</span>
-                        <p className="mt-1 text-xs text-amber-700">대표마스터 관리수수료는 변호사 확인 전에는 0원으로 유지하세요. 기존 정산 경로는 변경하지 않습니다.</p>
+                        <p className="mt-1 text-xs text-amber-700">{GRADE_LABELS.dealer.S} 및 {GRADE_LABELS.leader.S} 관리수수료는 변호사 확인 전에는 0원으로 유지하세요. 기존 정산 경로는 변경하지 않습니다.</p>
                     </div>
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">

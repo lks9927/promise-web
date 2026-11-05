@@ -4,7 +4,7 @@ import { Users, UserPlus, Phone, MapPin, Award, Trash2, Briefcase, Loader2, Plus
 import { useNotification } from '../../contexts/NotificationContext';
 import { formatPhoneNumber } from '../../utils/formatters';
 import SendMessageModal from '../common/SendMessageModal';
-import { isTopTier } from '../../lib/partnerGrade';
+import { GRADE_LABELS, isTopTier } from '../../lib/partnerGrade';
 import RepresentativeOverview from '../common/RepresentativeOverview';
 
 export default function BranchManagement({ user }) {
@@ -136,7 +136,7 @@ export default function BranchManagement({ user }) {
 
     return (
         <div className="space-y-6">
-            {isTopTier(user?.grade) && <RepresentativeOverview user={user} title="딜러 대표마스터 조회" />}
+            {isTopTier(user?.grade) && <RepresentativeOverview user={user} title={`${GRADE_LABELS.dealer.S} 조회`} />}
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">

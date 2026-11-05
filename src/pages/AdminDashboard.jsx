@@ -46,7 +46,7 @@ import DashboardSummaryBar from '../components/admin/tabs/StatCard';
 import PackagePanel from '../components/admin/tabs/PackagePanel';
 import ApiKeyPanel from '../components/admin/tabs/ApiKeyPanel';
 import CustomerTab from '../components/admin/tabs/CustomerTab';
-import { isMasterOrAbove } from '../lib/partnerGrade';
+import { GRADE, GRADE_LABELS, lineOf } from '../lib/partnerGrade';
 
 export default function AdminDashboard() {
     const { showToast, sendNotification, unreadCount } = useNotification();
@@ -467,30 +467,29 @@ function PreviewPanel({ partners }) {
     const navigate = useNavigate();
     const [roleFilter, setRoleFilter] = useState('all');
 
-    const roleMap = { 
+    const roleMap = {
         all: '전체',
-        master_dealer: '마스터 딜러', 
-        dealer: '딜러', 
-        master_leader: '마스터 팀장', 
-        leader: '팀장' 
+        s_dealer: GRADE_LABELS.dealer.S,
+        master_dealer: GRADE_LABELS.dealer.Master,
+        dealer: GRADE_LABELS.dealer.C,
+        s_leader: GRADE_LABELS.leader.S,
+        master_leader: GRADE_LABELS.leader.Master,
+        leader: GRADE_LABELS.leader.C,
     };
 
-    const filtered = partners.filter(p => {
-        if (roleFilter === 'all') return true;
-        if (roleFilter === 'master_dealer') {
-            return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
-        }
-        if (roleFilter === 'dealer') {
-            return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
-        }
-        if (roleFilter === 'master_leader') {
-            return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
-        }
-        if (roleFilter === 'leader') {
-            return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
-        }
+    const matchesRoleFilter = (partner, filter) => {
+        if (filter === 'all') return true;
+        const line = lineOf(partner.profiles?.role);
+        if (filter === 's_dealer') return line === 'dealer' && partner.grade === GRADE.S;
+        if (filter === 'master_dealer') return line === 'dealer' && partner.grade === GRADE.MASTER;
+        if (filter === 'dealer') return line === 'dealer' && partner.grade === GRADE.GENERAL;
+        if (filter === 's_leader') return line === 'leader' && partner.grade === GRADE.S;
+        if (filter === 'master_leader') return line === 'leader' && partner.grade === GRADE.MASTER;
+        if (filter === 'leader') return line === 'leader' && partner.grade === GRADE.GENERAL;
         return false;
-    });
+    };
+
+    const filtered = partners.filter(p => matchesRoleFilter(p, roleFilter));
 
     const handlePreview = (partner) => {
         const currentAdmin = localStorage.getItem('user');
@@ -534,14 +533,7 @@ function PreviewPanel({ partners }) {
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors
                             ${roleFilter === role ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                     >
-                        {label} ({partners.filter(p => {
-                            if (role === 'all') return true;
-                            if (role === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
-                            if (role === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
-                            if (role === 'master_leader') return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
-                            if (role === 'leader') return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
-                            return false;
-                        }).length}명)
+                        {label} ({partners.filter(p => matchesRoleFilter(p, role)).length}명)
                     </button>
                 ))}
             </div>

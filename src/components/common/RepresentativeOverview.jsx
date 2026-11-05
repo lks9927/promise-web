@@ -36,7 +36,7 @@ const formatKstTime = (value) => {
     return date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 };
 
-export default function RepresentativeOverview({ user, title = '대표마스터 조회' }) {
+export default function RepresentativeOverview({ user, title }) {
     const [summary, setSummary] = useState(null);
     const [downlineList, setDownlineList] = useState([]);
     const [promotionRequests, setPromotionRequests] = useState([]);
@@ -141,7 +141,7 @@ export default function RepresentativeOverview({ user, title = '대표마스터 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-5">
             <div>
                 <h3 className="text-lg font-bold text-gray-800">
-                    {title || '대표마스터 조회'}
+                    {title}
                 </h3>
                 <p className="mt-1 text-xs text-gray-500">
                     하위 딜러(또는 팀장)의 개별 금액·연락처·고객 정보는 표시되지 않습니다.

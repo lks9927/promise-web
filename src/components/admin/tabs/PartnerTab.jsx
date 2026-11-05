@@ -5,7 +5,32 @@ import { translateError } from '../../../lib/errorHandler';
 import { useNotification } from '../../../contexts/NotificationContext';
 import RoleChangeModal from './RoleChangeModal';
 import PromotionRequestsPanel from '../PromotionRequestsPanel';
-import { GRADE, canParent, gradeLabel, isTopTier, isMaster, isMasterOrAbove } from '../../../lib/partnerGrade';
+import { GRADE, GRADE_LABELS, canParent, gradeLabel, isTopTier, isMaster, lineOf } from '../../../lib/partnerGrade';
+
+const PARTNER_FILTERS = [
+    ['all', '전체'],
+    ['s_dealer', GRADE_LABELS.dealer.S],
+    ['master_dealer', GRADE_LABELS.dealer.Master],
+    ['dealer', GRADE_LABELS.dealer.C],
+    ['s_leader', GRADE_LABELS.leader.S],
+    ['master_leader', GRADE_LABELS.leader.Master],
+    ['leader', GRADE_LABELS.leader.C],
+];
+
+const matchesPartnerFilter = (partner, filter) => {
+    if (filter === 'all') return true;
+
+    const line = lineOf(partner.profiles?.role);
+    const { grade } = partner;
+
+    if (filter === 's_dealer') return line === 'dealer' && grade === GRADE.S;
+    if (filter === 'master_dealer') return line === 'dealer' && grade === GRADE.MASTER;
+    if (filter === 'dealer') return line === 'dealer' && grade !== GRADE.MASTER && grade !== GRADE.S;
+    if (filter === 's_leader') return line === 'leader' && grade === GRADE.S;
+    if (filter === 'master_leader') return line === 'leader' && grade === GRADE.MASTER;
+    if (filter === 'leader') return line === 'leader' && grade !== GRADE.MASTER && grade !== GRADE.S;
+    return false;
+};
 
 // ─── 역할 배지 컴포넌트 ──────────────────────────────────
 function RoleBadge({ role, grade, large = false }) {
@@ -36,7 +61,7 @@ function RoleBadge({ role, grade, large = false }) {
     return (
         <span className={`inline-flex items-center whitespace-nowrap flex-shrink-0 ${c.bg} ${c.text} ${large ? 'gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold' : 'gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold'}`}>
             <span className={`flex-shrink-0 rounded-full ${c.dot} ${large ? 'w-2 h-2' : 'w-1.5 h-1.5'}`}></span>
-            {c.label}
+            {['dealer', 'master', 'morning', 'meal', '아침', '식사', 'leader'].includes(role) ? gradeLabel(role, grade) : c.label}
         </span>
     );
 }
@@ -111,17 +136,6 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
         }
 
         onApproveReset(userId, partner.profiles.phone, name, partner.profiles.role);
-    };
-
-    const getRoleDisplayName = (role, grade) => {
-        if (role === 'leader') {
-            return isMaster(grade, role) ? '마스터 팀장' : '팀장';
-        }
-        if (['dealer', 'morning', 'meal', '아침', '식사'].includes(role)) {
-            return isMaster(grade, role) ? '마스터 딜러' : '딜러';
-        }
-        if (role === 'master') return '마스터 딜러';
-        return role;
     };
 
     const openGradeModal = (partnerId, currentGrade, name) => {
@@ -220,15 +234,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
     };
 
     const displayPartners = partners
-        .filter(p => {
-            if (partnerFilter === 'all') return true;
-            if (partnerFilter === 's') return isTopTier(p.grade);
-            if (partnerFilter === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
-            if (partnerFilter === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
-            if (partnerFilter === 'master_leader') return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
-            if (partnerFilter === 'leader') return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
-            return true;
-        })
+        .filter(p => matchesPartnerFilter(p, partnerFilter))
         .filter(p => {
             if (!searchQuery) return true;
             const term = searchQuery.toLowerCase();
@@ -268,28 +274,13 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
             )}
             <div className="px-6 pt-4 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center mb-4">
                 <div className="flex flex-wrap gap-2">
-                    {Object.entries({
-                        all: '전체',
-                        s: '대표마스터',
-                        master_dealer: '마스터 딜러',
-                        dealer: '딜러',
-                        master_leader: '마스터 팀장',
-                        leader: '팀장'
-                    }).map(([role, label]) => (
+                    {PARTNER_FILTERS.map(([role, label]) => (
                         <button key={role}
                             onClick={() => setPartnerFilter(role)}
                             className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-colors
                                 ${partnerFilter === role ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                         >
-                            {label} ({partners.filter(p => {
-                                if (role === 'all') return true;
-                                if (role === 's') return isTopTier(p.grade);
-                                if (role === 'master_dealer') return p.profiles?.role === 'master' || (['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && isMasterOrAbove(p.grade));
-                                if (role === 'dealer') return ['dealer', 'morning', 'meal', '아침', '식사'].includes(p.profiles?.role) && !isMasterOrAbove(p.grade);
-                                if (role === 'master_leader') return p.profiles?.role === 'leader' && isMasterOrAbove(p.grade);
-                                if (role === 'leader') return p.profiles?.role === 'leader' && !isMasterOrAbove(p.grade);
-                                return false;
-                            }).length}명)
+                            {label} ({partners.filter(p => matchesPartnerFilter(p, role)).length}명)
                         </button>
                     ))}
                 </div>

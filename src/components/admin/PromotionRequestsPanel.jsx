@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { listPromotionRequests, decidePromotion, revertPromotion } from '../../lib/promotionRequests';
+import { gradeLabel } from '../../lib/partnerGrade';
 
 const STATUS_LABELS = {
     pending: '대기',
@@ -15,11 +16,8 @@ const STATUS_BADGES = {
     reverted: 'bg-gray-100 text-gray-700 border border-gray-300',
 };
 
-function formatGrade(grade) {
-    if (grade === 'C') return '일반(C)';
-    if (grade === 'Master') return '마스터(Master)';
-    if (grade === 'S') return '대표마스터(S)';
-    return grade || '-';
+function formatGrade(role, grade) {
+    return role ? gradeLabel(role, grade) : (grade || '-');
 }
 
 function formatKoreanDate(dateString) {
@@ -123,7 +121,7 @@ export default function PromotionRequestsPanel({ onActionCompleted }) {
     // 되돌리기 처리
     const handleRevert = async (req) => {
         const ok = window.confirm(
-            `'${req.target_name}' 파트너의 승격을 되돌리시겠습니까?\n해당 파트너는 이전 등급(${formatGrade(req.from_grade)})으로 복구됩니다.`
+            `'${req.target_name}' 파트너의 승격을 되돌리시겠습니까?\n해당 파트너는 이전 등급(${formatGrade(req.target_role || req.requester_role, req.from_grade)})으로 복구됩니다.`
         );
         if (!ok) return;
 
@@ -218,9 +216,9 @@ export default function PromotionRequestsPanel({ onActionCompleted }) {
                                             {req.target_name || '알 수 없음'}
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-                                            <span className="font-medium text-gray-600">{formatGrade(req.from_grade)}</span>
+                                            <span className="font-medium text-gray-600">{formatGrade(req.target_role || req.requester_role, req.from_grade)}</span>
                                             <span className="mx-1 text-gray-400">→</span>
-                                            <span className="font-bold text-indigo-600">{formatGrade(req.to_grade)}</span>
+                                            <span className="font-bold text-indigo-600">{formatGrade(req.target_role || req.requester_role, req.to_grade)}</span>
                                         </td>
                                         <td className="px-4 py-3 text-gray-700 max-w-xs truncate" title={req.reason || '-'}>
                                             {req.reason || '-'}

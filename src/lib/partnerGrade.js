@@ -30,9 +30,12 @@ export const GRADE_LABELS = Object.freeze({
     leader: Object.freeze({ C: '팀장', Master: '마스터 팀장', S: '팀장 대표마스터' }),
 });
 
+export const gradeLabelByLine = (line, grade) =>
+    GRADE_LABELS[line]?.[grade] || GRADE_LABELS[line]?.C || '';
+
 export const gradeLabel = (role, grade) => {
     const line = lineOf(role);
-    return line ? (GRADE_LABELS[line][grade] || GRADE_LABELS[line].C) : (role || '');
+    return line ? gradeLabelByLine(line, grade) : (role || '');
 };
 
 // A parent and child must be in the same dealer/leader line.
