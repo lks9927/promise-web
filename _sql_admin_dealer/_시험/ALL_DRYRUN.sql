@@ -221,7 +221,7 @@ BEGIN
 -- p1c: 관리자만 실행 가능한 원자적 승격/강등 RPC. 등급은 C/Master만 허용한다.
 CREATE TABLE IF NOT EXISTS public.partner_grade_history (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  partner_id uuid NOT NULL REFERENCES public.partners(user_id),
+  partner_id uuid NOT NULL REFERENCES public.profiles(id),
   from_grade text,
   to_grade text NOT NULL CHECK (to_grade IN ('C', 'Master')),
   reason text,
@@ -281,7 +281,7 @@ GRANT EXECUTE ON FUNCTION public.change_partner_grade(uuid,text,text,uuid,text,b
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'\n[FAIL] apply P1c: ' || SQLERRM; END;
 BEGIN
 CREATE TABLE IF NOT EXISTS public.partner_bank_accounts (
-  partner_id uuid PRIMARY KEY REFERENCES public.partners(user_id) ON DELETE CASCADE,
+  partner_id uuid PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
   bank_code text, bank_account text, bank_holder text,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -732,7 +732,7 @@ CREATE TABLE IF NOT EXISTS public.regions (
   UNIQUE(parent_id, name)
 );
 CREATE TABLE IF NOT EXISTS public.partner_alert_regions (
-  partner_id uuid NOT NULL REFERENCES public.partners(user_id) ON DELETE CASCADE,
+  partner_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   region_id uuid NOT NULL REFERENCES public.regions(id) ON DELETE CASCADE,
   PRIMARY KEY(partner_id, region_id)
 );
@@ -1759,6 +1759,12 @@ IF v_apply_17 THEN
   END;
 ELSE v_result:=v_result||E'
 [SKIP] P6 notification bypass | apply prerequisite missing'; END IF;
+
+-- PostgREST embed guard: no foreign key may reference partners(user_id) (profiles:user_id embeds become ambiguous, PGRST201).
+SELECT count(*) INTO v_n FROM pg_constraint WHERE contype='f' AND confrelid='public.partners'::regclass;
+IF v_n=0 THEN v_result:=v_result||E'
+[PASS] PostgREST embed guard: no FK references partners'; ELSE v_result:=v_result||E'
+[FAIL] PostgREST embed guard: FKs referencing partners='||v_n||' (profiles:user_id embeds will fail with PGRST201)'; END IF;
 
 
 v_result := E'[SUMMARY] PASS ' || regexp_count(v_result,E'\\[PASS\\]') || ' / FAIL ' || regexp_count(v_result,E'\\[FAIL\\]') || ' / SKIP ' || regexp_count(v_result,E'\\[SKIP\\]') || E'\n' || ltrim(v_result,E'\n');

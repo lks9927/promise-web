@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.regions (
   UNIQUE(parent_id, name)
 );
 CREATE TABLE IF NOT EXISTS public.partner_alert_regions (
-  partner_id uuid NOT NULL REFERENCES public.partners(user_id) ON DELETE CASCADE,
+  partner_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   region_id uuid NOT NULL REFERENCES public.regions(id) ON DELETE CASCADE,
   PRIMARY KEY(partner_id, region_id)
 );

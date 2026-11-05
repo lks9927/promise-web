@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS public.partner_bank_accounts (
-  partner_id uuid PRIMARY KEY REFERENCES public.partners(user_id) ON DELETE CASCADE,
+  partner_id uuid PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
   bank_code text, bank_account text, bank_holder text,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );

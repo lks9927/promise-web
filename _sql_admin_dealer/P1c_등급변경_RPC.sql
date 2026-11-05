@@ -1,7 +1,7 @@
 -- p1c: 관리자만 실행 가능한 원자적 승격/강등 RPC. 등급은 C/Master만 허용한다.
 CREATE TABLE IF NOT EXISTS public.partner_grade_history (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  partner_id uuid NOT NULL REFERENCES public.partners(user_id),
+  partner_id uuid NOT NULL REFERENCES public.profiles(id),
   from_grade text,
   to_grade text NOT NULL CHECK (to_grade IN ('C', 'Master')),
   reason text,

@@ -371,3 +371,9 @@ IF v_apply_17 THEN
 ELSE v_result:=v_result||E'
 [SKIP] P6 notification bypass | apply prerequisite missing'; END IF;
 
+-- PostgREST embed guard: no foreign key may reference partners(user_id) (profiles:user_id embeds become ambiguous, PGRST201).
+SELECT count(*) INTO v_n FROM pg_constraint WHERE contype='f' AND confrelid='public.partners'::regclass;
+IF v_n=0 THEN v_result:=v_result||E'
+[PASS] PostgREST embed guard: no FK references partners'; ELSE v_result:=v_result||E'
+[FAIL] PostgREST embed guard: FKs referencing partners='||v_n||' (profiles:user_id embeds will fail with PGRST201)'; END IF;
+
