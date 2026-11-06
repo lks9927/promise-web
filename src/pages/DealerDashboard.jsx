@@ -256,7 +256,8 @@ function HomeTab({ user }) {
     const [sendingLink, setSendingLink] = useState(false);
     const [issuing, setIssuing] = useState(false);
     const [showCardQr, setShowCardQr] = useState(false);
-    const isDealerOnly = user?.role === 'dealer' && !isMasterOrAbove(user?.grade);
+    const isDealerOnly = user?.role === 'dealer'; // 딜러 라인(일반·마스터·대표마스터) 모두 명함 QR 대상, 팀장은 제외
+    const previewDealerId = user?._preview_mode ? user.id : undefined; // 관리자 화면 미리보기에서는 그 딜러의 것을 조회
 
     useEffect(() => {
         fetchData();
@@ -548,8 +549,8 @@ function HomeTab({ user }) {
         <div className="space-y-6">
                 {isDealerOnly && <>
                     <button onClick={() => setShowCardQr(true)} className="w-full rounded-2xl bg-indigo-600 text-white py-5 text-xl font-black shadow-lg">내 명함 QR</button>
-                    <CardQrModal open={showCardQr} onClose={() => setShowCardQr(false)} />
-                    <PreRegistrationList />
+                    <CardQrModal open={showCardQr} onClose={() => setShowCardQr(false)} dealerId={previewDealerId} />
+                    <PreRegistrationList dealerId={previewDealerId} />
                 </>}
             {/* Revenue Card */}
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-6 text-white shadow-lg shadow-indigo-200">

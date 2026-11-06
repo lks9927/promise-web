@@ -14,6 +14,6 @@ export const submitPreRegistration = ({ code, name, phone, relationship, consent
     p_consent: consent
 });
 
-export const getMyCardCoupon = () => supabase.rpc('get_my_card_coupon');
+export const getMyCardCoupon = (dealerId) => supabase.rpc('get_my_card_coupon', dealerId ? { p_dealer: dealerId } : {});
 
-export const getMyPreRegistrations = () => supabase.rpc('get_my_pre_registrations');
+export const getMyPreRegistrations = (dealerId) => supabase.rpc('get_my_pre_registrations', dealerId ? { p_dealer: dealerId } : {});

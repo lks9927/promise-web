@@ -85,6 +85,12 @@ BEGIN
 [PASS] apply P10 pre-registration/card coupon';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P10: ' || SQLERRM; END;
+BEGIN
+  -- @@INCLUDE ../../P10b_미리보기_관리자열람.sql
+  v_apply_21 := true; v_result := v_result || E'
+[PASS] apply P10b admin preview read';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P10b: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
   -- @@INCLUDE ../../P1d_계좌_기존열_제거.sql

@@ -3,13 +3,13 @@ import { getMyPreRegistrations } from '../../lib/preRegistration';
 
 const labels = { registered: '보관중', converted: '접수완료' };
 
-export function PreRegistrationList() {
+export function PreRegistrationList({ dealerId }) {
     const [items, setItems] = useState(null);
     useEffect(() => {
-        getMyPreRegistrations().then(({ data, error }) => {
+        getMyPreRegistrations(dealerId).then(({ data, error }) => {
             if (!error) setItems(data || []);
         }).catch(() => {});
-    }, []);
+    }, [dealerId]);
     if (items === null) return null;
     return <section className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
         <h3 className="font-bold text-gray-800 text-lg mb-3">내 안심 혜택 명단</h3>

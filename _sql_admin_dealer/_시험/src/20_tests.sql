@@ -76,7 +76,7 @@ IF v_apply_20 AND v_dealer IS NOT NULL THEN
     BEGIN SELECT count(*) INTO n FROM public.pre_registrations; auth_read_blocked := (n=0); EXCEPTION WHEN insufficient_privilege THEN auth_read_blocked:=true; END;
     BEGIN INSERT INTO public.pre_registration_attempts(phone) VALUES('01012345679'); EXCEPTION WHEN insufficient_privilege THEN auth_insert_blocked:=true; END;
     SELECT count(*) INTO n FROM public.get_my_pre_registrations();
-    SELECT pg_get_function_result('public.get_my_pre_registrations()'::regprocedure) INTO cols;
+    SELECT pg_get_function_result('public.get_my_pre_registrations(uuid)'::regprocedure) INTO cols;
     RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
     IF read_blocked AND attempts_read_blocked AND direct_blocked AND prereg_insert_blocked AND auth_read_blocked AND auth_insert_blocked AND n>=1 AND cols !~* 'phone' THEN v_result:=v_result||E'\n[PASS] P10 anon/authenticated direct table block and dealer masked RPC columns'; ELSE v_result:=v_result||E'\n[FAIL] P10 direct/RPC anon-pre-read='||read_blocked||' anon-attempts-read='||attempts_read_blocked||' anon-attempts-insert='||direct_blocked||' anon-pre-insert='||prereg_insert_blocked||' auth-read='||auth_read_blocked||' auth-insert='||auth_insert_blocked||' rows='||n||' cols='||cols; END IF;
   EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); v_result:=v_result||E'\n[FAIL] P10 direct/RPC: '||SQLERRM; END;
@@ -482,4 +482,41 @@ SELECT count(*) INTO v_n FROM pg_constraint WHERE contype='f' AND confrelid='pub
 IF v_n=0 THEN v_result:=v_result||E'
 [PASS] PostgREST embed guard: no FK references partners'; ELSE v_result:=v_result||E'
 [FAIL] PostgREST embed guard: FKs referencing partners='||v_n||' (profiles:user_id embeds will fail with PGRST201)'; END IF;
+
+-- P10b: admin preview can read a dealer's card coupon; non-admin passing another id still gets own; leader gets null.
+IF v_apply_21 THEN
+  DECLARE d1 uuid; d2 uuid; ad uuid; ld uuid; c_d1 text; c_adm text; c_nonadm text; c_leader text; c_d2 text;
+  BEGIN
+    SELECT p.user_id INTO d1 FROM public.partners p JOIN public.profiles pr ON pr.id=p.user_id WHERE pr.role='dealer' AND p.status='approved' ORDER BY p.user_id LIMIT 1;
+    SELECT p.user_id INTO d2 FROM public.partners p JOIN public.profiles pr ON pr.id=p.user_id WHERE pr.role='dealer' AND p.status='approved' AND p.user_id<>d1 ORDER BY p.user_id LIMIT 1;
+    SELECT p.user_id INTO ld FROM public.partners p JOIN public.profiles pr ON pr.id=p.user_id WHERE pr.role='leader' AND p.status='approved' ORDER BY p.user_id LIMIT 1;
+    SELECT id INTO ad FROM public.profiles WHERE role='admin' ORDER BY id LIMIT 1;
+    IF d1 IS NULL OR d2 IS NULL OR ld IS NULL OR ad IS NULL THEN
+      v_result:=v_result||E'
+[SKIP] P10b | data missing';
+    ELSE
+      c_d1 := public.ensure_dealer_card_coupon(d1); c_d2 := public.ensure_dealer_card_coupon(d2);
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',ad::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',ad::text,true);
+      SELECT public.get_my_card_coupon(d1) INTO c_adm;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',d2::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',d2::text,true);
+      SELECT public.get_my_card_coupon(d1) INTO c_nonadm;
+      SELECT public.get_my_card_coupon() INTO c_d2;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',ld::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',ld::text,true);
+      SELECT public.get_my_card_coupon() INTO c_leader;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      IF c_adm IS NOT DISTINCT FROM c_d1 AND c_d1 IS NOT NULL AND c_nonadm IS NOT DISTINCT FROM public.ensure_dealer_card_coupon(d2) AND c_leader IS NULL THEN
+        v_result:=v_result||E'
+[PASS] P10b admin preview reads dealer card; non-admin id ignored; leader null';
+      ELSE
+        v_result:=v_result||format(E'
+[FAIL] P10b admin=%s d1=%s nonadm=%s d2=%s leader=%s',c_adm,c_d1,c_nonadm,c_d2,c_leader);
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); v_result:=v_result||E'
+[FAIL] P10b: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'
+[SKIP] P10b | apply prerequisite missing'; END IF;
 

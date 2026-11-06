@@ -14,7 +14,7 @@ const download = (content, filename, type) => {
     URL.revokeObjectURL(anchor.href);
 };
 
-export function CardQrModal({ open, onClose }) {
+export function CardQrModal({ open, onClose, dealerId }) {
     const [code, setCode] = useState(null);
     const [png, setPng] = useState('');
     const [svg, setSvg] = useState('');
@@ -23,7 +23,7 @@ export function CardQrModal({ open, onClose }) {
         if (!open) return;
         let active = true;
         setCode(null); setPng(''); setSvg('');
-        getMyCardCoupon().then(async ({ data, error }) => {
+        getMyCardCoupon(dealerId).then(async ({ data, error }) => {
             if (!active || error || !data) return;
             const link = `${window.location.origin}/coupon/${data}`;
             const [nextPng, nextSvg] = await Promise.all([
@@ -33,7 +33,7 @@ export function CardQrModal({ open, onClose }) {
             if (active) { setCode(data); setPng(nextPng); setSvg(nextSvg); }
         }).catch(() => {});
         return () => { active = false; };
-    }, [open]);
+    }, [open, dealerId]);
 
     if (!open) return null;
     const link = code ? `${typeof window === 'undefined' ? '' : window.location.origin}/coupon/${code}` : '';
