@@ -5,7 +5,7 @@ import { translateError } from '../../../lib/errorHandler';
 import { useNotification } from '../../../contexts/NotificationContext';
 import RoleChangeModal from './RoleChangeModal';
 import PromotionRequestsPanel from '../PromotionRequestsPanel';
-import { GRADE, GRADE_LABELS, canParent, gradeLabel, isTopTier, isMaster, lineOf } from '../../../lib/partnerGrade';
+import { GRADE, GRADE_LABELS, canParent, gradeLabel, isTopTier, isMaster, isMasterOrAbove, lineOf } from '../../../lib/partnerGrade';
 
 const PARTNER_FILTERS = [
     ['all', '전체'],
