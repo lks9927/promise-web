@@ -29,6 +29,12 @@ DECLARE
   v_apply_17 boolean := false;
   v_apply_18 boolean := false;
   v_apply_19 boolean := false;
+  v_apply_20 boolean := false;
+  v_dealer uuid;
+  v_other_dealer uuid;
+  v_card_code text;
+  v_normal_code text;
+  v_customer_phone text;
 BEGIN
   ALTER TABLE public.funeral_cases DISABLE TRIGGER "funeral-case-alert";
   ALTER TABLE public.profiles DISABLE TRIGGER "profile-signup-alert";

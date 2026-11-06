@@ -38,6 +38,8 @@ import PackageBottomSheet from '../components/common/PackageBottomSheet';
 import { formatPhoneNumber } from '../utils/formatters';
 import { isMasterOrAbove } from '../lib/partnerGrade';
 import { RegionSelect } from '../components/common/RegionSelect';
+import { CardQrModal } from '../components/dealer/CardQrModal';
+import { PreRegistrationList } from '../components/dealer/PreRegistrationList';
 
 
 export default function DealerDashboard() {
@@ -253,6 +255,8 @@ function HomeTab({ user }) {
     const [recipientPhone, setRecipientPhone] = useState('');
     const [sendingLink, setSendingLink] = useState(false);
     const [issuing, setIssuing] = useState(false);
+    const [showCardQr, setShowCardQr] = useState(false);
+    const isDealerOnly = user?.role === 'dealer' && !isMasterOrAbove(user?.grade);
 
     useEffect(() => {
         fetchData();
@@ -542,6 +546,11 @@ function HomeTab({ user }) {
 
     return (
         <div className="space-y-6">
+                {isDealerOnly && <>
+                    <button onClick={() => setShowCardQr(true)} className="w-full rounded-2xl bg-indigo-600 text-white py-5 text-xl font-black shadow-lg">내 명함 QR</button>
+                    <CardQrModal open={showCardQr} onClose={() => setShowCardQr(false)} />
+                    <PreRegistrationList />
+                </>}
             {/* Revenue Card */}
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-6 text-white shadow-lg shadow-indigo-200">
                 <div className="flex justify-between items-center mb-4">

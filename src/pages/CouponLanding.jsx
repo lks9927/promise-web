@@ -7,6 +7,7 @@ import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import { formatPhoneNumber } from '../utils/formatters';
 import { RegionSelect } from '../components/common/RegionSelect';
+import { getCouponPublic, getFamilyBenefit, submitPreRegistration } from '../lib/preRegistration';
 
 export default function CouponLanding() {
     const { code } = useParams();
@@ -23,6 +24,8 @@ export default function CouponLanding() {
         location: '',
         packageName: '', regionId: null
     });
+    const [familyBenefit, setFamilyBenefit] = useState(null);
+    const [cardEmergency, setCardEmergency] = useState(false);
 
     useEffect(() => {
         fetchCoupon();
@@ -32,9 +35,7 @@ export default function CouponLanding() {
     const fetchCoupon = async () => {
         setLoading(true);
         try {
-            const { data, error: fetchError } = await supabase.rpc('get_coupon_public', {
-                p_code: code?.toUpperCase()
-            });
+            const { data, error: fetchError } = await getCouponPublic(code);
 
             if (fetchError || !data) {
                 setError('invalid');
@@ -47,6 +48,10 @@ export default function CouponLanding() {
             }
 
             setCoupon(data);
+            if (data.is_card) {
+                const { data: benefit } = await getFamilyBenefit();
+                setFamilyBenefit(benefit || null);
+            }
 
             // 예비상주 정보가 이미 있으면 자동 채움
             setFormData(prev => ({
@@ -143,6 +148,10 @@ export default function CouponLanding() {
     }
 
     // --- 접수 완료 화면 ---
+    if (coupon?.is_card && !cardEmergency) {
+        return <FamilyRegistration code={code} dealerName={coupon.dealer_name} benefit={familyBenefit} onEmergency={() => setCardEmergency(true)} />;
+    }
+
     if (step === 'success') {
         return (
             <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6">
@@ -155,7 +164,7 @@ export default function CouponLanding() {
                         {formData.name}님, 접수해주셔서 감사합니다.<br />
                         전문 장례지도사가 곧 연락드리겠습니다.
                     </p>
-                    <div className="bg-[#F9F7F2] rounded-xl p-4 mb-6 border border-[#EAE5D9]">
+                    {!coupon?.is_card && <div className="bg-[#F9F7F2] rounded-xl p-4 mb-6 border border-[#EAE5D9]">
                         <p className="text-sm text-[#8E806A]">
                             <strong>캐시백 금액:</strong> ₩{coupon?.amount?.toLocaleString()}<br />
                             <strong>쿠폰 코드:</strong> {code?.toUpperCase()}
@@ -163,7 +172,7 @@ export default function CouponLanding() {
                         <p className="text-xs text-[#A69986] mt-2">
                             * 캐시백은 장례 완료 후 정산 시 적용됩니다.
                         </p>
-                    </div>
+                    </div>}
                     <Link
                         to="/"
                         className="inline-block bg-[#433831] text-[#FDFBF7] px-8 py-3 rounded-xl font-bold hover:bg-[#322A25] transition-colors"
@@ -193,7 +202,7 @@ export default function CouponLanding() {
 
             <main className="max-w-lg mx-auto px-4 py-8 space-y-6">
                 {/* 프리미엄 쿠폰 카드 */}
-                <div className="relative overflow-hidden rounded-2xl shadow-xl">
+                <div className={`relative overflow-hidden rounded-2xl shadow-xl ${coupon?.is_card ? 'hidden' : ''}`}>
                     {/* 골드 외곽 */}
                     <div style={{
                         background: 'linear-gradient(to right, #cfad6f, #f5deb3, #cfad6f)',
@@ -237,7 +246,7 @@ export default function CouponLanding() {
                 </div>
 
                 {/* 안내 메시지 */}
-                {coupon?.recipient_name && (
+                {!coupon?.is_card && coupon?.recipient_name && (
                     <div className="bg-[#F0EDE6] rounded-xl px-5 py-4 border border-[#D4C5A9]">
                         <p className="text-[#433831] font-bold text-sm">
                             {coupon.recipient_name}님을 위한 캐시백 쿠폰입니다.
@@ -346,7 +355,7 @@ export default function CouponLanding() {
                             </div>
 
                             {/* 쿠폰 적용 안내 */}
-                            <div className="bg-green-50 rounded-xl px-4 py-3 border border-green-200 flex items-start gap-3">
+                            {!coupon?.is_card && <div className="bg-green-50 rounded-xl px-4 py-3 border border-green-200 flex items-start gap-3">
                                 <Gift className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
                                 <div>
                                     <p className="text-green-800 font-bold text-sm">
@@ -356,7 +365,7 @@ export default function CouponLanding() {
                                         장례 완료 후 정산 시 캐시백 금액이 차감됩니다.
                                     </p>
                                 </div>
-                            </div>
+                            </div>}
 
                             <button
                                 type="submit"
@@ -392,4 +401,29 @@ export default function CouponLanding() {
             </main>
         </div>
     );
+}
+
+function FamilyRegistration({ code, dealerName, benefit, onEmergency }) {
+    const [form, setForm] = useState({ name: '', phone: '', relationship: '자녀', consent: false });
+    const [submitting, setSubmitting] = useState(false);
+    const [message, setMessage] = useState('');
+    const [done, setDone] = useState(false);
+    const configured = Boolean(benefit?.name?.trim());
+    const submit = async (event) => {
+        event.preventDefault();
+        if (!form.consent) return;
+        setSubmitting(true); setMessage('');
+        const { data, error } = await submitPreRegistration({ code, ...form });
+        if (error) setMessage(error.message);
+        else if (data?.status === 'registered' || data?.status === 'exists') setDone(true);
+        else setMessage('잠시 후 다시 시도해 주세요.');
+        setSubmitting(false);
+    };
+    return <div className="min-h-screen bg-[#FDFBF7] px-4 py-8"><main className="max-w-lg mx-auto space-y-5">
+        <header className="text-center pt-4"><p className="text-[#8E806A] font-bold">{dealerName ? `${dealerName} 딜러가 안내드립니다` : '담당 딜러가 안내드립니다'}</p><h1 className="mt-2 text-3xl font-serif font-black text-[#433831]">가족 안심 {configured ? '혜택 신청' : '등록'}</h1></header>
+        {done ? <section className="bg-white rounded-3xl shadow-xl border border-[#EAE5D9] p-8 text-center"><CheckCircle className="w-14 h-14 text-green-600 mx-auto mb-4" /><h2 className="text-2xl font-bold text-[#433831]">등록되었습니다.</h2><p className="mt-3 text-[#8E806A] leading-relaxed">필요하실 때 이 화면에서 바로 접수하실 수 있습니다.</p><button onClick={onEmergency} className="mt-7 w-full bg-red-600 text-white text-xl font-black py-5 rounded-2xl">긴급 접수하기</button></section> : <>
+            <section className="bg-white rounded-2xl border border-[#EAE5D9] p-5 text-center"><h2 className="font-black text-xl text-[#433831]">{configured ? benefit.name : '가족 안심 등록'}</h2>{configured && benefit.description && <p className="mt-2 text-[#8E806A]">{benefit.description}</p>}{configured && benefit.amount !== null && benefit.amount !== undefined && benefit.amount !== '' && <p className="mt-3 text-lg font-black text-[#2E4A3D]">₩{Number(benefit.amount).toLocaleString()}</p>}{!configured && <p className="mt-2 text-[#8E806A]">가족을 위한 사전 안내를 등록해 주세요.</p>}</section>
+            <form onSubmit={submit} className="bg-white rounded-2xl shadow-lg border border-[#EAE5D9] p-6 space-y-5"><div><label className="block font-bold mb-1">이름</label><input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full border-2 rounded-xl p-3 text-lg" /></div><div><label className="block font-bold mb-1">연락처</label><input required type="tel" inputMode="numeric" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/[^0-9]/g, '') })} className="w-full border-2 rounded-xl p-3 text-lg" placeholder="01012345678" /></div><div><label className="block font-bold mb-1">관계</label><select value={form.relationship} onChange={e => setForm({ ...form, relationship: e.target.value })} className="w-full border-2 rounded-xl p-3">{['자녀', '배우자', '형제자매', '부모', '친척', '기타'].map(value => <option key={value}>{value}</option>)}</select></div><label className="flex items-start gap-3 text-sm leading-relaxed"><input required type="checkbox" checked={form.consent} onChange={e => setForm({ ...form, consent: e.target.checked })} className="mt-1" /><span><b>개인정보 수집·이용에 동의합니다. (필수)</b><br />수집 목적: 장례 서비스 사전 안내와 혜택 적용<br />수집 항목: 이름·연락처·관계<br />보유 기간: 등록일로부터 1년, 요청 시 삭제</span></label>{message && <p className="text-red-600 text-sm">{message}</p>}<button disabled={!form.consent || submitting} className="w-full bg-[#433831] text-white text-xl font-black py-4 rounded-2xl disabled:opacity-50">{submitting ? '등록 중...' : configured ? '가족 안심 혜택 신청' : '가족 안심 등록'}</button></form>
+        </>}
+    </main></div>;
 }

@@ -14,6 +14,7 @@ import { FooterSettings } from './settings/FooterSettings';
 import { SiteImageSettings } from './settings/SiteImageSettings';
 import { AdminPasswordSettings } from './settings/AdminPasswordSettings';
 import { RegionalAlertSettings } from './settings/RegionalAlertSettings';
+import { FamilyBenefitSettings } from './settings/FamilyBenefitSettings';
 
 const TABS = [
     { key: 'dispatch', label: '배차 운영', icon: Truck },
@@ -88,6 +89,7 @@ export default function SettingsPanel({ config, onUpdate, passwordRequests, onAp
                         )}
                         <BiddingSettings config={config} onUpdate={onUpdate} />
                         <RegionalAlertSettings config={config} onUpdate={onUpdate} />
+                        <FamilyBenefitSettings config={config} onUpdate={onUpdate} />
                     </>
                 )}
 

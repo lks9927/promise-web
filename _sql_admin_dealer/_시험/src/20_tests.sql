@@ -5,6 +5,112 @@ SELECT p.user_id INTO v_other_leader FROM public.partners p JOIN public.profiles
  WHERE p.status='approved' AND pr.role='leader' AND p.user_id IS DISTINCT FROM v_leader ORDER BY p.user_id LIMIT 1;
 SELECT id INTO v_customer FROM public.profiles WHERE role='customer' ORDER BY id LIMIT 1;
 
+-- P10: use only existing approved dealer/customer rows.  Every mutation stays inside the outer rollback.
+IF v_apply_20 THEN
+  SELECT pa.user_id INTO v_dealer FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id
+   WHERE pa.status='approved' AND pr.role='dealer' ORDER BY pa.user_id LIMIT 1;
+  SELECT pa.user_id INTO v_other_dealer FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id
+   WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id IS DISTINCT FROM v_dealer ORDER BY pa.user_id LIMIT 1;
+  SELECT regexp_replace(phone,'[^0-9]','','g') INTO v_customer_phone FROM public.profiles WHERE id=v_customer;
+  SELECT public.ensure_dealer_card_coupon(v_dealer) INTO v_card_code;
+  SELECT code INTO v_normal_code FROM public.coupons WHERE NOT is_card AND status='issued' ORDER BY created_at LIMIT 1;
+  SELECT count(*) INTO v_n FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer';
+  SELECT count(*) INTO v_n2 FROM public.coupons c JOIN public.partners pa ON pa.user_id=c.issued_by JOIN public.profiles pr ON pr.id=pa.user_id WHERE c.is_card AND pa.status='approved' AND pr.role='dealer';
+  IF v_dealer IS NOT NULL AND v_card_code IS NOT NULL AND
+     (SELECT count(*) FROM public.coupons WHERE issued_by=v_dealer AND is_card)=1 AND
+     public.ensure_dealer_card_coupon(v_dealer)=v_card_code AND v_n=v_n2 THEN
+    v_result:=v_result||E'\n[PASS] P10 approved dealer bulk/card issuance one-per-dealer and idempotent';
+  ELSE v_result:=v_result||E'\n[FAIL] P10 approved dealer card issuance/idempotency approved='||v_n||' cards='||v_n2; END IF;
+ELSE v_result:=v_result||E'\n[SKIP] P10 setup | apply prerequisite missing'; END IF;
+
+IF v_apply_20 THEN
+  DECLARE d uuid; l uuid; before_n bigint; after_n bigint; no_card text; pending_card text;
+  BEGIN
+    SELECT pa.user_id INTO d FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id
+     WHERE pa.status='approved' AND pr.role='dealer' ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO l FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id
+     WHERE pa.status='approved' AND pr.role='leader' ORDER BY pa.user_id LIMIT 1;
+    SELECT count(*) INTO before_n FROM public.coupons WHERE issued_by=d AND is_card;
+    DELETE FROM public.coupons WHERE issued_by=d AND is_card;
+    UPDATE public.partners SET status='pending' WHERE user_id=d;
+    SELECT public.ensure_dealer_card_coupon(d) INTO pending_card;
+    UPDATE public.partners SET status='approved' WHERE user_id=d;
+    SELECT count(*) INTO after_n FROM public.coupons WHERE issued_by=d AND is_card;
+    SELECT code INTO v_card_code FROM public.coupons WHERE issued_by=d AND is_card;
+    SELECT public.ensure_dealer_card_coupon(l) INTO no_card;
+    IF before_n=1 AND after_n=1 AND pending_card IS NULL AND no_card IS NULL THEN v_result:=v_result||E'\n[PASS] P10 approval trigger issues dealer only; pending dealer/leader denied';
+    ELSE v_result:=v_result||E'\n[FAIL] P10 approval trigger/role guard before='||before_n||' after='||after_n||' pending='||coalesce(pending_card,'NULL')||' leader='||coalesce(no_card,'NULL'); END IF;
+  EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P10 approval trigger: '||SQLERRM; END;
+END IF;
+
+IF v_apply_20 AND v_dealer IS NOT NULL AND v_customer_phone ~ '^01[0-9]{8,9}$' THEN
+  DECLARE j jsonb; denied boolean:=false; bad boolean:=false; normal_bad boolean:=false; phone_bad boolean:=false;
+  BEGIN
+    SET LOCAL ROLE anon;
+    PERFORM set_config('request.jwt.claims',json_build_object('role','anon')::text,true);
+    j:=public.submit_pre_registration(v_card_code,'김테스트',v_customer_phone,'자녀',true);
+    IF j->>'status'='registered' THEN v_result:=v_result||E'\n[PASS] P10 anon pre-registration'; ELSE v_result:=v_result||E'\n[FAIL] P10 anon pre-registration result='||j::text; END IF;
+    j:=public.submit_pre_registration(v_card_code,'김테스트',v_customer_phone,'자녀',true);
+    IF j->>'status'='exists' THEN v_result:=v_result||E'\n[PASS] P10 duplicate pre-registration is idempotent'; ELSE v_result:=v_result||E'\n[FAIL] P10 duplicate result='||j::text; END IF;
+    PERFORM public.submit_pre_registration(v_card_code,'김테스트',v_customer_phone,'자녀',true);
+    BEGIN PERFORM public.submit_pre_registration(v_card_code,'김테스트',v_customer_phone,'자녀',true); EXCEPTION WHEN OTHERS THEN denied:=position('잠시 후' in SQLERRM)>0; END;
+    BEGIN PERFORM public.submit_pre_registration(v_card_code,'김테스트','0101','자녀',true); EXCEPTION WHEN OTHERS THEN phone_bad:=true; END;
+    BEGIN PERFORM public.submit_pre_registration('BADCODE','김테스트','01099998888','자녀',true); EXCEPTION WHEN OTHERS THEN bad:=true; END;
+    BEGIN PERFORM public.submit_pre_registration(v_normal_code,'김테스트','01088887777','자녀',true); EXCEPTION WHEN OTHERS THEN normal_bad:=true; END;
+    BEGIN PERFORM public.submit_pre_registration(v_card_code,'김테스트','01077776666','자녀',false); EXCEPTION WHEN OTHERS THEN bad:=bad AND position('동의' in SQLERRM)>0; END;
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true);
+    IF denied AND bad AND normal_bad AND phone_bad THEN v_result:=v_result||E'\n[PASS] P10 rate/consent/code/ordinary-card/phone validation'; ELSE v_result:=v_result||E'\n[FAIL] P10 validation rate='||denied||' bad='||bad||' normal='||normal_bad||' phone='||phone_bad; END IF;
+  EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true); v_result:=v_result||E'\n[FAIL] P10 anon registration: '||SQLERRM; END;
+ELSE v_result:=v_result||E'\n[SKIP] P10 anon registration | dealer/customer phone data missing'; END IF;
+
+IF v_apply_20 AND v_dealer IS NOT NULL THEN
+  DECLARE direct_blocked boolean:=false; read_blocked boolean:=false; attempts_read_blocked boolean:=false; prereg_insert_blocked boolean:=false; auth_read_blocked boolean:=false; auth_insert_blocked boolean:=false; n bigint; cols text;
+  BEGIN
+    SET LOCAL ROLE anon; PERFORM set_config('request.jwt.claims',json_build_object('role','anon')::text,true);
+    BEGIN SELECT count(*) INTO n FROM public.pre_registrations; read_blocked := (n=0); EXCEPTION WHEN insufficient_privilege THEN read_blocked:=true; END;
+    BEGIN SELECT count(*) INTO n FROM public.pre_registration_attempts; attempts_read_blocked := (n=0); EXCEPTION WHEN insufficient_privilege THEN attempts_read_blocked:=true; END;
+    BEGIN INSERT INTO public.pre_registration_attempts(phone) VALUES('01012345678'); EXCEPTION WHEN insufficient_privilege THEN direct_blocked:=true; END;
+    BEGIN INSERT INTO public.pre_registrations(coupon_id,coupon_code,dealer_id,name,phone,consent_at) SELECT id,code,issued_by,'직접입력','01012345678',now() FROM public.coupons WHERE code=v_card_code; EXCEPTION WHEN insufficient_privilege THEN prereg_insert_blocked:=true; END;
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true);
+    SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',v_dealer::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',v_dealer::text,true);
+    BEGIN SELECT count(*) INTO n FROM public.pre_registrations; auth_read_blocked := (n=0); EXCEPTION WHEN insufficient_privilege THEN auth_read_blocked:=true; END;
+    BEGIN INSERT INTO public.pre_registration_attempts(phone) VALUES('01012345679'); EXCEPTION WHEN insufficient_privilege THEN auth_insert_blocked:=true; END;
+    SELECT count(*) INTO n FROM public.get_my_pre_registrations();
+    SELECT pg_get_function_result('public.get_my_pre_registrations()'::regprocedure) INTO cols;
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    IF read_blocked AND attempts_read_blocked AND direct_blocked AND prereg_insert_blocked AND auth_read_blocked AND auth_insert_blocked AND n>=1 AND cols !~* 'phone' THEN v_result:=v_result||E'\n[PASS] P10 anon/authenticated direct table block and dealer masked RPC columns'; ELSE v_result:=v_result||E'\n[FAIL] P10 direct/RPC anon-pre-read='||read_blocked||' anon-attempts-read='||attempts_read_blocked||' anon-attempts-insert='||direct_blocked||' anon-pre-insert='||prereg_insert_blocked||' auth-read='||auth_read_blocked||' auth-insert='||auth_insert_blocked||' rows='||n||' cols='||cols; END IF;
+  EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); v_result:=v_result||E'\n[FAIL] P10 direct/RPC: '||SQLERRM; END;
+END IF;
+
+IF v_apply_20 AND v_other_dealer IS NOT NULL AND v_leader IS NOT NULL THEN
+  DECLARE n_other bigint; n_leader bigint;
+  BEGIN
+    SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',v_other_dealer::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',v_other_dealer::text,true); SELECT count(*) INTO n_other FROM public.get_my_pre_registrations(); RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',v_leader::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',v_leader::text,true); SELECT count(*) INTO n_leader FROM public.get_my_pre_registrations(); RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    IF n_other=0 AND n_leader=0 THEN v_result:=v_result||E'\n[PASS] P10 other dealer/leader pre-registration isolation'; ELSE v_result:=v_result||E'\n[FAIL] P10 isolation other='||n_other||' leader='||n_leader; END IF;
+  EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); v_result:=v_result||E'\n[FAIL] P10 isolation: '||SQLERRM; END;
+END IF;
+
+IF v_apply_20 AND v_dealer IS NOT NULL AND v_customer IS NOT NULL AND v_customer_phone ~ '^01[0-9]{8,9}$' AND v_normal_code IS NOT NULL THEN
+  DECLARE card_case uuid; normal_case uuid; n_cash bigint; n_dealer bigint; card_status text; converted text; msg text; j jsonb; b jsonb;
+  BEGIN
+    SELECT public.submit_emergency_case('김테스트',v_customer_phone,'DRYRUN P10 card','일반형',v_card_code,NULL,NULL) INTO card_case;
+    UPDATE public.funeral_cases SET status='in_progress' WHERE id=card_case;
+    SELECT status INTO card_status FROM public.coupons WHERE code=v_card_code;
+    SELECT status INTO converted FROM public.pre_registrations WHERE coupon_code=v_card_code AND phone=v_customer_phone;
+    SELECT count(*) INTO n_cash FROM public.settlements WHERE case_id=card_case AND type='customer_cashback';
+    SELECT count(*) INTO n_dealer FROM public.settlements WHERE case_id=card_case AND type='dealer_commission';
+    SELECT message INTO msg FROM public.notifications WHERE user_id=v_dealer AND type='pre_registration' ORDER BY created_at DESC LIMIT 1;
+    SELECT public.submit_emergency_case('김테스트',v_customer_phone,'DRYRUN P10 normal','일반형',v_normal_code,NULL,NULL) INTO normal_case;
+    UPDATE public.funeral_cases SET status='in_progress' WHERE id=normal_case;
+    SELECT public.get_coupon_public(v_card_code) INTO j; SELECT public.get_family_benefit_public() INTO b;
+    UPDATE public.system_config SET value='가족 안심 혜택' WHERE key='family_benefit_name'; UPDATE public.system_config SET value='설명' WHERE key='family_benefit_desc'; UPDATE public.system_config SET value='12345' WHERE key='family_benefit_amount';
+    IF card_status='issued' AND converted='converted' AND n_cash=0 AND n_dealer=1 AND msg !~ '[0-9]{7,}' AND msg !~ '김테스트' AND (j ? 'amount' AND j ? 'status' AND j ? 'recipient_name' AND j ? 'recipient_phone' AND j ? 'is_card' AND j ? 'dealer_name') AND b->>'name' IS NULL AND (public.get_family_benefit_public()->>'amount')='12345' AND (SELECT status FROM public.coupons WHERE code=v_normal_code)='used' AND (SELECT count(*) FROM public.settlements WHERE case_id=normal_case AND type='customer_cashback')=1 THEN
+      v_result:=v_result||E'\n[PASS] P10 card conversion/reuse/settlement, normal coupon compatibility, notification masking, public benefit RPC';
+    ELSE v_result:=v_result||E'\n[FAIL] P10 card case status='||coalesce(card_status,'NULL')||' converted='||coalesce(converted,'NULL')||' cashback='||n_cash||' dealer='||n_dealer||' msg='||coalesce(msg,'NULL'); END IF;
+  EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P10 case/benefit: '||SQLERRM; END;
+END IF;
+
 -- P1h: report the live policy surface instead of applying its proposal SQL.
 SELECT count(*) INTO v_n FROM pg_policies WHERE schemaname='public' AND tablename='profiles';
 v_result := v_result || E'\n[INFO] P1h profiles policy count=' || v_n;

@@ -8,6 +8,10 @@ import RepresentativeOverview from '../../src/components/common/RepresentativeOv
 import PromotionRequestsPanel from '../../src/components/admin/PromotionRequestsPanel.jsx';
 import CommissionSettings from '../../src/components/admin/CommissionSettings.jsx';
 import { RegionalAlertSettings } from '../../src/components/admin/tabs/settings/RegionalAlertSettings.jsx';
+import { FamilyBenefitSettings } from '../../src/components/admin/tabs/settings/FamilyBenefitSettings.jsx';
+import { CardQrModal } from '../../src/components/dealer/CardQrModal.jsx';
+import { PreRegistrationList } from '../../src/components/dealer/PreRegistrationList.jsx';
+import CouponLanding from '../../src/pages/CouponLanding.jsx';
 import LeaderAlertRegions from '../../src/components/common/LeaderAlertRegions.jsx';
 import { RegionSelect } from '../../src/components/common/RegionSelect.jsx';
 import BranchManagement from '../../src/components/dealer/BranchManagement.jsx';
@@ -29,6 +33,10 @@ const tests = {
   PromotionPanel: () => <PromotionRequestsPanel onActionCompleted={() => {}} />,
   CommissionSettings: () => <CommissionSettings />,
   RegionalAlert: () => <RegionalAlertSettings config={{ regional_alert_mode: 'off' }} onUpdate={() => {}} />,
+  FamilyBenefit: () => <FamilyBenefitSettings config={{}} onUpdate={() => {}} />,
+  CardQrModal: () => <CardQrModal open={true} onClose={() => {}} />,
+  PreRegistrationList: () => <PreRegistrationList />,
+  CouponLandingImport: () => <div>{CouponLanding ? 'loaded' : 'missing'}</div>,
   LeaderAlertRegions: () => <LeaderAlertRegions userId="me" role="leader" />,
   RegionSelect: () => <RegionSelect value="" onChange={() => {}} />,
   BranchS: () => <BranchManagement user={user('dealer', 'S')} />,
