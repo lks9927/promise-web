@@ -6,10 +6,10 @@ export function RegionalAlertSettings({ config, onUpdate }) {
   const load = async () => {
     const [{ data: r }, { count }] = await Promise.all([
       supabase.from('regions').select('*').order('level').order('sort'),
-      supabase.from('partners').select('user_id, profiles!inner(role)', { count: 'exact', head: false }).eq('status', 'approved').eq('profiles.role', 'leader')
+      supabase.from('partners').select('user_id, profiles!partners_user_id_fkey!inner(role)', { count: 'exact', head: false }).eq('status', 'approved').eq('profiles.role', 'leader')
     ]);
     setRegions(r || []);
-    const leaders = (await supabase.from('partners').select('user_id, profiles!inner(role)').eq('status', 'approved').eq('profiles.role', 'leader')).data || [];
+    const leaders = (await supabase.from('partners').select('user_id, profiles!partners_user_id_fkey!inner(role)').eq('status', 'approved').eq('profiles.role', 'leader')).data || [];
     const { data: chosen } = await supabase.from('partner_alert_regions').select('partner_id');
     const chosenIds = new Set((chosen || []).map(x => x.partner_id)); setUnconfigured(leaders.filter(x => !chosenIds.has(x.user_id)).length);
   };
