@@ -549,7 +549,7 @@ function HomeTab({ user }) {
         <div className="space-y-6">
                 {isDealerOnly && <>
                     <button onClick={() => setShowCardQr(true)} className="w-full rounded-2xl bg-indigo-600 text-white py-5 text-xl font-black shadow-lg">내 명함 QR</button>
-                    <CardQrModal open={showCardQr} onClose={() => setShowCardQr(false)} dealerId={previewDealerId} />
+                    <CardQrModal open={showCardQr} onClose={() => setShowCardQr(false)} dealerId={previewDealerId} dealerName={user?.name} />
                     <PreRegistrationList dealerId={previewDealerId} />
                 </>}
             {/* Revenue Card */}

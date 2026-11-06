@@ -91,6 +91,12 @@ BEGIN
 [PASS] apply P10b admin preview read';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P10b: ' || SQLERRM; END;
+BEGIN
+  -- @@INCLUDE ../../P11_예비상주_확장.sql
+  v_apply_22 := true; v_result := v_result || E'
+[PASS] apply P11 family registration extension';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P11: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
   -- @@INCLUDE ../../P1d_계좌_기존열_제거.sql

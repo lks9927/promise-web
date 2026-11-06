@@ -78,7 +78,7 @@ IF v_apply_20 AND v_dealer IS NOT NULL THEN
     SELECT count(*) INTO n FROM public.get_my_pre_registrations();
     SELECT pg_get_function_result('public.get_my_pre_registrations(uuid)'::regprocedure) INTO cols;
     RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
-    IF read_blocked AND attempts_read_blocked AND direct_blocked AND prereg_insert_blocked AND auth_read_blocked AND auth_insert_blocked AND n>=1 AND cols !~* 'phone' THEN v_result:=v_result||E'\n[PASS] P10 anon/authenticated direct table block and dealer masked RPC columns'; ELSE v_result:=v_result||E'\n[FAIL] P10 direct/RPC anon-pre-read='||read_blocked||' anon-attempts-read='||attempts_read_blocked||' anon-attempts-insert='||direct_blocked||' anon-pre-insert='||prereg_insert_blocked||' auth-read='||auth_read_blocked||' auth-insert='||auth_insert_blocked||' rows='||n||' cols='||cols; END IF;
+    IF read_blocked AND attempts_read_blocked AND direct_blocked AND prereg_insert_blocked AND auth_read_blocked AND auth_insert_blocked AND n>=1 AND cols !~* 'phone|elder_name| name ' AND cols ~* 'region_name' THEN v_result:=v_result||E'\n[PASS] P10 anon/authenticated direct table block and dealer masked RPC columns'; ELSE v_result:=v_result||E'\n[FAIL] P10 direct/RPC anon-pre-read='||read_blocked||' anon-attempts-read='||attempts_read_blocked||' anon-attempts-insert='||direct_blocked||' anon-pre-insert='||prereg_insert_blocked||' auth-read='||auth_read_blocked||' auth-insert='||auth_insert_blocked||' rows='||n||' cols='||cols; END IF;
   EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); v_result:=v_result||E'\n[FAIL] P10 direct/RPC: '||SQLERRM; END;
 END IF;
 
@@ -519,4 +519,92 @@ IF v_apply_21 THEN
   END;
 ELSE v_result:=v_result||E'
 [SKIP] P10b | apply prerequisite missing'; END IF;
+
+-- P11: extended anonymous registration, old 5-argument compatibility, regional privacy and isolation.
+IF v_apply_22 THEN
+  DECLARE d uuid; other_d uuid; leader_d uuid; region uuid; sido uuid; region_label text; reg_id uuid; card text;
+    j jsonb; legacy jsonb; normalized text; listed_region text; listed_cols text; notice text;
+    n_other bigint := 0; n_leader bigint := 0; bad_region boolean := false; ok boolean := false;
+  BEGIN
+    SELECT pa.user_id INTO d FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO other_d FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id<>d ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO leader_d FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='leader' ORDER BY pa.user_id LIMIT 1;
+    SELECT id, name INTO region, region_label FROM public.regions WHERE level='sigungu' AND active ORDER BY id LIMIT 1;
+    SELECT id INTO sido FROM public.regions WHERE level='sido' AND active ORDER BY id LIMIT 1;
+    IF d IS NULL OR region IS NULL OR sido IS NULL THEN v_result:=v_result||E'\n[SKIP] P11 | dealer or region data missing';
+    ELSE
+      card := public.ensure_dealer_card_coupon(d);
+      SET LOCAL ROLE anon; PERFORM set_config('request.jwt.claims',json_build_object('role','anon')::text,true);
+      j := public.submit_pre_registration(card,'신청자','01066661111','형제자매',true,'어르신 이름',region);
+      legacy := public.submit_pre_registration(card,'호환신청자','01066662222','자녀',true);
+      BEGIN PERFORM public.submit_pre_registration(card,'지역거부','01066663333','자녀',true,'어르신',sido); EXCEPTION WHEN OTHERS THEN bad_region := position('시·군·구' in SQLERRM)>0; END;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true);
+      SELECT id, relationship INTO reg_id, normalized FROM public.pre_registrations WHERE coupon_code=card AND phone='01066661111';
+      SELECT message INTO notice FROM public.notifications WHERE user_id=d AND type='pre_registration' ORDER BY created_at DESC LIMIT 1;
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',d::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',d::text,true);
+      SELECT region_name INTO listed_region FROM public.get_my_pre_registrations() WHERE id=reg_id;
+      SELECT pg_get_function_result('public.get_my_pre_registrations(uuid)'::regprocedure) INTO listed_cols;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      IF other_d IS NOT NULL THEN SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',other_d::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',other_d::text,true); SELECT count(*) INTO n_other FROM public.get_my_pre_registrations(d) WHERE id=reg_id; RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); END IF;
+      IF leader_d IS NOT NULL THEN SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',leader_d::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',leader_d::text,true); SELECT count(*) INTO n_leader FROM public.get_my_pre_registrations(d) WHERE id=reg_id; RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); END IF;
+      ok := j->>'status'='registered' AND legacy->>'status'='registered' AND normalized='형제·자매' AND bad_region AND listed_region=region_label
+        AND listed_cols ~* 'region_name' AND listed_cols !~* 'elder_name|phone| name ' AND notice !~ '어르신 이름|01066661111'
+        AND (other_d IS NULL OR n_other=0) AND (leader_d IS NULL OR n_leader=0);
+      IF ok THEN v_result:=v_result||E'\n[PASS] P11 extended/legacy registration, sigungu guard, masking, notification privacy, isolation';
+      ELSE v_result:=v_result||format(E'\n[FAIL] P11 new=%s legacy=%s relation=%s region=%s bad=%s cols=%s notice=%s other=%s leader=%s',j,legacy,normalized,listed_region,bad_region,listed_cols,notice,n_other,n_leader); END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true); v_result:=v_result||E'\n[FAIL] P11: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P11 | apply prerequisite missing'; END IF;
+
+-- P11: public benefit response always includes a normalized label, independently of benefit configuration.
+IF v_apply_22 THEN
+  DECLARE had_label boolean; had_name boolean; had_desc boolean; had_amount boolean;
+    old_label text; old_name text; old_desc text; old_amount text;
+    j_missing jsonb; j_custom jsonb; j_blank jsonb; keys_ok boolean := false; empty_benefit_ok boolean := false;
+  BEGIN
+    SELECT EXISTS (SELECT 1 FROM public.system_config WHERE key='pre_reg_elder_label'),
+           (SELECT value FROM public.system_config WHERE key='pre_reg_elder_label') INTO had_label, old_label;
+    SELECT EXISTS (SELECT 1 FROM public.system_config WHERE key='family_benefit_name'),
+           (SELECT value FROM public.system_config WHERE key='family_benefit_name') INTO had_name, old_name;
+    SELECT EXISTS (SELECT 1 FROM public.system_config WHERE key='family_benefit_desc'),
+           (SELECT value FROM public.system_config WHERE key='family_benefit_desc') INTO had_desc, old_desc;
+    SELECT EXISTS (SELECT 1 FROM public.system_config WHERE key='family_benefit_amount'),
+           (SELECT value FROM public.system_config WHERE key='family_benefit_amount') INTO had_amount, old_amount;
+
+    DELETE FROM public.system_config WHERE key='pre_reg_elder_label';
+    SELECT public.get_family_benefit_public() INTO j_missing;
+    INSERT INTO public.system_config(key, value) VALUES ('pre_reg_elder_label', '  할머니  ')
+    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value;
+    SELECT public.get_family_benefit_public() INTO j_custom;
+    INSERT INTO public.system_config(key, value) VALUES ('pre_reg_elder_label', '   ')
+    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value;
+    INSERT INTO public.system_config(key, value) VALUES
+      ('family_benefit_name', ''), ('family_benefit_desc', '설명'), ('family_benefit_amount', '1000')
+    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value;
+    SELECT public.get_family_benefit_public() INTO j_blank;
+    keys_ok := j_blank ?& ARRAY['name', 'description', 'amount', 'elder_label'];
+    empty_benefit_ok := j_blank->>'name' IS NULL AND j_blank->>'description' IS NULL AND j_blank->>'amount' IS NULL;
+
+    DELETE FROM public.system_config WHERE key IN ('pre_reg_elder_label', 'family_benefit_name', 'family_benefit_desc', 'family_benefit_amount');
+    INSERT INTO public.system_config(key, value)
+    SELECT key, value FROM (VALUES
+      ('pre_reg_elder_label', old_label, had_label), ('family_benefit_name', old_name, had_name),
+      ('family_benefit_desc', old_desc, had_desc), ('family_benefit_amount', old_amount, had_amount)
+    ) AS saved(key, value, exists_before) WHERE exists_before;
+
+    IF j_missing->>'elder_label'='어르신' AND j_custom->>'elder_label'='할머니' AND j_blank->>'elder_label'='어르신'
+      AND keys_ok AND empty_benefit_ok THEN
+      v_result:=v_result||E'\n[PASS] P11 public benefit label default/custom/blank and legacy keys';
+    ELSE v_result:=v_result||format(E'\n[FAIL] P11 public benefit label missing=%s custom=%s blank=%s keys=%s empty=%s',j_missing,j_custom,j_blank,keys_ok,empty_benefit_ok); END IF;
+  EXCEPTION WHEN OTHERS THEN
+    DELETE FROM public.system_config WHERE key IN ('pre_reg_elder_label', 'family_benefit_name', 'family_benefit_desc', 'family_benefit_amount');
+    INSERT INTO public.system_config(key, value)
+    SELECT key, value FROM (VALUES
+      ('pre_reg_elder_label', old_label, had_label), ('family_benefit_name', old_name, had_name),
+      ('family_benefit_desc', old_desc, had_desc), ('family_benefit_amount', old_amount, had_amount)
+    ) AS saved(key, value, exists_before) WHERE exists_before;
+    v_result:=v_result||E'\n[FAIL] P11 public benefit label: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P11 public benefit label | apply prerequisite missing'; END IF;
 
