@@ -15,26 +15,26 @@ const FUNERAL_STAGES = [
     { number: 6, group: '1일차', name: '현황판/근조기', requiresImage: true },
     { number: 7, group: '1일차', name: '제단/헌화꽃', requiresImage: true },
     { number: 8, group: '1일차', name: '편의용품/일회용품', requiresImage: true },
-    { number: 9, group: '1일차', name: '빈소셋팅/도우미유니폼', requiresImage: true },
+  { number: 9, group: '1일차', name: '빈소 세팅/도우미 유니폼', requiresImage: true },
     { number: 10, group: '1일차', name: '부고스크린샷/부고링크', requiresImage: true },
     { number: 26, group: '1일차', name: '1일차 부고 사진', requiresImage: true },
     { number: 11, group: '1일차', name: '장례일정표/향로꽃장식', requiresImage: true },
-    { number: 12, group: '1일차', name: '1일차 퇴실사진', requiresImage: true },
+  { number: 12, group: '1일차', name: '1일차 퇴실 사진', requiresImage: true },
 
-    { number: 13, group: '2일차', name: '2일차 입실사진', requiresImage: true },
-    { number: 14, group: '2일차', name: '관셋팅/명정(소렴/대렴 표시)', requiresImage: true },
+  { number: 13, group: '2일차', name: '2일차 입실 사진', requiresImage: true },
+  { number: 14, group: '2일차', name: '관 세팅/명정(소렴/대렴 표시)', requiresImage: true },
     { number: 15, group: '2일차', name: '관꽃장식', requiresImage: true },
     { number: 16, group: '2일차', name: '봉안함 발주서', requiresImage: true },
     { number: 17, group: '2일차', name: '장의행사확인서', requiresImage: true },
-    { number: 18, group: '2일차', name: '2일차 퇴실사진', requiresImage: true },
+  { number: 18, group: '2일차', name: '2일차 퇴실 사진', requiresImage: true },
 
-    { number: 19, group: '3일차', name: '3일차 입실사진', requiresImage: true },
+  { number: 19, group: '3일차', name: '3일차 입실 사진', requiresImage: true },
     { number: 20, group: '3일차', name: '장의차량 도착사진(리무진/버스)', requiresImage: true },
     { number: 21, group: '3일차', name: '화장장 사진(봉안함)', requiresImage: true },
     { number: 22, group: '3일차', name: '장지 안치 사진', requiresImage: true },
     { number: 23, group: '3일차', name: '의전보고서/이용후기 사진', requiresImage: true },
     { number: 24, group: '3일차', name: '의전종료보고', requiresImage: false },
-    { number: 25, group: '3일차', name: '3일차 퇴실사진', requiresImage: true }
+  { number: 25, group: '3일차', name: '3일차 퇴실 사진', requiresImage: true }
 ];
 
 // image_url 컬럼에서 URL 배열로 파싱 (하위 호환)
@@ -247,8 +247,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                             .from('case-extra-photos')
                             .upload(filePath, img.file, { upsert: true });
                         if (uploadErr) {
-                            console.warn('Storage upload error:', uploadErr);
-                            return null;
+                            throw uploadErr;
                         }
                         return filePath;
                     })
@@ -460,7 +459,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                 <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 sticky top-0 z-10">
                     <div>
                         <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
-                            <CheckCircle className="w-5 h-5 text-indigo-600" /> 25단계 진행 체크리스트
+              <CheckCircle className="w-5 h-5 text-indigo-600" /> 26단계 진행 체크리스트
                         </h3>
                         <p className="text-xs text-gray-500 mt-1">
                             [{caseItem.profiles?.name || '고객'}님의 장례] 실시간 보고서 작성
@@ -708,11 +707,11 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                                                 {feeRate != null && (
                                                     <>
                                                         <div className="flex justify-between items-center text-rose-600">
-                                                            <span>본사 수수료 ({feeRate}%, 부가세 포함):</span>
+              <span>추가 매출 본사 수수료 ({feeRate}%, 부가세 포함):</span>
                                                             <span className="font-semibold">- ₩{expectedFee?.toLocaleString()}</span>
                                                         </div>
                                                         <div className="border-t border-gray-100 pt-1 flex justify-between items-center text-emerald-800 font-bold text-sm">
-                                                            <span>팀장 순수익:</span>
+              <span>추가 매출 팀장 순수익 (실수령액):</span>
                                                             <span className="text-emerald-700 text-base">₩{leaderShare?.toLocaleString()}</span>
                                                         </div>
                                                     </>

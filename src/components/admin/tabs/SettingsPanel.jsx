@@ -49,7 +49,11 @@ export default function SettingsPanel({ config, onUpdate, passwordRequests, onAp
             newValue = overrideNewValue;
         }
 
-        await supabase.from('system_config').upsert({ key, value: newValue });
+        const { error } = await supabase.from('system_config').upsert({ key, value: newValue });
+        if (error) {
+            showToast('error', '설정 변경 실패', error.message);
+            return;
+        }
         showToast('success', '설정 변경', '설정이 변경되었습니다.');
         onUpdate();
     };

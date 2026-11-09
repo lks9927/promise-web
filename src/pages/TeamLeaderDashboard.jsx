@@ -165,16 +165,23 @@ export default function TeamLeaderDashboard() {
 
     const fetchMyStatus = async () => {
         if (!user) return;
-        const { data } = await supabase.from('partners').select('current_status, is_working, business_doc_path').eq('user_id', user.id).single();
-        if (data) {
+        const { data, error } = await supabase.from('partners').select('current_status, is_working').eq('user_id', user.id).single();
+        if (error || !data) {
+            setLeaderDocsReady(false);
+            if (error) showToast('error', '상태 조회 실패', translateError(error));
+            return;
+        }
+        {
             if (data.current_status) {
                 setMyStatus(data.current_status);
             } else {
                 setMyStatus(data.is_working ? 'waiting' : 'off');
                 handleStatusChange(data.is_working ? 'waiting' : 'off', false);
             }
+            const { data: docs } = await supabase.from('partners').select('business_doc_path').eq('user_id', user.id).maybeSingle();
             const { data: bank } = await supabase.from('partner_bank_accounts').select('bank_code, bank_account, bank_holder').eq('partner_id', user.id).maybeSingle();
-            setLeaderDocsReady(Boolean(data.business_doc_path && bank?.bank_code && bank?.bank_account && bank?.bank_holder));
+            const present = (value) => typeof value === 'string' && value.trim().length > 0;
+            setLeaderDocsReady(present(docs?.business_doc_path) && present(bank?.bank_code) && present(bank?.bank_account) && present(bank?.bank_holder));
         }
     };
 
@@ -767,7 +774,7 @@ const isMasterUser = isMasterOrAbove(user.grade);
                         <div className="p-4 max-h-[60vh] overflow-y-auto bg-white">
                             {myTeam.length === 0 ? <p className="text-center text-gray-500 py-8">등록된 하위 팀원이 없습니다.</p> : (
                                 <div className="space-y-2">
-                                    <button onClick={() => handleBid(assignModal.caseId, user.id, '본인')} className="w-full p-3 rounded-xl border border-indigo-100 bg-indigo-50 hover:bg-indigo-100 text-left flex items-center gap-3 transition-colors group mb-4 relative overflow-hidden"><div className="absolute left-0 top-0 h-full w-1 bg-indigo-500"></div><div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold group-hover:bg-indigo-300 shadow-sm">나</div><div><div className="font-bold text-gray-900">본인 직접 수행</div><div className="text-xs text-indigo-600 font-medium">Master Leader 출동</div></div></button>
+                                    <button onClick={() => handleBid(assignModal.caseId, user.id, '본인')} className="w-full p-3 rounded-xl border border-indigo-100 bg-indigo-50 hover:bg-indigo-100 text-left flex items-center gap-3 transition-colors group mb-4 relative overflow-hidden"><div className="absolute left-0 top-0 h-full w-1 bg-indigo-500"></div><div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold group-hover:bg-indigo-300 shadow-sm">나</div><div><div className="font-bold text-gray-900">본인 직접 수행</div><div className="text-xs text-indigo-600 font-medium">마스터 팀장 출동</div></div></button>
                                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">소속 팀원 리스트</h4>
                                     {myTeam.map(member => {
                                         const mStatus = member.current_status || (member.is_working ? 'waiting' : 'off');
@@ -811,7 +818,7 @@ const isMasterUser = isMasterOrAbove(user.grade);
 
                             <div className="space-y-2">
                                 <label className="block text-sm font-bold text-gray-700">사용 용도 선택</label>
-                                {['현금지급', '화환사용', '입관꽃사용', '수동입력'].map(type => (
+                                {['현금 지급', '화환 사용', '입관꽃 사용', '직접 입력'].map(type => (
                                     <button
                                         key={type}
                                         onClick={() => handleCouponUsage(couponModal.coupon.id, type, couponModal.caseId)}
@@ -1338,7 +1345,7 @@ function CaseCard({ item, packages, isFlowerOrderRequired, onUpdate, onOrderFlow
                         <div className="grid grid-cols-2 gap-3">
                             {linkedCoupon && !isCouponUsed ? (
                                 <button onClick={() => onOpenCoupon(item)} className="col-span-2 bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2">
-                                    <Tag className="w-5 h-5" /> <span>쿠폰 사용 & 빈소 설치</span>
+                                    <Tag className="w-5 h-5" /> <span>쿠폰 사용 및 빈소 설치</span>
                                 </button>
                             ) : (
                                 <button onClick={() => onOpenDetail(item)} className="bg-blue-50 text-blue-700 border border-blue-200 font-bold py-3.5 rounded-xl hover:bg-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
@@ -1439,7 +1446,7 @@ function CaseCard({ item, packages, isFlowerOrderRequired, onUpdate, onOrderFlow
                                         pending: { label: '발주 대기', color: 'text-orange-600 bg-orange-50 border-orange-100' },
                                         confirmed: { label: '확인 완료', color: 'text-blue-600 bg-blue-50 border-blue-100' },
                                         shipped: { label: '배송 중', color: 'text-purple-600 bg-purple-50 border-purple-100' },
-                                        delivered: { label: '배송 완료 (인수 대기)', color: 'text-amber-600 bg-amber-50 border-amber-100' },
+                                        delivered: { label: '납품 완료 (인수 대기)', color: 'text-amber-600 bg-amber-50 border-amber-100' },
                                         completed: { label: '납품/인수 완료', color: 'text-green-600 bg-green-50 border-green-100' },
                                         cancelled: { label: '취소', color: 'text-red-600 bg-red-50 border-red-100' }
                                     };
@@ -1471,7 +1478,7 @@ function CaseCard({ item, packages, isFlowerOrderRequired, onUpdate, onOrderFlow
                                                                 alt="납품 완료 사진"
                                                                 className="w-full h-32 object-cover rounded-lg border border-gray-200"
                                                             />
-                                                            <p className="text-[10px] text-gray-400 text-center mt-1">사진을 누르면 크게 볼 수 있습니다</p>
+                                                            <p className="text-[10px] text-gray-400 text-center mt-1">사진을 누르면 크게 볼 수 있습니다.</p>
                                                         </a>
                                                     )}
                                                     {delivery.notes && (

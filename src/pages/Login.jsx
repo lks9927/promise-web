@@ -142,12 +142,16 @@ const Login = () => {
                         }
                     }
 
-                    await supabase
+                    const { error: deviceUpdateError } = await supabase
                         .from('profiles')
                         .update(updatePayload)
                         .eq('id', finalUserId);
-                        
-                    safeProfile.os_type = osType;
+
+                    if (deviceUpdateError) {
+                        console.warn('기기 정보 저장 실패:', deviceUpdateError);
+                    } else {
+                        safeProfile.os_type = osType;
+                    }
                 }
 
                 // Store user session

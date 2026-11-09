@@ -567,7 +567,7 @@ export default function PartnerApply() {
                                     type="text"
                                     readOnly
                                     className="flex-1 px-4 py-3 bg-gray-100 border border-gray-200 rounded-lg text-gray-600 focus:outline-none cursor-not-allowed"
-                                    placeholder="주소 검색을 진행해주세요"
+                      placeholder="주소 검색 버튼을 눌러주세요"
                                     value={formData.address || ''}
                                 />
                                 <button

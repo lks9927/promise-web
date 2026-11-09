@@ -131,6 +131,11 @@ BEGIN
 
   v_case_id := COALESCE(NEW.case_id, OLD.case_id);
 
+  -- total_price와 정산 금액은 integer 열이다. 생성 열을 계산하기 전에 범위를 명확히 막는다.
+  IF TG_OP <> 'DELETE' AND NEW.quantity::bigint * NEW.unit_price::bigint > 2147483647 THEN
+    RAISE EXCEPTION '추가 매출 항목 금액은 2,147,483,647원을 초과할 수 없습니다.' USING ERRCODE='22003';
+  END IF;
+
   -- 1. 장례 상태 확인: in_progress 일 때만 등록/수정/취소 가능
   SELECT fc.status INTO v_case_status
   FROM public.funeral_cases fc
@@ -229,6 +234,13 @@ BEGIN
     v_fee := ROUND(v_tot * COALESCE(v_rate, 0) / 100)::integer;
     SELECT s.base_amount, s.tax_amount INTO v_base, v_tax
     FROM public.extra_sales_fee_split(v_fee) s;
+
+    -- 사건 진행 중 담당 팀장이 바뀐 경우, 이전 팀장의 draft 행을 남기면 수수료가 이중 집계된다.
+    DELETE FROM public.settlements
+    WHERE case_id = v_case_id
+      AND type = 'extra_sales_fee'
+      AND recipient_id IS DISTINCT FROM v_team_leader_id
+      AND status = 'draft';
 
     INSERT INTO public.settlements (
       case_id, recipient_id, amount, type, status, tax_type, base_amount, tax_amount, net_amount

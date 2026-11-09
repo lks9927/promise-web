@@ -90,7 +90,7 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
 
     const selectedLeaderLabel = selectedLeaderId 
         ? getLeaderLabel(availableLeaders.find(l => l.user_id === selectedLeaderId))
-        : '팀장을 검색 후 선택하세요';
+    : '팀장을 검색한 후 선택하세요';
 
     const handleManualAssign = async () => {
         if (!selectedLeaderId) return;
@@ -327,7 +327,7 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
                                     ))}
                                 </div>
                                 <div className="pt-3 border-t border-gray-200 flex justify-between items-center text-sm">
-                                    <span className="font-bold text-gray-700">추가 매출 유효 합계</span>
+                        <span className="font-bold text-gray-700">추가 매출 합계 (유효 건)</span>
                                     <span className="text-base font-black text-indigo-600">
                                         ₩{extraSalesItems.filter(i => !i.is_cancelled).reduce((sum, item) => sum + ((item.unit_price || 0) * (item.quantity || 1)), 0).toLocaleString()}
                                     </span>

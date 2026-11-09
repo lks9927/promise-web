@@ -103,7 +103,7 @@ function RoleBadge({ role, grade, large = false }) {
         admin: { label: '본사', bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-400' },
         dealer: { label: '딜러', bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-400' },
         master: { label: '마스터', bg: 'bg-pink-100', text: 'text-pink-700', dot: 'bg-pink-400' },
-        master_leader: { label: '마스터팀장', bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-400' },
+  master_leader: { label: '마스터 팀장', bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-400' },
         leader: { label: '팀장', bg: 'bg-sky-100', text: 'text-sky-700', dot: 'bg-sky-400' },
         team_leader: { label: '팀장', bg: 'bg-sky-100', text: 'text-sky-700', dot: 'bg-sky-400' },
         none: { label: '안내', bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' },
@@ -510,7 +510,7 @@ export default function SettlementManager() {
             'leader_override': '관리수수료',
             'usage_fee_remittance': '본사 입금(사용료)',
             'extra_sales_fee': '추가 매출 수수료',
-            'additional_income': '부가수입 분배금',
+  'additional_income': '추가 매출 정산금',
             'customer_cashback': '상주 캐시백',
             'refund': '환불',
             'progress_only': '정산대기(진행중)'
@@ -623,7 +623,7 @@ export default function SettlementManager() {
                                 <span className="text-[11px] font-semibold text-gray-400">지급대기</span>
                             </div>
                             <p className="text-lg font-black text-amber-600">₩{Math.floor(stats.pendingAmount).toLocaleString()}</p>
-                            <span className="text-[10px] text-gray-400">{periodSettlements.filter(s => s.status === 'pending' && s.type !== 'usage_fee_remittance').length}건</span>
+                            <span className="text-[10px] text-gray-400">{periodSettlements.filter(s => s.status === 'pending' && !isInboundFee(s.type)).length}건</span>
                         </div>
                         {/* 마진 */}
                         <div className={`px-4 py-3 ${stats.profit >= 0 ? 'bg-gradient-to-br from-blue-50/40 to-indigo-50/40' : 'bg-gradient-to-br from-rose-50/40 to-red-50/40'}`}>
@@ -844,7 +844,7 @@ export default function SettlementManager() {
                                             {/* 진행인원 */}
                                             <div className="w-24 flex-shrink-0 flex flex-col justify-center items-center text-center">
                                                 <span className="text-[12px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full mb-1">
-                                                    총 {items.length}명 참여
+                      정산 대상 {items.length}건
                                                 </span>
                                                 {fcInfo?.coupon_code && (
                                                     <span className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-bold" title={`쿠폰: ${fcInfo.coupon_code} / 딜러: ${fcInfo.dealer?.name || '?'}`}>
@@ -918,7 +918,7 @@ export default function SettlementManager() {
                                                             {/* 구분 */}
                                                             <div className="w-32 flex-shrink-0">
                                                                 <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                                                                    item.type.includes('remittance') ? 'bg-blue-50 text-blue-700' : 
+                                                                    isInboundFee(item.type) ? 'bg-blue-50 text-blue-700' :
                                                                     item.type === 'progress_only' ? 'bg-gray-100 text-gray-500' : 'bg-orange-50 text-orange-700'
                                                                 }`}>
                                                                     {getTypeLabel(item.type)}
@@ -974,7 +974,7 @@ export default function SettlementManager() {
                                                                         <button onClick={() => setEditingId(null)} className="p-1.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-gray-200"><X className="w-3 h-3" /></button>
                                                                     </>
                                                                     ) : item.type === 'progress_only' ? (
-                                                                        <span className="text-[10px] text-gray-400">장례종료 대기</span>
+                              <span className="text-[10px] text-gray-400">장례 종료 대기</span>
                                                                     ) : item.status === 'draft' ? (
                                                                         <span className="text-[10px] text-purple-500 font-bold">정산 예정</span>
                                                                     ) : item.status === 'awaiting_payment' ? (
@@ -1130,7 +1130,7 @@ export default function SettlementManager() {
                                 }}
                                 className="w-full py-4 bg-white border-2 border-indigo-100 text-indigo-600 font-bold rounded-2xl hover:bg-indigo-50 hover:border-indigo-200 transition-colors flex items-center justify-center gap-2"
                             >
-                                <ExternalLink className="w-4 h-4" /> 정보 텍스트로 싹 복사하기 (모바일용)
+                    <ExternalLink className="w-4 h-4" /> 계좌 정보 전체 복사 (모바일용)
                             </button>
                             <button
                                 onClick={() => {
@@ -1139,7 +1139,7 @@ export default function SettlementManager() {
                                 }}
                                 className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-md mt-2"
                             >
-                                ✨ 직접 송금 완료 및 닫기
+                    송금 완료 처리
                             </button>
                         </div>
                     </div>

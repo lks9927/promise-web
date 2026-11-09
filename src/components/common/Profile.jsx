@@ -540,7 +540,7 @@ user.role === 'dealer' ? gradeLabel(user.role, user.grade) :
                                 <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center gap-2">
                                     <FileBadge className="w-4 h-4 text-indigo-500" /> ① 상례지도사 자격증
                                 </label>
-                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">자격증을 업로드하세요. 업로드 과정에서 <strong>주민번호 뒷자리 등을 블러(모자이크) 처리</strong>할 수 있습니다.</p>
+                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">자격증을 업로드하세요. 업로드 과정에서 <strong>주민번호 뒷자리 등을 가림(모자이크) 처리</strong>할 수 있습니다.</p>
                                 {profileData?.certificate_url ? (
                                     <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 mb-2">
                                         <img src={profileData.certificate_url} alt="자격증" className="w-full h-auto max-h-48 object-contain" />
@@ -567,7 +567,7 @@ user.role === 'dealer' ? gradeLabel(user.role, user.grade) :
                                 <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center gap-2">
                                     <FileBadge className="w-4 h-4 text-purple-500" /> ② 사업자등록증
                                 </label>
-                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">사업자등록증을 업로드하세요. 업로드 과정에서 <strong>민감 정보를 블러(모자이크) 처리</strong>할 수 있습니다.</p>
+                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">사업자등록증을 업로드하세요. 업로드 과정에서 <strong>민감 정보를 가림(모자이크) 처리</strong>할 수 있습니다.</p>
                                 {profileData?.business_license_url ? (
                                     <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 mb-2">
                                         <img src={profileData.business_license_url} alt="사업자등록증" className="w-full h-auto max-h-48 object-contain" />
@@ -597,8 +597,14 @@ user.role === 'dealer' ? gradeLabel(user.role, user.grade) :
                                             checked={profileData?.has_business || false}
                                             onChange={async (e) => {
                                                 const checked = e.target.checked;
+                                                const previousValue = Boolean(profileData?.has_business);
                                                 setProfileData(prev => ({ ...prev, has_business: checked }));
-                                                await supabase.from('profiles').update({ has_business: checked }).eq('id', user.id);
+                                                const { error } = await supabase.from('profiles').update({ has_business: checked }).eq('id', user.id);
+                                                if (error) {
+                                                    setProfileData(prev => ({ ...prev, has_business: previousValue }));
+                                                    showToast('error', '변경 실패', '사업자 등록 상태를 저장하지 못했습니다.');
+                                                    return;
+                                                }
                                                 if (checked) {
                                                     setBizInfoModalOpen(true);
                                                     showToast('info', '사업자 정보 입력', '사업자 정보를 입력해주세요.');
@@ -711,7 +717,7 @@ user.role === 'dealer' ? gradeLabel(user.role, user.grade) :
                                     value={profileDetails.introduction}
                                     onChange={(e) => setProfileDetails({ ...profileDetails, introduction: e.target.value })}
                                     rows="3"
-                                    placeholder="고객 및 딜러에게 보여질 짧은 소개글을 작성해주세요."
+                                    placeholder="고객 및 딜러에게 표시될 짧은 소개글을 작성해 주세요."
                                     className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium resize-none"
                                 />
                             </div>
@@ -844,7 +850,7 @@ user.role === 'dealer' ? gradeLabel(user.role, user.grade) :
                                 type="text"
                                 value={bankInfo.bank_holder}
                                 onChange={(e) => setBankInfo({ ...bankInfo, bank_holder: e.target.value })}
-                                placeholder="예금주 이름 실명 입력"
+                                placeholder="예금주 실명 입력"
                                 className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-medium"
                             />
                         </div>

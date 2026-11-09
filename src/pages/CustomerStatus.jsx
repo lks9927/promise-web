@@ -223,9 +223,9 @@ export default function CustomerStatus() {
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
                     <div className="relative z-10">
                         <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
-                            <Gift className="w-5 h-5 text-amber-300" /> 캐시백 쿠폰 등록
+              <Gift className="w-5 h-5 text-amber-300" /> 혜택 쿠폰 등록
                         </h3>
-                        <p className="text-indigo-100 text-sm mb-4">발급받으신 쿠폰 번호를 입력하고 혜택을 받으세요.</p>
+              <p className="text-indigo-100 text-sm mb-4">발급받으신 혜택 쿠폰 번호를 입력해 주세요.</p>
 
                         <form onSubmit={handleRegisterCoupon} className="flex gap-2">
                             <input
@@ -292,8 +292,8 @@ export default function CustomerStatus() {
                         className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center gap-4 cursor-pointer hover:border-indigo-200 transition-colors group"
                     >
                         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
-                            {myCase.team_leader.profiles?.avatar_url ? (
-                                <img src={myCase.team_leader.profiles.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                            {myCase.team_leader.avatar_url ? (
+                                <img src={myCase.team_leader.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                             ) : (
                                 <User className="w-8 h-8 text-gray-300" />
                             )}
@@ -301,14 +301,14 @@ export default function CustomerStatus() {
                         <div className="flex-1">
                             <div className="text-sm text-gray-400 font-medium">담당 본부장/팀장</div>
                             <div className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
-                                {myCase.team_leader.profiles?.name || '정보 없음'}
+                                {myCase.team_leader.name || '정보 없음'}
                             </div>
                             <div className="text-gray-500 text-sm flex items-center gap-1 mt-0.5">
                                 프로필 보기 <ChevronRight className="w-3 h-3" />
                             </div>
                         </div>
                         <a
-                            href={`tel:${myCase.team_leader.profiles?.phone}`}
+                            href={`tel:${myCase.team_leader.phone}`}
                             onClick={(e) => e.stopPropagation()}
                             className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 hover:bg-green-200 transition-colors shadow-sm"
                         >
@@ -383,7 +383,7 @@ export default function CustomerStatus() {
                 <TeamLeaderProfileModal
                     isOpen={profileModalOpen}
                     onClose={() => setProfileModalOpen(false)}
-                    leaderProfile={myCase.team_leader.profiles}
+                    leaderProfile={myCase.team_leader}
                 />
             )}
         </div>

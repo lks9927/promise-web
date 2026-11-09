@@ -9,8 +9,8 @@ const STATUS_LABELS = {
     assigned: '배정',
     consulting: '상담',
     in_progress: '진행 중',
-    team_settling: '정산 중(팀장)',
-    hq_check: '본사 확인',
+  team_settling: '정산 대기',
+  hq_check: '본사 검토 중',
     completed: '완료',
     cancelled: '취소',
 };
@@ -132,7 +132,7 @@ export default function RepresentativeOverview({ user, title }) {
                 alert(`승격 요청에 실패했습니다: ${reqError.message || '오류가 발생했습니다.'}`);
                 return;
             }
-            alert('요청했습니다. 본사 승인 후 반영됩니다.');
+    alert('승격 요청이 접수되었습니다. 본사 승인 후 반영됩니다.');
             await refreshPromotionRequests();
         } catch (err) {
             alert(`승격 요청 중 오류가 발생했습니다: ${err.message || err}`);

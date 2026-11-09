@@ -98,8 +98,7 @@ BEGIN
     FROM public.partners c
     JOIN public.profiles pr ON pr.id = c.user_id
     JOIN tree t ON c.master_id = t.user_id
-    WHERE t.depth < 8
-      AND NOT c.user_id = ANY(t.path)
+    WHERE NOT c.user_id = ANY(t.path)
   ),
   -- 각 하위 파트너의 가장 최신 사건 1건(완료·취소 제외 우선, 없으면 취소 포함)
   latest_case AS (

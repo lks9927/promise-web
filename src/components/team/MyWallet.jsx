@@ -309,7 +309,7 @@ export default function MyWallet({ user }) {
                                             </div>
                                         )}
                                         <div className="flex justify-between items-center text-indigo-700 font-bold text-base mt-1">
-                                            <span>본사 송금 총 예정 금액</span>
+                    <span>본사 송금 예정 총액</span>
                                             <span>{getRemittanceAmount(c).toLocaleString()} 원</span>
                                         </div>
                                         {c.additional_income_total > 0 && (
@@ -326,7 +326,7 @@ export default function MyWallet({ user }) {
                                                     </div>
                                                 )}
                                                 <div className="flex justify-between items-center text-indigo-700 font-bold text-sm mt-1">
-                                                    <span>추가 매출 팀장 몫 (실수령)</span>
+                    <span>추가 매출 팀장 순수익 (실수령액)</span>
                                                     <span>{Math.max(0, (c.additional_income_total || 0) - getExtraSalesFee(c)).toLocaleString()} 원</span>
                                                 </div>
                                             </>
@@ -393,7 +393,7 @@ export default function MyWallet({ user }) {
                                             </span>
                                         )}
                                         <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-bold">
-                                            팀장 몫: {Math.max(0, (c.additional_income_total || 0) - getExtraSalesFee(c)).toLocaleString()}원
+                                팀장 순수익: {Math.max(0, (c.additional_income_total || 0) - getExtraSalesFee(c)).toLocaleString()}원
                                         </span>
                                         {c.settlements?.some(s => s.type === 'extra_sales_fee' && s.status === 'paid') && (
                                             <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[10px] font-bold">

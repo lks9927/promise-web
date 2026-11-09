@@ -859,14 +859,20 @@ ELSE v_result:=v_result||E'\n[SKIP] P17 | apply prerequisite missing'; END IF;
 -- P18: s_downline_overview_v2(). The hierarchy is built inside this rolled-back transaction, so the test never depends on production rows.
 IF v_apply_27 AND v_customer IS NOT NULL THEN
   DECLARE
-    sa uuid; sb uuid; sc uuid; sx uuid; lead uuid; nm_b text; cols text;
+    sa uuid; sb uuid; sc uuid; sx uuid; sd uuid; se uuid; sf uuid; sg uuid; sh uuid; si uuid; lead uuid; nm_b text; cols text;
     c1 uuid; code1 text; coup_id uuid; r record; u uuid; got_n int; ok boolean := true; why text := '';
-    fee1 text; fee2 text; fee3 text; path_ok boolean; iso_ok boolean; nonS_ok boolean; hidden_ok boolean;
+    fee1 text; fee2 text; fee3 text; path_ok boolean; iso_ok boolean; nonS_ok boolean; hidden_ok boolean; deep_ok boolean := true;
   BEGIN
     SELECT pa.user_id INTO sa FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' ORDER BY pa.user_id LIMIT 1;
     SELECT pa.user_id INTO sb FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id<>sa ORDER BY pa.user_id LIMIT 1;
     SELECT pa.user_id INTO sc FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb) ORDER BY pa.user_id LIMIT 1;
     SELECT pa.user_id INTO sx FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO sd FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc,sx) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO se FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc,sx,sd) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO sf FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc,sx,sd,se) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO sg FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc,sx,sd,se,sf) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO sh FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc,sx,sd,se,sf,sg) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO si FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc,sx,sd,se,sf,sg,sh) ORDER BY pa.user_id LIMIT 1;
     SELECT pa.user_id INTO lead FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='leader' ORDER BY pa.user_id LIMIT 1;
     IF sa IS NULL OR sb IS NULL OR sc IS NULL OR sx IS NULL OR lead IS NULL THEN
       v_result:=v_result||E'\n[SKIP] P18 | need 4 approved dealers and 1 leader';
@@ -935,6 +941,26 @@ IF v_apply_27 AND v_customer IS NOT NULL THEN
       END LOOP;
       IF NOT iso_ok OR NOT nonS_ok THEN ok:=false; why:=why||' isolation(iso='||iso_ok||',nonS='||nonS_ok||')'; END IF;
 
+      -- g) cycle guard alone must allow the ninth depth; no production row is inserted.
+      IF sd IS NOT NULL AND se IS NOT NULL AND sf IS NOT NULL AND sg IS NOT NULL AND sh IS NOT NULL AND si IS NOT NULL THEN
+        UPDATE public.partners SET master_id=NULL WHERE master_id IN (sa,sb,sc,sx,sd,se,sf,sg,sh,si) OR user_id IN (sa,sb,sc,sx,sd,se,sf,sg,sh,si);
+        UPDATE public.partners SET grade='S' WHERE user_id=sa;
+        UPDATE public.partners SET grade='Master', master_id=sa WHERE user_id=sd;
+        UPDATE public.partners SET grade='C', master_id=sa WHERE user_id=sb;
+        UPDATE public.partners SET master_id=sb WHERE user_id=sc;
+        UPDATE public.partners SET master_id=sc WHERE user_id=sx;
+        UPDATE public.partners SET master_id=sx WHERE user_id=sd;
+        UPDATE public.partners SET master_id=sd WHERE user_id=se;
+        UPDATE public.partners SET master_id=se WHERE user_id=sf;
+        UPDATE public.partners SET master_id=sf WHERE user_id=sg;
+        UPDATE public.partners SET master_id=sg WHERE user_id=sh;
+        UPDATE public.partners SET master_id=sh WHERE user_id=si;
+        SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',sa::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub',sa::text,true);
+        SELECT EXISTS(SELECT 1 FROM public.s_downline_overview_v2() WHERE partner_id=si AND relationship='restricted_downline') INTO deep_ok;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+        IF NOT deep_ok THEN ok:=false; why:=why||' depth9'; END IF;
+      END IF;
+
       -- f) the S caller cannot read progress reports, pre-registrations, or settlements directly.
       hidden_ok := true;
       SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',sa::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', sa::text, true);
@@ -944,7 +970,7 @@ IF v_apply_27 AND v_customer IS NOT NULL THEN
       RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
       IF NOT hidden_ok THEN ok:=false; why:=why||' direct-read'; END IF;
 
-      IF ok THEN v_result:=v_result||E'\n[PASS] P18 columns, owner path, exact prereg counts 3/2/1, fee wait/paid/wait, S isolation, non-S zero rows, no direct reads';
+      IF ok THEN v_result:=v_result||E'\n[PASS] P18 columns, owner path, exact prereg counts 3/2/1, fee wait/paid/wait, S isolation, non-S zero rows, depth9, no direct reads';
       ELSE v_result:=v_result||E'\n[FAIL] P18:'||why; END IF;
     END IF;
   EXCEPTION WHEN OTHERS THEN
@@ -975,7 +1001,7 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
     cust_summary_col_ok boolean := true;
     col_rec record;
     s_before_count integer; s_after_count integer;
-    base_remit integer; extra_fee integer; tot_deposit integer;
+    base_remit integer; extra_fee integer; tot_deposit integer; transfer_count integer; overflow_blocked boolean := false;
   BEGIN
     SELECT id INTO lead1 FROM public.profiles WHERE role='leader' ORDER BY id LIMIT 1;
     SELECT id INTO lead2 FROM public.profiles WHERE role='leader' AND id IS DISTINCT FROM lead1 ORDER BY id LIMIT 1;
@@ -1232,8 +1258,27 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
         ok := false; why := why || ' tot_deposit=' || tot_deposit;
       END IF;
 
+      -- 9. A replacement leader must leave exactly one draft fee row for the new recipient.
+      IF lead2 IS NOT NULL THEN
+        UPDATE public.funeral_cases SET team_leader_id=lead2 WHERE id=c_adv;
+        UPDATE public.additional_income_items SET description='P15 팀장 교체 재동기화' WHERE case_id=c_adv AND is_cancelled=false;
+        SELECT count(*) INTO transfer_count FROM public.settlements WHERE case_id=c_adv AND type='extra_sales_fee' AND recipient_id=lead2 AND amount=41000 AND base_amount=37273 AND tax_amount=3727 AND status='draft';
+        IF transfer_count<>1 OR (SELECT count(*) FROM public.settlements WHERE case_id=c_adv AND type='extra_sales_fee')<>1 THEN
+          ok := false; why := why || ' leader_transfer(extra_rows=' || transfer_count || ')';
+        END IF;
+      END IF;
+
+      -- 10. The explicit range guard fires before the generated integer column can overflow.
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id,item_name,unit_price,quantity,created_by)
+        VALUES(c_adv,'P15 정수 범위 시험',100000,100000,lead2);
+      EXCEPTION WHEN numeric_value_out_of_range THEN
+        overflow_blocked := SQLERRM = '추가 매출 항목 금액은 2,147,483,647원을 초과할 수 없습니다.';
+      END;
+      IF NOT overflow_blocked THEN ok := false; why := why || ' integer_range_guard'; END IF;
+
       IF ok THEN
-        v_result := v_result || E'\n[PASS] P15 rate 37/41 exact calc, item lifecycle upsert/delete, lock & exceptions, RLS role isolation, existing settlements invariant, customer summary sanitized, storage bucket & policies, deposit sum';
+        v_result := v_result || E'\n[PASS] P15 rate 37/41 exact calc, item lifecycle upsert/delete, lock & exceptions, RLS role isolation, existing settlements invariant, customer summary sanitized, storage bucket & policies, deposit sum, leader transfer exact row, integer range guard';
       ELSE
         v_result := v_result || E'\n[FAIL] P15: ' || why;
       END IF;

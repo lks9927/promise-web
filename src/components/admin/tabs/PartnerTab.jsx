@@ -135,7 +135,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
 
             if (error) {
                 console.error(error);
-                showToast('error', '처리 실패', '상태 변경 중 오류가 발생했습니다.');
+                showToast('error', '처리 실패', translateError(error));
             } else {
                 showToast('success', '처리 완료', `파트너가 ${newStatus === 'approved' ? '승인' : '정지'}되었습니다.`);
                 onRefresh();
