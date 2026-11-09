@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Save, XCircle, Loader2, CheckCircle, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
+import { Camera, Save, XCircle, Loader2, CheckCircle, Image as ImageIcon, Plus, Trash2, Ban, Eye } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../contexts/NotificationContext';
 import imageCompression from 'browser-image-compression';
@@ -66,23 +66,48 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
 
     const fileInputRef = useRef(null);
 
-    // 부가수입 관련 state
+    // 추가 매출 관련 state
     const [additionalItems, setAdditionalItems] = useState([]);
     const [newItemName, setNewItemName] = useState('');
+    const [newItemDesc, setNewItemDesc] = useState('');
     const [newItemQty, setNewItemQty] = useState(1);
     const [newItemPrice, setNewItemPrice] = useState('');
+    const [newItemPhotos, setNewItemPhotos] = useState([]);
     const [isAddingItem, setIsAddingItem] = useState(false);
     const [loadingItems, setLoadingItems] = useState(false);
+    const [feeRate, setFeeRate] = useState(null);
+    const [signedUrls, setSignedUrls] = useState({});
+    const photoInputRef = useRef(null);
 
     useEffect(() => {
         if (isOpen && caseItem) {
             fetchReports();
             fetchAdditionalItems();
+            fetchPolicyFeeRate();
             setIsAddingItem(false);
             setNewItemName('');
+            setNewItemDesc('');
             setNewItemPrice('');
+            setNewItemPhotos([]);
         }
     }, [isOpen, caseItem]);
+
+    const fetchPolicyFeeRate = async () => {
+        try {
+            const pkg = caseItem?.package_name;
+            const polId = pkg === '고급형' ? 2 : (pkg === '무빈소' ? 3 : 1);
+            const { data } = await supabase
+                .from('commission_policies')
+                .select('extra_sales_fee_rate')
+                .eq('id', polId)
+                .single();
+            if (data?.extra_sales_fee_rate != null) {
+                setFeeRate(Number(data.extra_sales_fee_rate));
+            }
+        } catch (e) {
+            console.warn('Fee rate load fallback:', e);
+        }
+    };
 
     const fetchAdditionalItems = async () => {
         try {
@@ -93,10 +118,38 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                 .eq('case_id', caseItem.id)
                 .order('created_at', { ascending: true });
             
-            if (error) throw error;
-            setAdditionalItems(data || []);
+            if (error) {
+                console.warn('Error fetching additional items:', error);
+                setAdditionalItems([]);
+                return;
+            }
+            const items = data || [];
+            setAdditionalItems(items);
+
+            // 비공개 버킷 사진 서명 URL 생성
+            const pathsToSign = [];
+            items.forEach(item => {
+                const photos = Array.isArray(item.photo_urls) ? item.photo_urls : [];
+                photos.forEach(p => {
+                    if (p && !p.startsWith('http') && !signedUrls[p]) pathsToSign.push(p);
+                });
+            });
+            if (pathsToSign.length > 0) {
+                const uniquePaths = Array.from(new Set(pathsToSign));
+                Promise.all(uniquePaths.map(async path => {
+                    const { data: signData } = await supabase.storage
+                        .from('case-extra-photos')
+                        .createSignedUrl(path, 3600);
+                    return { path, url: signData?.signedUrl };
+                })).then(resList => {
+                    const urlMap = {};
+                    resList.forEach(r => { if (r.url) urlMap[r.path] = r.url; });
+                    setSignedUrls(prev => ({ ...prev, ...urlMap }));
+                }).catch(() => {});
+            }
         } catch (error) {
             console.error('Error fetching additional items:', error);
+            setAdditionalItems([]);
         } finally {
             setLoadingItems(false);
         }
@@ -140,56 +193,124 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
         }
     };
 
+    const handlePhotoChange = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+        const remaining = 10 - newItemPhotos.length;
+        if (remaining <= 0) {
+            showToast('error', '최대 10장', '사진은 최대 10장까지 첨부할 수 있습니다.');
+            return;
+        }
+        const filesToProcess = files.slice(0, remaining);
+        const options = {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1200,
+            useWebWorker: true,
+            fileType: 'image/webp'
+        };
+        try {
+            const processed = await Promise.all(
+                filesToProcess.map(async (file) => {
+                    const previewUrl = URL.createObjectURL(file);
+                    const compressedFile = await imageCompression(file, options);
+                    return { file: compressedFile, previewUrl };
+                })
+            );
+            setNewItemPhotos(prev => [...prev, ...processed]);
+        } catch (err) {
+            console.error(err);
+            showToast('error', '사진 처리 실패', '사진 처리 중 오류가 발생했습니다.');
+        }
+        e.target.value = '';
+    };
+
+    const handleRemoveNewPhoto = (idx) => {
+        setNewItemPhotos(prev => prev.filter((_, i) => i !== idx));
+    };
+
     const handleAddAdditionalItem = async () => {
-        if (!newItemName.trim() || !newItemPrice || newItemQty <= 0) {
-            showToast('error', '입력 오류', '항목명, 수량, 단가를 정확히 입력해주세요.');
+        if (!newItemName.trim() || !newItemPrice || parseInt(newItemQty) <= 0 || parseInt(newItemPrice) < 0) {
+            showToast('error', '입력 오류', '품목명, 수량(1 이상), 단가(0 이상)를 정확히 입력해주세요.');
             return;
         }
 
         try {
             setLoadingItems(true);
-            const { error } = await supabase
+
+            let photoPaths = [];
+            if (newItemPhotos.length > 0) {
+                photoPaths = await Promise.all(
+                    newItemPhotos.map(async (img) => {
+                        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+                        const filePath = `${caseItem.id}/${fileName}`;
+                        const { error: uploadErr } = await supabase.storage
+                            .from('case-extra-photos')
+                            .upload(filePath, img.file, { upsert: true });
+                        if (uploadErr) {
+                            console.warn('Storage upload error:', uploadErr);
+                            return null;
+                        }
+                        return filePath;
+                    })
+                );
+                photoPaths = photoPaths.filter(Boolean);
+            }
+
+            const payload = {
+                case_id: caseItem.id,
+                item_name: newItemName.trim(),
+                description: newItemDesc.trim() || null,
+                quantity: parseInt(newItemQty) || 1,
+                unit_price: parseInt(newItemPrice) || 0,
+                photo_urls: photoPaths,
+                created_by: user.id
+            };
+
+            let { error } = await supabase
                 .from('additional_income_items')
-                .insert([{
-                    case_id: caseItem.id,
-                    item_name: newItemName.trim(),
-                    quantity: parseInt(newItemQty),
-                    unit_price: parseInt(newItemPrice),
-                    created_by: user.id
-                }]);
-            
+                .insert([payload]);
+
+            // DB 미반영 시(구버전 테이블) 안전 폴백
+            if (error && /description|photo_urls|is_cancelled/i.test(error.message || '')) {
+                const { description, photo_urls, ...legacyPayload } = payload;
+                const res = await supabase.from('additional_income_items').insert([legacyPayload]);
+                error = res.error;
+            }
+
             if (error) throw error;
-            
-            showToast('success', '등록 완료', '부가수입 항목이 등록되었습니다.');
+
+            showToast('success', '등록 완료', '추가 매출 항목이 등록되었습니다.');
             setNewItemName('');
+            setNewItemDesc('');
             setNewItemQty(1);
             setNewItemPrice('');
+            setNewItemPhotos([]);
             setIsAddingItem(false);
             fetchAdditionalItems();
         } catch (error) {
             console.error('Error adding item:', error);
-            showToast('error', '저장 실패', '부가수입 등록 중 오류가 발생했습니다.');
+            showToast('error', '저장 실패', error.message || '추가 매출 등록 중 오류가 발생했습니다.');
         } finally {
             setLoadingItems(false);
         }
     };
 
-    const handleDeleteAdditionalItem = async (itemId) => {
-        if (!window.confirm('이 항목을 삭제하시겠습니까?')) return;
+    const handleCancelAdditionalItem = async (itemId) => {
+        if (!window.confirm('이 추가 매출 항목을 취소하시겠습니까?\n취소된 항목은 정산 합계에서 제외됩니다.')) return;
         
         try {
             setLoadingItems(true);
             const { error } = await supabase
                 .from('additional_income_items')
-                .delete()
+                .update({ is_cancelled: true })
                 .eq('id', itemId);
                 
             if (error) throw error;
-            showToast('success', '삭제 완료', '항목이 삭제되었습니다.');
+            showToast('success', '취소 완료', '추가 매출 항목이 취소되었습니다.');
             fetchAdditionalItems();
         } catch (error) {
-            console.error('Error deleting item:', error);
-            showToast('error', '삭제 실패', '항목 삭제 중 오류가 발생했습니다.');
+            console.error('Error cancelling item:', error);
+            showToast('error', '취소 실패', error.message || '항목 취소 처리 중 오류가 발생했습니다.');
         } finally {
             setLoadingItems(false);
         }
@@ -485,126 +606,249 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                         ))}
                     </div>
 
-                    {/* 부가수입 항목 (in_progress 진행 중일 때만 편집 허용, 종료 시엔 읽기 전용) */}
-                    <div className="mt-2 mb-6 border border-amber-200 rounded-xl bg-amber-50/50 overflow-hidden">
-                        <div className="bg-amber-100/50 p-3 border-b border-amber-200 flex justify-between items-center">
-                            <h4 className="font-bold text-amber-800 flex items-center gap-2 text-sm">
-                                💰 부가수입 항목 (영정사진, 수의 변경 등)
-                            </h4>
-                        </div>
-                        
-                        <div className="p-3">
-                            {additionalItems.length > 0 ? (
-                                <div className="space-y-2 mb-3">
-                                    <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-amber-700 uppercase px-1">
-                                        <div className="col-span-6">항목명</div>
-                                        <div className="col-span-1 text-center">수량</div>
-                                        <div className="col-span-5 text-right flex justify-between">
-                                            <span>단가/소계</span>
-                                            <span className="w-6 hidden sm:block"></span>
-                                        </div>
-                                    </div>
-                                    
-                                    {additionalItems.map(item => (
-                                        <div key={item.id} className="grid grid-cols-12 gap-1 items-center bg-white p-2 rounded-lg border border-amber-100 text-xs sm:text-sm">
-                                            <div className="col-span-6 font-medium text-gray-800 truncate" title={item.item_name}>{item.item_name}</div>
-                                            <div className="col-span-1 text-center text-gray-600">{item.quantity}</div>
-                                            <div className="col-span-5 flex justify-end items-center gap-2">
-                                                <div className="text-right flex flex-col">
-                                                    <span className="text-[10px] text-gray-400">@ ₩{item.unit_price.toLocaleString()}</span>
-                                                    <span className="font-bold text-gray-900">₩{item.total_price.toLocaleString()}</span>
+                    {/* 추가 매출 항목 (in_progress 진행 중일 때만 편집 허용, 종료 시엔 읽기 전용) */}
+                    {(() => {
+                        const activeItems = additionalItems.filter(i => !i.is_cancelled);
+                        const totalActive = activeItems.reduce((acc, curr) => acc + (curr.total_price || curr.unit_price * curr.quantity || 0), 0);
+                        const expectedFee = feeRate != null ? Math.round(totalActive * feeRate / 100) : null;
+                        const leaderShare = expectedFee != null ? totalActive - expectedFee : null;
+
+                        return (
+                            <div className="mt-2 mb-6 border border-emerald-200 rounded-xl bg-emerald-50/40 overflow-hidden shadow-sm">
+                                <div className="bg-emerald-100/60 p-3 border-b border-emerald-200 flex justify-between items-center">
+                                    <h4 className="font-bold text-emerald-900 flex items-center gap-2 text-sm">
+                                        📦 추가 매출 (영정사진, 제단꽃, 수의 변경 등)
+                                    </h4>
+                                    {caseItem.status !== 'in_progress' && (
+                                        <span className="text-[11px] font-bold text-gray-500 bg-white/80 px-2 py-0.5 rounded-full border border-gray-200">
+                                            🔒 정산 확정 (수정 불가)
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                <div className="p-3">
+                                    {additionalItems.length > 0 ? (
+                                        <div className="space-y-2 mb-3">
+                                            <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-emerald-800 uppercase px-1">
+                                                <div className="col-span-5">품목명 / 설명</div>
+                                                <div className="col-span-1 text-center">수량</div>
+                                                <div className="col-span-4 text-right">단가 / 소계</div>
+                                                <div className="col-span-2 text-center">상태 / 관리</div>
+                                            </div>
+                                            
+                                            {additionalItems.map(item => {
+                                                const photos = Array.isArray(item.photo_urls) ? item.photo_urls : (item.receipt_url ? [item.receipt_url] : []);
+                                                const subtotal = item.total_price || item.unit_price * item.quantity || 0;
+
+                                                return (
+                                                    <div key={item.id} className={`grid grid-cols-12 gap-1 items-center bg-white p-2.5 rounded-lg border text-xs sm:text-sm transition-all ${item.is_cancelled ? 'border-gray-200 bg-gray-50/80 opacity-60' : 'border-emerald-100'}`}>
+                                                        <div className="col-span-5 flex flex-col justify-center">
+                                                            <div className={`font-bold text-gray-900 truncate ${item.is_cancelled ? 'line-through text-gray-400' : ''}`} title={item.item_name}>
+                                                                {item.item_name}
+                                                            </div>
+                                                            {item.description && (
+                                                                <p className="text-[11px] text-gray-500 truncate" title={item.description}>
+                                                                    {item.description}
+                                                                </p>
+                                                            )}
+                                                            {photos.length > 0 && (
+                                                                <div className="flex gap-1 mt-1 overflow-x-auto">
+                                                                    {photos.map((p, pIdx) => {
+                                                                        const imgUrl = signedUrls[p] || p;
+                                                                        return (
+                                                                            <a key={pIdx} href={imgUrl} target="_blank" rel="noopener noreferrer" className="block w-6 h-6 rounded border border-gray-200 overflow-hidden flex-shrink-0 hover:opacity-80">
+                                                                                <img src={imgUrl} alt={`사진 ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                                                            </a>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className={`col-span-1 text-center font-medium ${item.is_cancelled ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                                                            {item.quantity}
+                                                        </div>
+
+                                                        <div className="col-span-4 text-right flex flex-col justify-center">
+                                                            <span className="text-[10px] text-gray-400">@ ₩{item.unit_price?.toLocaleString()}</span>
+                                                            <span className={`font-bold ${item.is_cancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                                                ₩{subtotal.toLocaleString()}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="col-span-2 flex justify-center items-center">
+                                                            {item.is_cancelled ? (
+                                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                                                                    취소됨
+                                                                </span>
+                                                            ) : (
+                                                                caseItem.status === 'in_progress' && isMyCase && (
+                                                                    <button 
+                                                                        onClick={() => handleCancelAdditionalItem(item.id)}
+                                                                        className="text-red-500 hover:text-red-700 px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-xs font-bold transition-colors flex items-center gap-1"
+                                                                        title="항목 취소"
+                                                                    >
+                                                                        <Ban className="w-3 h-3" /> 취소
+                                                                    </button>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            
+                                            {/* 정산 요약 바 */}
+                                            <div className="mt-3 pt-3 border-t border-emerald-200 bg-white rounded-lg p-3 space-y-1.5 text-xs">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600 font-medium">추가 매출 총합계 (취소 제외):</span>
+                                                    <span className="text-gray-900 font-bold text-base">
+                                                        ₩{totalActive.toLocaleString()}
+                                                    </span>
                                                 </div>
-                                                {caseItem.status === 'in_progress' && isMyCase && (
-                                                    <button 
-                                                        onClick={() => handleDeleteAdditionalItem(item.id)}
-                                                        className="text-red-400 hover:text-red-600 p-1 bg-red-50 hover:bg-red-100 rounded transition-colors"
-                                                        title="항목 삭제"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                                    </button>
+                                                {feeRate != null && (
+                                                    <>
+                                                        <div className="flex justify-between items-center text-rose-600">
+                                                            <span>본사 수수료 ({feeRate}%, 부가세 포함):</span>
+                                                            <span className="font-semibold">- ₩{expectedFee?.toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="border-t border-gray-100 pt-1 flex justify-between items-center text-emerald-800 font-bold text-sm">
+                                                            <span>팀장 순수익:</span>
+                                                            <span className="text-emerald-700 text-base">₩{leaderShare?.toLocaleString()}</span>
+                                                        </div>
+                                                    </>
                                                 )}
                                             </div>
                                         </div>
-                                    ))}
-                                    
-                                    <div className="text-right mt-3 pt-3 border-t border-amber-200">
-                                        <span className="text-amber-800 font-medium mr-2 text-sm">총 부가수입 합계:</span>
-                                        <span className="text-amber-900 font-bold text-lg">
-                                            ₩{additionalItems.reduce((acc, curr) => acc + curr.total_price, 0).toLocaleString()}
-                                        </span>
-                                    </div>
-                                </div>
-                            ) : (
-                                <p className="text-xs text-amber-600/70 text-center py-2 bg-white rounded-lg border border-amber-100 border-dashed">
-                                    등록된 부가수입이 없습니다.
-                                </p>
-                            )}
-
-                            {caseItem.status === 'in_progress' && isMyCase && (
-                                <div className="mt-3">
-                                    {isAddingItem ? (
-                                        <div className="bg-white p-3 rounded-lg border border-amber-300 shadow-sm animate-fadeIn">
-                                            <div className="grid grid-cols-12 gap-2 mb-3">
-                                                <div className="col-span-12 sm:col-span-6">
-                                                    <label className="block text-[10px] font-bold text-gray-600 mb-1">항목명</label>
-                                                    <input 
-                                                        type="text" 
-                                                        value={newItemName}
-                                                        onChange={e => setNewItemName(e.target.value)}
-                                                        placeholder="예: 영정사진 변경" 
-                                                        className="w-full text-sm border-gray-300 rounded focus:ring-amber-500 focus:border-amber-500 py-1.5"
-                                                    />
-                                                </div>
-                                                <div className="col-span-4 sm:col-span-2">
-                                                    <label className="block text-[10px] font-bold text-gray-600 mb-1">수량</label>
-                                                    <input 
-                                                        type="number" 
-                                                        value={newItemQty}
-                                                        onChange={e => setNewItemQty(e.target.value)}
-                                                        min="1"
-                                                        className="w-full text-sm border-gray-300 rounded focus:ring-amber-500 focus:border-amber-500 py-1.5"
-                                                    />
-                                                </div>
-                                                <div className="col-span-8 sm:col-span-4">
-                                                    <label className="block text-[10px] font-bold text-gray-600 mb-1">단가 (원)</label>
-                                                    <input 
-                                                        type="number" 
-                                                        value={newItemPrice}
-                                                        onChange={e => setNewItemPrice(e.target.value)}
-                                                        placeholder="숫자 입력" 
-                                                        className="w-full text-sm border-gray-300 rounded focus:ring-amber-500 focus:border-amber-500 py-1.5"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2 justify-end">
-                                                <button 
-                                                    onClick={() => setIsAddingItem(false)}
-                                                    className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
-                                                >
-                                                    취소
-                                                </button>
-                                                <button 
-                                                    onClick={handleAddAdditionalItem}
-                                                    disabled={loadingItems}
-                                                    className="px-4 py-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1"
-                                                >
-                                                    {loadingItems ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                                                    추가
-                                                </button>
-                                            </div>
-                                        </div>
                                     ) : (
-                                        <button 
-                                            onClick={() => setIsAddingItem(true)}
-                                            className="w-full py-2.5 bg-white border border-amber-300 border-dashed text-amber-700 text-sm font-bold rounded-lg hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
-                                        >
-                                            <Plus className="w-4 h-4" /> 부가수입 항목 추가
-                                        </button>
+                                        <p className="text-xs text-emerald-700/70 text-center py-3 bg-white rounded-lg border border-emerald-100 border-dashed">
+                                            등록된 추가 매출 항목이 없습니다.
+                                        </p>
+                                    )}
+
+                                    {caseItem.status === 'in_progress' && isMyCase && (
+                                        <div className="mt-3">
+                                            {isAddingItem ? (
+                                                <div className="bg-white p-3.5 rounded-lg border border-emerald-300 shadow-sm animate-fadeIn">
+                                                    <div className="grid grid-cols-12 gap-2 mb-2">
+                                                        <div className="col-span-12 sm:col-span-6">
+                                                            <label className="block text-[10px] font-bold text-gray-700 mb-1">품목명 *</label>
+                                                            <input 
+                                                                type="text" 
+                                                                value={newItemName}
+                                                                onChange={e => setNewItemName(e.target.value)}
+                                                                placeholder="예: 영정사진 변경, 제단꽃 추가" 
+                                                                className="w-full text-sm border-gray-300 rounded focus:ring-emerald-500 focus:border-emerald-500 py-1.5"
+                                                            />
+                                                        </div>
+                                                        <div className="col-span-4 sm:col-span-2">
+                                                            <label className="block text-[10px] font-bold text-gray-700 mb-1">수량 *</label>
+                                                            <input 
+                                                                type="number" 
+                                                                value={newItemQty}
+                                                                onChange={e => setNewItemQty(e.target.value)}
+                                                                min="1"
+                                                                className="w-full text-sm border-gray-300 rounded focus:ring-emerald-500 focus:border-emerald-500 py-1.5"
+                                                            />
+                                                        </div>
+                                                        <div className="col-span-8 sm:col-span-4">
+                                                            <label className="block text-[10px] font-bold text-gray-700 mb-1">단가 (원) *</label>
+                                                            <input 
+                                                                type="number" 
+                                                                value={newItemPrice}
+                                                                onChange={e => setNewItemPrice(e.target.value)}
+                                                                min="0"
+                                                                placeholder="단가 입력" 
+                                                                className="w-full text-sm border-gray-300 rounded focus:ring-emerald-500 focus:border-emerald-500 py-1.5"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mb-2">
+                                                        <label className="block text-[10px] font-bold text-gray-700 mb-1">설명 / 특이사항 (선택, 최대 1,000자)</label>
+                                                        <input 
+                                                            type="text" 
+                                                            value={newItemDesc}
+                                                            onChange={e => setNewItemDesc(e.target.value)}
+                                                            maxLength={1000}
+                                                            placeholder="상주 요청 세부 내용" 
+                                                            className="w-full text-xs border-gray-300 rounded focus:ring-emerald-500 focus:border-emerald-500 py-1.5"
+                                                        />
+                                                    </div>
+
+                                                    {/* 사진 첨부 (최대 10장) */}
+                                                    <div className="mb-3">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="text-[10px] font-bold text-gray-700">현장/영수증 사진 첨부 (선택, 최대 10장)</label>
+                                                            <span className="text-[10px] text-gray-400">{newItemPhotos.length} / 10장</span>
+                                                        </div>
+                                                        <input 
+                                                            ref={photoInputRef}
+                                                            type="file" 
+                                                            multiple 
+                                                            accept="image/jpeg,image/png,image/webp" 
+                                                            className="hidden" 
+                                                            onChange={handlePhotoChange}
+                                                        />
+                                                        <div className="flex flex-wrap gap-2 items-center">
+                                                            {newItemPhotos.map((img, idx) => (
+                                                                <div key={idx} className="relative w-12 h-12 rounded border border-gray-300 overflow-hidden bg-black group">
+                                                                    <img src={img.previewUrl} alt={`미리보기 ${idx+1}`} className="w-full h-full object-cover" />
+                                                                    <button 
+                                                                        type="button" 
+                                                                        onClick={() => handleRemoveNewPhoto(idx)}
+                                                                        className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[9px]"
+                                                                    >
+                                                                        ×
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                            {newItemPhotos.length < 10 && (
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => photoInputRef.current?.click()}
+                                                                    className="w-12 h-12 rounded border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50 flex flex-col items-center justify-center text-emerald-600 transition-colors"
+                                                                >
+                                                                    <Camera className="w-4 h-4" />
+                                                                    <span className="text-[9px] font-bold">+</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex gap-2 justify-end pt-2 border-t border-gray-100">
+                                                        <button 
+                                                            onClick={() => {
+                                                                setIsAddingItem(false);
+                                                                setNewItemPhotos([]);
+                                                            }}
+                                                            className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                                        >
+                                                            취소
+                                                        </button>
+                                                        <button 
+                                                            onClick={handleAddAdditionalItem}
+                                                            disabled={loadingItems}
+                                                            className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1"
+                                                        >
+                                                            {loadingItems ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                                            등록
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => setIsAddingItem(true)}
+                                                    className="w-full py-2.5 bg-white border border-emerald-300 border-dashed text-emerald-700 text-sm font-bold rounded-lg hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1 shadow-sm"
+                                                >
+                                                    <Plus className="w-4 h-4" /> 추가 매출 항목 등록
+                                                </button>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
         </div>

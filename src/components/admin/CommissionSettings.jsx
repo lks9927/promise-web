@@ -18,6 +18,7 @@ const DEFAULT_POLICY = {
     team_leader_fee: 0,
     s_dealer_management_fee: 0,
     s_leader_management_fee: 0,
+    extra_sales_fee_rate: 0,
 };
 
 const DEFAULT_PACKAGES = [
@@ -43,6 +44,7 @@ const ROWS = [
     { label: '마스터팀장 직접 영업수수료', name: 'exec_leader_master_direct', tag: '팀장', tagColor: 'purple' },
     { label: '관리 수수료 – 대표마스터 딜러', name: 's_dealer_management_fee', tag: '딜러', tagColor: 'blue' },
     { label: '관리 수수료 – 대표마스터 팀장', name: 's_leader_management_fee', tag: '팀장', tagColor: 'purple' },
+    { label: '추가 매출 수수료(%)', name: 'extra_sales_fee_rate', tag: '팀장', tagColor: 'purple' },
 ];
 
 const ROW_GROUPS = [
@@ -66,6 +68,7 @@ const ROW_GROUPS = [
             'team_leader_fee',
             'exec_leader_master_override',
             's_leader_management_fee',
+            'extra_sales_fee_rate',
         ],
     },
     {
@@ -106,6 +109,10 @@ const ROW_DESC = {
     },
     s_leader_management_fee: {
         desc: `${GRADE_LABELS.leader.S}가 산하 전체 팀장 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)`,
+        needsCheck: false,
+    },
+    extra_sales_fee_rate: {
+        desc: '장례 진행 중 발생한 추가 매출(용품 등)에 대해 팀장이 본사에 납부하는 수수료율(%)입니다.',
         needsCheck: false,
     },
 };
@@ -278,8 +285,8 @@ export default function CommissionSettings({ supabase }) {
             let { error: policyError } = await db.from('commission_policies').upsert(toSave);
             // Before P3c reaches the DB, retain the existing settings-save path and omit
             // only the two unavailable columns. The visible values remain safely at zero.
-            if (policyError && /s_(dealer|leader)_management_fee|team_leader_fee|column/i.test(policyError.message || '')) {
-                const { s_dealer_management_fee, s_leader_management_fee, team_leader_fee, ...legacyPolicy } = toSave;
+            if (policyError && /extra_sales_fee_rate|s_(dealer|leader)_management_fee|team_leader_fee|column/i.test(policyError.message || '')) {
+                const { extra_sales_fee_rate, s_dealer_management_fee, s_leader_management_fee, team_leader_fee, ...legacyPolicy } = toSave;
                 ({ error: policyError } = await db.from('commission_policies').upsert(legacyPolicy));
             }
             if (policyError) throw policyError;
@@ -673,29 +680,54 @@ export default function CommissionSettings({ supabase }) {
                                                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${TAG_COLORS[row.tagColor]}`}>{row.tag}</span>
                                                     </td>
                                                     <td className="px-4 py-2.5 text-gray-800 font-semibold align-middle">{row.label}</td>
-                                                    <td className="px-3 py-2 align-middle">
-                                                        <div className="relative">
-                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₩</span>
-                                                            <input type="text" inputMode="numeric"
-                                                                value={Number(amount).toLocaleString()}
-                                                                onChange={e => handleAmountChange(row.name, e.target.value)}
-                                                                className={`w-full pl-6 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2 bg-white
-                                                                    ${!isPct ? 'border-indigo-300 focus:ring-indigo-400' : 'border-gray-200 focus:ring-gray-300 text-gray-400'}`} />
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-3 py-2 align-middle">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="relative w-24 flex-shrink-0">
-                                                                <input type="number" step="0.1" min="0" max="100"
-                                                                    value={pct}
-                                                                    onChange={e => handlePctChange(row.name, e.target.value)}
-                                                                    className={`w-full pl-2 pr-7 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2
-                                                                        ${isPct ? 'border-indigo-300 bg-indigo-50 text-indigo-700 focus:ring-indigo-400' : 'border-blue-100 bg-blue-50 text-blue-600 focus:ring-blue-300'}`} />
-                                                                <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold ${isPct ? 'text-indigo-400' : 'text-blue-400'}`}>%</span>
-                                                            </div>
-                                                            <span className="text-xs text-gray-400 whitespace-nowrap">= ₩{calcFromPct.toLocaleString()}</span>
-                                                        </div>
-                                                    </td>
+                                                    {row.name === 'extra_sales_fee_rate' ? (
+                                                        <>
+                                                            <td className="px-3 py-2 align-middle text-center text-xs text-gray-400 font-medium">
+                                                                추가 매출액 비례
+                                                            </td>
+                                                            <td className="px-3 py-2 align-middle">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="relative w-24 flex-shrink-0">
+                                                                        <input type="number" step="0.1" min="0" max="100"
+                                                                            value={policy.extra_sales_fee_rate ?? 0}
+                                                                            onChange={e => {
+                                                                                const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                                                                                setPolicy(p => ({ ...p, extra_sales_fee_rate: val }));
+                                                                            }}
+                                                                            className="w-full pl-2 pr-7 py-1.5 border border-purple-300 bg-purple-50 text-purple-700 rounded-lg text-right font-bold text-sm focus:ring-2 focus:ring-purple-400" />
+                                                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-purple-400">%</span>
+                                                                    </div>
+                                                                    <span className="text-xs text-gray-500 whitespace-nowrap">본사 수수료율</span>
+                                                                </div>
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <td className="px-3 py-2 align-middle">
+                                                                <div className="relative">
+                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₩</span>
+                                                                    <input type="text" inputMode="numeric"
+                                                                        value={Number(amount).toLocaleString()}
+                                                                        onChange={e => handleAmountChange(row.name, e.target.value)}
+                                                                        className={`w-full pl-6 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2 bg-white
+                                                                            ${!isPct ? 'border-indigo-300 focus:ring-indigo-400' : 'border-gray-200 focus:ring-gray-300 text-gray-400'}`} />
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2 align-middle">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="relative w-24 flex-shrink-0">
+                                                                        <input type="number" step="0.1" min="0" max="100"
+                                                                            value={pct}
+                                                                            onChange={e => handlePctChange(row.name, e.target.value)}
+                                                                            className={`w-full pl-2 pr-7 py-1.5 border rounded-lg text-right font-bold text-sm focus:ring-2
+                                                                                ${isPct ? 'border-indigo-300 bg-indigo-50 text-indigo-700 focus:ring-indigo-400' : 'border-blue-100 bg-blue-50 text-blue-600 focus:ring-blue-300'}`} />
+                                                                        <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold ${isPct ? 'text-indigo-400' : 'text-blue-400'}`}>%</span>
+                                                                    </div>
+                                                                    <span className="text-xs text-gray-400 whitespace-nowrap">= ₩{calcFromPct.toLocaleString()}</span>
+                                                                </div>
+                                                            </td>
+                                                        </>
+                                                    )}
                                                 </tr>
                                                 {/* 행 아래 설명 줄 */}
                                                 {descInfo && (

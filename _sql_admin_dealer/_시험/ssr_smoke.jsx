@@ -17,6 +17,7 @@ import { RegionSelect } from '../../src/components/common/RegionSelect.jsx';
 import BranchManagement from '../../src/components/dealer/BranchManagement.jsx';
 import TeamManagement from '../../src/components/team/TeamManagement.jsx';
 import Profile from '../../src/components/common/Profile.jsx';
+import CaseDetailModal from '../../src/components/admin/modals/CaseDetailModal.jsx';
 
 const mk = (i, role, grade, master) => ({ user_id: 'u' + i, grade, master_id: master || null, status: 'approved', region: '서울', current_status: 'waiting', max_subordinates: null, profiles: { name: '홍길동' + i, phone: '01000000' + i, role, email: 'a@b.c' } });
 const partners = [];
@@ -45,6 +46,7 @@ const tests = {
   TeamMaster: () => <TeamManagement user={user('leader', 'Master')} />,
   ProfileLeaderS: () => <Profile user={user('leader', 'S')} onUpdate={() => {}} />,
   ProfileDealer: () => <Profile user={user('dealer', 'C')} onUpdate={() => {}} />,
+  CaseDetailModal: () => <CaseDetailModal caseItem={{ id: 'c1', status: 'in_progress', profiles: { name: '상주' }, location: '식장', package_name: '기본형' }} partners={partners} onClose={() => {}} />,
 };
 let bad = 0;
 for (const [name, f] of Object.entries(tests)) {

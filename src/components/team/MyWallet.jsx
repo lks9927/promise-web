@@ -194,11 +194,22 @@ export default function MyWallet({ user }) {
     const pendingCases = cases.filter(c => ['assigned', 'in_progress', 'team_settling', 'hq_check'].includes(c.status));
     const settledCases = cases.filter(c => c.status === 'completed');
 
-    const getRemittanceAmount = (c) => {
+    const getUsageFee = (c) => {
         if (!c.settlements) return 0;
         return c.settlements
             .filter(s => s.type === 'usage_fee_remittance')
-            .reduce((sum, s) => sum + s.amount, 0);
+            .reduce((sum, s) => sum + (s.amount || 0), 0);
+    };
+
+    const getExtraSalesFee = (c) => {
+        if (!c.settlements) return 0;
+        return c.settlements
+            .filter(s => s.type === 'extra_sales_fee')
+            .reduce((sum, s) => sum + (s.amount || 0), 0);
+    };
+
+    const getRemittanceAmount = (c) => {
+        return getUsageFee(c) + getExtraSalesFee(c);
     };
 
     const totalToDeposit = pendingCases.reduce((acc, c) => acc + getRemittanceAmount(c), 0);
@@ -287,20 +298,36 @@ export default function MyWallet({ user }) {
                                             <span className="font-bold text-gray-800">{(c.final_price || 0).toLocaleString()} 원</span>
                                         </div>
                                         <div className="h-px bg-gray-200 my-2"></div>
-                                        <div className="flex justify-between items-center text-indigo-700 font-bold text-base">
-                                            <span>본사 송금 예정 금액 (사용료)</span>
+                                        <div className="flex justify-between items-center text-sm text-gray-700">
+                                            <span>기본 사용료 (본사 송금)</span>
+                                            <span>{getUsageFee(c).toLocaleString()} 원</span>
+                                        </div>
+                                        {getExtraSalesFee(c) > 0 && (
+                                            <div className="flex justify-between items-center text-sm text-gray-700">
+                                                <span>추가 매출 수수료 (부가세 포함)</span>
+                                                <span>{getExtraSalesFee(c).toLocaleString()} 원</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between items-center text-indigo-700 font-bold text-base mt-1">
+                                            <span>본사 송금 총 예정 금액</span>
                                             <span>{getRemittanceAmount(c).toLocaleString()} 원</span>
                                         </div>
                                         {c.additional_income_total > 0 && (
                                             <>
                                                 <div className="h-px bg-gray-200 my-2"></div>
-                                                <div className="flex justify-between items-center">
-                                                    <span>부가수입 총 발생액</span>
+                                                <div className="flex justify-between items-center text-sm text-gray-600">
+                                                    <span>추가 매출 발생 합계</span>
                                                     <span className="font-bold text-gray-800">{c.additional_income_total.toLocaleString()} 원</span>
                                                 </div>
-                                                <div className="flex justify-between items-center text-indigo-700 font-bold text-base mt-1">
-                                                    <span>팀장 배분 수익 ({c.additional_income_rate || 50}%)</span>
-                                                    <span>{Math.round(c.additional_income_total * ((c.additional_income_rate || 50) / 100)).toLocaleString()} 원</span>
+                                                {getExtraSalesFee(c) > 0 && (
+                                                    <div className="flex justify-between items-center text-xs text-rose-600">
+                                                        <span>추가 매출 본사 수수료 (부가세 포함)</span>
+                                                        <span>-{getExtraSalesFee(c).toLocaleString()} 원</span>
+                                                    </div>
+                                                )}
+                                                <div className="flex justify-between items-center text-indigo-700 font-bold text-sm mt-1">
+                                                    <span>추가 매출 팀장 몫 (실수령)</span>
+                                                    <span>{Math.max(0, (c.additional_income_total || 0) - getExtraSalesFee(c)).toLocaleString()} 원</span>
                                                 </div>
                                             </>
                                         )}
@@ -354,13 +381,25 @@ export default function MyWallet({ user }) {
                                     date={new Date(c.created_at).toLocaleDateString()}
                                 />
 
-                                {/* 하단: 부가수입 (있을 때만) */}
+                                {/* 하단: 추가 매출 (있을 때만) */}
                                 {c.additional_income_total > 0 && (
-                                    <div className="mt-3 border-t border-gray-50 pt-3">
-                                        <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded inline-block font-bold">
-                                            부가수입 배분({c.additional_income_rate || 50}%): {Math.round(c.additional_income_total * ((c.additional_income_rate || 50) / 100)).toLocaleString()}원
-                                            {c.additional_income_settled && <span className="ml-1 bg-indigo-200 text-indigo-700 px-1 py-0.5 rounded text-[10px]">지급완료</span>}
-                                        </div>
+                                    <div className="mt-3 border-t border-gray-50 pt-3 flex flex-wrap items-center gap-2 text-xs">
+                                        <span className="text-gray-600 font-medium">
+                                            추가 매출: <strong>{c.additional_income_total.toLocaleString()}원</strong>
+                                        </span>
+                                        {getExtraSalesFee(c) > 0 && (
+                                            <span className="text-rose-600">
+                                                (수수료: -{getExtraSalesFee(c).toLocaleString()}원)
+                                            </span>
+                                        )}
+                                        <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-bold">
+                                            팀장 몫: {Math.max(0, (c.additional_income_total || 0) - getExtraSalesFee(c)).toLocaleString()}원
+                                        </span>
+                                        {c.settlements?.some(s => s.type === 'extra_sales_fee' && s.status === 'paid') && (
+                                            <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                수수료 납부완료
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                             </div>

@@ -1230,6 +1230,22 @@ function CaseCard({ item, packages, isFlowerOrderRequired, onUpdate, onOrderFlow
     const linkedCoupon = coupons?.[0];
     const isCouponUsed = linkedCoupon?.status === 'used';
     const [sheetPkg, setSheetPkg] = useState(null);
+    const [extraSalesFee, setExtraSalesFee] = useState(null);
+
+    useEffect(() => {
+        if (status === 'team_settling' || status === 'hq_check') {
+            supabase
+                .from('settlements')
+                .select('amount')
+                .eq('case_id', id)
+                .eq('type', 'extra_sales_fee')
+                .maybeSingle()
+                .then(({ data }) => {
+                    setExtraSalesFee(data?.amount || 0);
+                })
+                .catch(() => setExtraSalesFee(0));
+        }
+    }, [status, id]);
 
     // Is current user the assigned team leader?
     const isMyCase = !team_leader || user?.id === team_leader.id;
@@ -1355,12 +1371,39 @@ function CaseCard({ item, packages, isFlowerOrderRequired, onUpdate, onOrderFlow
                                     <span>다음 단계:</span> <span>🟢 장례 종료 (정산 요청)</span>
                                 </button>
                             )}
-                            {status === 'team_settling' && (
-                                <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 mt-2 cursor-default shadow-sm">
-                                    <CheckCircle className="w-5 h-5 text-green-500" />
-                                    🟢 정산 확인 대기 (관리자 승인 대기)
-                                </button>
-                            )}
+                            {status === 'team_settling' && (() => {
+                                const baseUsageFee = item.usage_fee || 0;
+                                const currentExtraFee = extraSalesFee != null ? extraSalesFee : 0;
+                                const totalDeposit = baseUsageFee + currentExtraFee;
+                                return (
+                                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2.5 mt-2 shadow-sm text-xs">
+                                        <div className="flex items-center gap-1.5 font-bold text-emerald-900 text-sm">
+                                            <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                            <span>장례 종료 및 본사 정산 입금 안내</span>
+                                        </div>
+                                        <p className="text-gray-600 leading-relaxed">
+                                            아래 금액을 확인 후 본사 계좌로 총 입금액을 일괄 입금해 주시면, 관리자 확인 후 정산이 완료됩니다.
+                                        </p>
+                                        <div className="bg-white rounded-lg p-3 border border-emerald-100 space-y-1.5 shadow-inner">
+                                            <div className="flex justify-between items-center text-gray-700">
+                                                <span>기본 수수료 (본사 사용료)</span>
+                                                <span className="font-semibold">₩{baseUsageFee.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-gray-700">
+                                                <span>추가 매출 수수료 (부가세 포함)</span>
+                                                <span className="font-semibold">₩{currentExtraFee.toLocaleString()}</span>
+                                            </div>
+                                            <div className="border-t border-emerald-100 pt-2 flex justify-between items-center font-bold text-emerald-950 text-sm">
+                                                <span>총 입금액 (부가세 포함)</span>
+                                                <span className="text-emerald-700 text-base">₩{totalDeposit.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-center py-1.5 text-gray-500 font-bold bg-white/60 rounded-lg border border-emerald-100">
+                                            🟢 정산 확인 대기 (관리자 입금 확인 중)
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                             {status === 'hq_check' && (
                                 <button className="w-full bg-gray-50 border border-gray-200 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 mt-2 cursor-default shadow-sm">
                                     <Clock className="w-5 h-5" />

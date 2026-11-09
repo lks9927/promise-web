@@ -13,6 +13,26 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
     const [searchLeaderQuery, setSearchLeaderQuery] = useState('');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef(null);
+    const [extraSalesItems, setExtraSalesItems] = useState([]);
+
+    useEffect(() => {
+        if (!caseItem?.id) return;
+        const fetchExtraSales = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('additional_income_items')
+                    .select('*')
+                    .eq('case_id', caseItem.id)
+                    .order('created_at', { ascending: true });
+                if (!error && data) {
+                    setExtraSalesItems(data);
+                }
+            } catch {
+                // safe fallback
+            }
+        };
+        fetchExtraSales();
+    }, [caseItem?.id]);
 
     useEffect(() => {
         function handleClickOutside(event) {
@@ -271,6 +291,50 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
                             </div>
                         </div>
                     </div>
+
+                    {/* 추가 매출 내역 (읽기 전용) */}
+                    {extraSalesItems.length > 0 && (
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <span className="w-1.5 h-6 bg-indigo-500 rounded-full inline-block"></span>
+                                    추가 매출 내역
+                                </h3>
+                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
+                                    총 {extraSalesItems.filter(i => !i.is_cancelled).length}건{extraSalesItems.some(i => i.is_cancelled) && ` (취소 ${extraSalesItems.filter(i => i.is_cancelled).length}건)`}
+                                </span>
+                            </div>
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-3">
+                                <div className="divide-y divide-gray-200">
+                                    {extraSalesItems.map((item) => (
+                                        <div key={item.id} className={`py-2.5 flex justify-between items-center text-sm ${item.is_cancelled ? 'opacity-40 line-through' : ''}`}>
+                                            <div>
+                                                <span className="font-semibold text-gray-800">{item.item_name}</span>
+                                                <span className="text-xs text-gray-500 ml-2">
+                                                    (₩{(item.unit_price || 0).toLocaleString()} × {item.quantity || 1}개)
+                                                </span>
+                                                {item.is_cancelled && (
+                                                    <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
+                                                        취소됨
+                                                    </span>
+                                                )}
+                                                {item.description && <p className="text-xs text-gray-400 mt-0.5">{item.description}</p>}
+                                            </div>
+                                            <span className="font-bold text-gray-900">
+                                                ₩{((item.unit_price || 0) * (item.quantity || 1)).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="pt-3 border-t border-gray-200 flex justify-between items-center text-sm">
+                                    <span className="font-bold text-gray-700">추가 매출 유효 합계</span>
+                                    <span className="text-base font-black text-indigo-600">
+                                        ₩{extraSalesItems.filter(i => !i.is_cancelled).reduce((sum, item) => sum + ((item.unit_price || 0) * (item.quantity || 1)), 0).toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="mb-8">
                         <div className="flex gap-2 items-center mb-4">

@@ -952,3 +952,296 @@ IF v_apply_27 AND v_customer IS NOT NULL THEN
     v_result:=v_result||E'\n[FAIL] P18: '||SQLERRM;
   END;
 ELSE v_result:=v_result||E'\n[SKIP] P18 | apply/customer prerequisite missing'; END IF;
+
+-- P15: Extra sales and fee settlements verification
+IF v_apply_28 AND v_customer IS NOT NULL THEN
+  DECLARE
+    lead1 uuid; lead2 uuid; deal1 uuid; cust1 uuid := v_customer; cust2 uuid; adm1 uuid;
+    c_basic uuid; c_adv uuid; c_lock uuid;
+    item1_id uuid; item2_id uuid; item3_id uuid;
+    s_row record;
+    got_tot integer; got_cnt integer;
+    ok boolean := true; why text := '';
+    non_draft_err boolean := false;
+    not_in_prog_err boolean := false;
+    hard_delete_err boolean := false;
+    role_lead1_cnt integer; role_lead2_cnt integer; role_deal_cnt integer;
+    role_cust1_cnt integer; role_cust2_cnt integer; role_adm_cnt integer;
+    lead2_insert_denied boolean := false;
+    deal_insert_denied boolean := false;
+    cust_insert_denied boolean := false;
+    bucket_ok boolean := false;
+    storage_policies_ok boolean := false;
+    cust_summary_col_ok boolean := true;
+    col_rec record;
+    s_before_count integer; s_after_count integer;
+    base_remit integer; extra_fee integer; tot_deposit integer;
+  BEGIN
+    SELECT id INTO lead1 FROM public.profiles WHERE role='leader' ORDER BY id LIMIT 1;
+    SELECT id INTO lead2 FROM public.profiles WHERE role='leader' AND id IS DISTINCT FROM lead1 ORDER BY id LIMIT 1;
+    SELECT id INTO deal1 FROM public.profiles WHERE role='dealer' ORDER BY id LIMIT 1;
+    SELECT id INTO cust2 FROM public.profiles WHERE role='customer' AND id IS DISTINCT FROM cust1 ORDER BY id LIMIT 1;
+    SELECT id INTO adm1 FROM public.profiles WHERE role='admin' ORDER BY id LIMIT 1;
+
+    IF lead1 IS NULL OR deal1 IS NULL OR adm1 IS NULL THEN
+      v_result := v_result || E'\n[SKIP] P15 | need leader, dealer, and admin profiles';
+    ELSE
+      -- 1. Commission policies setup: rate 37 for policy 1 ('기본형'), rate 41 for policy 2 ('고급형')
+      UPDATE public.commission_policies SET extra_sales_fee_rate = 37 WHERE id = 1;
+      UPDATE public.commission_policies SET extra_sales_fee_rate = 41 WHERE id = 2;
+
+      -- Create basic case
+      INSERT INTO public.funeral_cases(customer_id, dealer_id, team_leader_id, status, location, package_name)
+      VALUES(cust1, deal1, lead1, 'requested', 'P15 basic test', '기본형') RETURNING id INTO c_basic;
+      UPDATE public.funeral_cases SET status='in_progress' WHERE id=c_basic;
+
+      -- Check existing settlements count
+      SELECT count(*) INTO s_before_count FROM public.settlements WHERE case_id=c_basic;
+
+      -- Insert 3 items:
+      -- item 1: unit_price 15000, quantity 2 (소계 30000)
+      -- item 2: unit_price 20000, quantity 3 (소계 60000)
+      -- item 3: unit_price 50000, quantity 1 (소계 50000) -> cancelled
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+      VALUES(c_basic, '영정사진 고급형', 15000, 2, lead1) RETURNING id INTO item1_id;
+
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+      VALUES(c_basic, '제단 꽃장식 추가', 20000, 3, lead1) RETURNING id INTO item2_id;
+
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by, is_cancelled)
+      VALUES(c_basic, '취소될 항목', 50000, 1, lead1, true) RETURNING id INTO item3_id;
+
+      -- Verify case total: 30000 + 60000 = 90000 (cancelled excluded)
+      SELECT additional_income_total INTO got_tot FROM public.funeral_cases WHERE id=c_basic;
+      IF got_tot <> 90000 THEN
+        ok := false; why := why || ' case_tot=' || coalesce(got_tot::text,'null') || '!=90000';
+      END IF;
+
+      -- Verify extra_sales_fee settlement:
+      -- fee = ROUND(90000 * 37 / 100) = 33300
+      -- base = ROUND(33300 / 1.1) = 30273
+      -- tax = 33300 - 30273 = 3027
+      SELECT * INTO s_row FROM public.settlements WHERE case_id=c_basic AND type='extra_sales_fee';
+      IF s_row.id IS NULL OR s_row.amount <> 33300 OR s_row.base_amount <> 30273 OR s_row.tax_amount <> 3027
+         OR s_row.net_amount <> 33300 OR s_row.recipient_id <> lead1 OR s_row.status <> 'draft' THEN
+        ok := false; why := why || ' s_basic(amt=' || coalesce(s_row.amount::text,'null') || ',base=' || coalesce(s_row.base_amount::text,'null') || ',tax=' || coalesce(s_row.tax_amount::text,'null') || ')';
+      END IF;
+
+      -- Test policy 2 ('고급형', rate 41)
+      INSERT INTO public.funeral_cases(customer_id, dealer_id, team_leader_id, status, location, package_name)
+      VALUES(cust1, deal1, lead1, 'requested', 'P15 adv test', '고급형') RETURNING id INTO c_adv;
+      UPDATE public.funeral_cases SET status='in_progress' WHERE id=c_adv;
+
+      SELECT count(*) INTO s_before_count FROM public.settlements WHERE case_id=c_adv;
+
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+      VALUES(c_adv, '고급 수의 업그레이드', 100000, 1, lead1);
+
+      -- fee = ROUND(100000 * 41 / 100) = 41000, base = ROUND(41000 / 1.1) = 37273, tax = 3727
+      SELECT * INTO s_row FROM public.settlements WHERE case_id=c_adv AND type='extra_sales_fee';
+      IF s_row.id IS NULL OR s_row.amount <> 41000 OR s_row.base_amount <> 37273 OR s_row.tax_amount <> 3727 THEN
+        ok := false; why := why || ' s_adv(amt=' || coalesce(s_row.amount::text,'null') || ',base=' || coalesce(s_row.base_amount::text,'null') || ')';
+      END IF;
+
+      -- 2. Modify item & zero-total settlement deletion
+      -- Update item 1: unit_price 10000, quantity 1 -> sum becomes 10000 + 60000 = 70000
+      -- fee = ROUND(70000 * 37 / 100) = 25900, base = ROUND(25900 / 1.1) = 23545, tax = 2355
+      UPDATE public.additional_income_items SET unit_price = 10000, quantity = 1 WHERE id=item1_id;
+      SELECT * INTO s_row FROM public.settlements WHERE case_id=c_basic AND type='extra_sales_fee';
+      IF s_row.amount <> 25900 OR s_row.base_amount <> 23545 OR s_row.tax_amount <> 2355 THEN
+        ok := false; why := why || ' update_item(amt=' || coalesce(s_row.amount::text,'null') || ')';
+      END IF;
+
+      -- Cancel item 1 and item 2 -> total becomes 0
+      UPDATE public.additional_income_items SET is_cancelled = true WHERE id IN (item1_id, item2_id);
+      SELECT additional_income_total INTO got_tot FROM public.funeral_cases WHERE id=c_basic;
+      SELECT count(*) INTO got_cnt FROM public.settlements WHERE case_id=c_basic AND type='extra_sales_fee';
+      IF got_tot <> 0 OR got_cnt <> 0 THEN
+        ok := false; why := why || ' zero_del(tot=' || got_tot || ',cnt=' || got_cnt || ')';
+      END IF;
+
+      -- Uncancel item 1 -> row recreated, exactly 1 row
+      UPDATE public.additional_income_items SET is_cancelled = false WHERE id=item1_id;
+      SELECT count(*) INTO got_cnt FROM public.settlements WHERE case_id=c_basic AND type='extra_sales_fee';
+      IF got_cnt <> 1 THEN
+        ok := false; why := why || ' uncancel_cnt=' || got_cnt;
+      END IF;
+
+      -- 3. Locking checks:
+      -- a) Hard delete forbidden
+      BEGIN
+        DELETE FROM public.additional_income_items WHERE id=item1_id;
+      EXCEPTION WHEN OTHERS THEN
+        hard_delete_err := (position('삭제할 수 없습니다' in SQLERRM) > 0);
+      END;
+      IF NOT hard_delete_err THEN ok := false; why := why || ' hard_delete_not_blocked'; END IF;
+
+      -- b) Not in_progress
+      INSERT INTO public.funeral_cases(customer_id, team_leader_id, status, location, package_name)
+      VALUES(cust1, lead1, 'consulting', 'P15 lock test', '기본형') RETURNING id INTO c_lock;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity)
+        VALUES(c_lock, '시도 항목', 10000, 1);
+      EXCEPTION WHEN OTHERS THEN
+        not_in_prog_err := (position('in_progress' in SQLERRM) > 0);
+      END;
+      IF NOT not_in_prog_err THEN ok := false; why := why || ' non_in_prog_not_blocked'; END IF;
+
+      -- c) Case transitioned to team_settling -> extra_sales_fee transitions to awaiting_payment
+      UPDATE public.funeral_cases SET status='team_settling' WHERE id=c_basic;
+      SELECT status INTO s_row.status FROM public.settlements WHERE case_id=c_basic AND type='extra_sales_fee';
+      IF s_row.status IS DISTINCT FROM 'awaiting_payment' THEN
+        ok := false; why := why || ' settling_status=' || coalesce(s_row.status,'null');
+      END IF;
+
+      -- d) Now attempt update on item -> blocked by non-draft settlement check
+      -- d1) while the case is team_settling the in_progress rule blocks edits
+      BEGIN
+        UPDATE public.additional_income_items SET unit_price=99999 WHERE id=item1_id;
+      EXCEPTION WHEN OTHERS THEN
+        non_draft_err := (position('in_progress' in SQLERRM) > 0);
+      END;
+      IF NOT non_draft_err THEN ok := false; why := why || ' settling_not_blocked'; END IF;
+      -- d2) even if the case is forced back to in_progress, the non-draft settlement row still blocks edits
+      non_draft_err := false;
+      UPDATE public.funeral_cases SET status='in_progress' WHERE id=c_basic;
+      BEGIN
+        UPDATE public.additional_income_items SET unit_price=99999 WHERE id=item1_id;
+      EXCEPTION WHEN OTHERS THEN
+        non_draft_err := (position('정산이 확정되어' in SQLERRM) > 0);
+      END;
+      IF NOT non_draft_err THEN ok := false; why := why || ' non_draft_not_blocked'; END IF;
+
+      -- 4. Role-based RLS tests on c_adv
+      -- lead1 (own case): can select
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',lead1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', lead1::text, true);
+      SELECT count(*) INTO role_lead1_cnt FROM public.additional_income_items WHERE case_id=c_adv;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- lead2 (other leader): select 0 rows, insert denied
+      IF lead2 IS NOT NULL THEN
+        SET LOCAL ROLE authenticated;
+        PERFORM set_config('request.jwt.claims', json_build_object('sub',lead2::text,'role','authenticated')::text, true);
+        PERFORM set_config('request.jwt.claim.sub', lead2::text, true);
+        SELECT count(*) INTO role_lead2_cnt FROM public.additional_income_items WHERE case_id=c_adv;
+        BEGIN
+          INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity)
+          VALUES(c_adv, '타팀장 침범', 10000, 1);
+        EXCEPTION WHEN OTHERS THEN
+          lead2_insert_denied := true;
+        END;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      ELSE
+        role_lead2_cnt := 0; lead2_insert_denied := true;
+      END IF;
+
+      -- deal1: select 0 rows, insert denied
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',deal1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', deal1::text, true);
+      SELECT count(*) INTO role_deal_cnt FROM public.additional_income_items WHERE case_id=c_adv;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity)
+        VALUES(c_adv, '딜러 침범', 10000, 1);
+      EXCEPTION WHEN OTHERS THEN
+        deal_insert_denied := true;
+      END;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- cust1 (case customer): can select active items, cannot insert
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',cust1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', cust1::text, true);
+      SELECT count(*) INTO role_cust1_cnt FROM public.additional_income_items WHERE case_id=c_adv;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity)
+        VALUES(c_adv, '고객 침범', 10000, 1);
+      EXCEPTION WHEN OTHERS THEN
+        cust_insert_denied := true;
+      END;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- cust2 (other customer): select 0 rows
+      IF cust2 IS NOT NULL THEN
+        SET LOCAL ROLE authenticated;
+        PERFORM set_config('request.jwt.claims', json_build_object('sub',cust2::text,'role','authenticated')::text, true);
+        PERFORM set_config('request.jwt.claim.sub', cust2::text, true);
+        SELECT count(*) INTO role_cust2_cnt FROM public.additional_income_items WHERE case_id=c_adv;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      ELSE
+        role_cust2_cnt := 0;
+      END IF;
+
+      -- adm1 (admin): can select all
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',adm1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', adm1::text, true);
+      SELECT count(*) INTO role_adm_cnt FROM public.additional_income_items WHERE case_id=c_adv;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      IF role_lead1_cnt < 1 OR role_lead2_cnt <> 0 OR NOT lead2_insert_denied
+         OR role_deal_cnt <> 0 OR NOT deal_insert_denied
+         OR role_cust1_cnt < 1 OR NOT cust_insert_denied
+         OR role_cust2_cnt <> 0 OR role_adm_cnt < 1 THEN
+        ok := false;
+        why := why || format(' rls(lead1=%s,lead2=%s,deal=%s,cust1=%s,cust2=%s,adm=%s)',
+          role_lead1_cnt, role_lead2_cnt, role_deal_cnt, role_cust1_cnt, role_cust2_cnt, role_adm_cnt);
+      END IF;
+
+      -- 5. Existing settlements invariant on c_adv
+      SELECT count(*) INTO s_after_count FROM public.settlements WHERE case_id=c_adv AND type != 'extra_sales_fee';
+      IF s_before_count <> s_after_count THEN
+        ok := false; why := why || ' invariant_broken(' || s_before_count || '!=' || s_after_count || ')';
+      END IF;
+
+      -- 6. Customer summary function inspection
+      FOR col_rec IN
+        SELECT p.proargnames
+        FROM pg_proc p
+        WHERE p.proname = 'get_customer_extra_sales_summary'
+      LOOP
+        IF array_to_string(col_rec.proargnames, ' ') ~* 'fee|rate|margin|leader|tax|base' THEN
+          cust_summary_col_ok := false;
+        END IF;
+      END LOOP;
+      IF NOT cust_summary_col_ok THEN
+        ok := false; why := why || ' cust_summary_leaked_columns';
+      END IF;
+
+      -- 7. Private storage bucket & policy check
+      SELECT EXISTS (
+        SELECT 1 FROM storage.buckets WHERE id='case-extra-photos' AND public=false
+      ) INTO bucket_ok;
+
+      SELECT count(*)=4 INTO storage_policies_ok
+      FROM pg_policies
+      WHERE schemaname='storage' AND tablename='objects'
+        AND policyname IN ('case_extra_photos_insert','case_extra_photos_select','case_extra_photos_update','case_extra_photos_delete');
+
+      IF NOT bucket_ok OR NOT storage_policies_ok THEN
+        ok := false; why := why || ' storage(bucket=' || bucket_ok || ',policies=' || storage_policies_ok || ')';
+      END IF;
+
+      -- 8. Total deposit summation: usage_fee_remittance + extra_sales_fee
+      SELECT amount INTO base_remit FROM public.settlements WHERE case_id=c_adv AND type='usage_fee_remittance';
+      SELECT amount INTO extra_fee FROM public.settlements WHERE case_id=c_adv AND type='extra_sales_fee';
+      tot_deposit := COALESCE(base_remit, 0) + COALESCE(extra_fee, 0);
+      IF tot_deposit <> (COALESCE(base_remit, 0) + 41000) THEN
+        ok := false; why := why || ' tot_deposit=' || tot_deposit;
+      END IF;
+
+      IF ok THEN
+        v_result := v_result || E'\n[PASS] P15 rate 37/41 exact calc, item lifecycle upsert/delete, lock & exceptions, RLS role isolation, existing settlements invariant, customer summary sanitized, storage bucket & policies, deposit sum';
+      ELSE
+        v_result := v_result || E'\n[FAIL] P15: ' || why;
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    v_result := v_result || E'\n[FAIL] P15: ' || SQLERRM;
+  END;
+ELSE
+  v_result := v_result || E'\n[SKIP] P15 | apply/customer prerequisite missing';
+END IF;

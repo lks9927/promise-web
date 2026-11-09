@@ -133,6 +133,12 @@ BEGIN
 [PASS] apply P18 representative-master overview v2';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P18: ' || SQLERRM; END;
+BEGIN
+  -- @@INCLUDE ../../P15_추가매출.sql
+  v_apply_28 := true; v_result := v_result || E'
+[PASS] apply P15 extra sales and fee settlements';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P15: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
   -- @@INCLUDE ../../P1d_계좌_기존열_제거.sql

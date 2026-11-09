@@ -23,6 +23,27 @@ export default function CustomerStatus() {
     const [loading, setLoading] = useState(true);
     const [couponCode, setCouponCode] = useState(''); // New: Coupon Code State
     const [profileModalOpen, setProfileModalOpen] = useState(false);
+    const [extraSalesItems, setExtraSalesItems] = useState([]);
+
+    useEffect(() => {
+        if (!myCase?.id) return;
+        const fetchItems = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('additional_income_items')
+                    .select('id, item_name, quantity, unit_price, photo_urls, is_cancelled')
+                    .eq('case_id', myCase.id)
+                    .eq('is_cancelled', false)
+                    .order('created_at', { ascending: true });
+                if (!error && data) {
+                    setExtraSalesItems(data);
+                }
+            } catch {
+                // safe fallback if table does not exist
+            }
+        };
+        fetchItems();
+    }, [myCase?.id]);
 
     useEffect(() => {
         checkSession();
@@ -319,6 +340,39 @@ export default function CustomerStatus() {
                         </div>
                     </div>
                 </div>
+
+                {/* 추가 이용 품목 안내 (수수료 문구 없이 품목/금액만 안내) */}
+                {extraSalesItems.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-bold text-gray-900">추가 이용 품목 안내</h3>
+                            <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-full">
+                                {extraSalesItems.length}건
+                            </span>
+                        </div>
+                        <div className="divide-y divide-gray-100 text-sm">
+                            {extraSalesItems.map((item) => (
+                                <div key={item.id} className="py-2.5 flex justify-between items-center">
+                                    <div>
+                                        <div className="font-medium text-gray-800">{item.item_name}</div>
+                                        <div className="text-xs text-gray-400">
+                                            ₩{(item.unit_price || 0).toLocaleString()} × {item.quantity || 1}개
+                                        </div>
+                                    </div>
+                                    <div className="font-bold text-gray-900">
+                                        ₩{((item.unit_price || 0) * (item.quantity || 1)).toLocaleString()}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
+                            <span className="text-sm font-bold text-gray-700">추가 품목 합계</span>
+                            <span className="text-base font-black text-indigo-600">
+                                ₩{extraSalesItems.reduce((sum, item) => sum + ((item.unit_price || 0) * (item.quantity || 1)), 0).toLocaleString()}
+                            </span>
+                        </div>
+                    </div>
+                )}
 
                 {/* 6-Stage Progress Timeline */}
                 <TimelineView caseId={myCase.id} />

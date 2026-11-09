@@ -163,40 +163,16 @@ export default function SettlementManager() {
     const [editingId, setEditingId] = useState(null);
     const [editAmount, setEditAmount] = useState(0);
     const [editMemo, setEditMemo] = useState('');
-    const [pendingIncomes, setPendingIncomes] = useState([]);
     const [ocrModal, setOcrModal] = useState({ isOpen: false, item: null });
     const [expandedCase, setExpandedCase] = useState(null);
     const [selectedPeriod, setSelectedPeriod] = useState(null); // null = 전체 누적, { year, month } = 특정 월
     const [showTaxReport, setShowTaxReport] = useState(false);
 
+    const isInboundFee = (type) => type === 'usage_fee_remittance' || type === 'extra_sales_fee';
+
     useEffect(() => {
         fetchSettlements();
-        fetchPendingIncomes();
     }, []);
-
-    const fetchPendingIncomes = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('funeral_cases')
-                .select(`
-                    id,
-                    package_name,
-                    additional_income_total,
-                    team_leader_id,
-                    profiles:team_leader_id (name, phone)
-                `)
-                .eq('status', 'completed')
-                .eq('is_private', false)
-                .gt('additional_income_total', 0)
-                .eq('additional_income_settled', false);
-            
-            if (!error && data) {
-                setPendingIncomes(data);
-            }
-        } catch (error) {
-            console.error('Error fetching pending additional incomes', error);
-        }
-    };
 
     const fetchSettlements = async () => {
         try {
@@ -270,16 +246,16 @@ export default function SettlementManager() {
     const chartData = useMemo(() => {
         // 도넛 차트: 입금완료/입금대기/출금완료/출금대기 금액 기반
         const incomeCompleted = periodSettlements
-            .filter(s => s.type === 'usage_fee_remittance' && (s.status === 'paid' || s.status === 'completed'))
+            .filter(s => isInboundFee(s.type) && (s.status === 'paid' || s.status === 'completed'))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
         const incomePending = periodSettlements
-            .filter(s => s.type === 'usage_fee_remittance' && (s.status === 'pending' || s.status === 'awaiting_payment' || s.status === 'draft'))
+            .filter(s => isInboundFee(s.type) && (s.status === 'pending' || s.status === 'awaiting_payment' || s.status === 'draft'))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
         const expenseCompleted = periodSettlements
-            .filter(s => s.type !== 'usage_fee_remittance' && (s.status === 'paid' || s.status === 'completed'))
+            .filter(s => !isInboundFee(s.type) && (s.status === 'paid' || s.status === 'completed'))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
         const expensePending = periodSettlements
-            .filter(s => s.type !== 'usage_fee_remittance' && (s.status === 'pending' || s.status === 'awaiting_payment' || s.status === 'draft'))
+            .filter(s => !isInboundFee(s.type) && (s.status === 'pending' || s.status === 'awaiting_payment' || s.status === 'draft'))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
         const donut = [
             { label: '입금완료', value: incomeCompleted, color: '#10b981' },
@@ -315,10 +291,10 @@ export default function SettlementManager() {
             });
 
             const income = weekData
-                .filter(s => s.type === 'usage_fee_remittance')
+                .filter(s => isInboundFee(s.type))
                 .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
             const expense = weekData
-                .filter(s => s.type !== 'usage_fee_remittance')
+                .filter(s => !isInboundFee(s.type))
                 .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
 
             weeks.push({ label: `${w + 1}주`, income, expense });
@@ -332,20 +308,20 @@ export default function SettlementManager() {
     // ─── 통계 계산 ────────────────────────────────────────
     const stats = useMemo(() => {
         const totalIncome = periodSettlements
-            .filter(s => s.type === 'usage_fee_remittance')
+            .filter(s => isInboundFee(s.type))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
         const totalExpense = periodSettlements
-            .filter(s => s.type !== 'usage_fee_remittance')
+            .filter(s => !isInboundFee(s.type))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
         const pendingAmount = periodSettlements
-            .filter(s => s.status === 'pending' && s.type !== 'usage_fee_remittance')
+            .filter(s => s.status === 'pending' && !isInboundFee(s.type))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
         const incomeWaiting = periodSettlements
-            .filter(s => (s.status === 'pending' || s.status === 'awaiting_payment' || s.status === 'draft') && s.type === 'usage_fee_remittance')
+            .filter(s => (s.status === 'pending' || s.status === 'awaiting_payment' || s.status === 'draft') && isInboundFee(s.type))
             .reduce((sum, s) => sum + Math.abs(s.amount || 0), 0);
 
         // ── 세무 집계 ──
-        // 부가세 (VAT): usage_fee_remittance의 tax_amount 합계
+        // 부가세 (VAT): 본사 입금 수수료(사용료 + 추가매출)의 tax_amount 합계
         const vatItems = periodSettlements.filter(s => s.tax_type === 'vat_10' || s.tax_type === 'vat');
         const totalVat = vatItems.reduce((sum, s) => sum + Math.abs(s.tax_amount || 0), 0);
         const vatBase = vatItems.reduce((sum, s) => sum + Math.abs(s.base_amount || 0), 0);
@@ -358,7 +334,7 @@ export default function SettlementManager() {
         const withholdingCount = withholdingItems.length;
 
         // 공급가 (수입에서 VAT 제외)
-        const incomeSupply = totalIncome > 0 ? Math.floor(totalIncome / 1.1) : 0;
+        const incomeSupply = vatBase || (totalIncome > 0 ? (totalIncome - totalVat) : 0);
         // 순마진: 입금 - 출금 - 납부해야할 부가세 - 납부해야할 원천징수세
         const netMargin = totalIncome - totalExpense - totalVat - totalWithholding;
         // 건수
@@ -400,29 +376,33 @@ export default function SettlementManager() {
         // 해당 정산 건 찾기
         const targetItem = settlements.find(s => s.id === id);
         
-        // ═══ 입금 확인 (usage_fee_remittance → paid) ═══
-        if (targetItem?.type === 'usage_fee_remittance' && newStatus === 'paid') {
+        // ═══ 입금 확인 (usage_fee_remittance / extra_sales_fee → paid) ═══
+        if (isInboundFee(targetItem?.type) && newStatus === 'paid') {
             const caseId = targetItem.case_id;
+            const caseInbound = settlements.filter(s => s.case_id === caseId && isInboundFee(s.type));
+            const totalInbound = caseInbound.reduce((sum, s) => sum + (s.amount || 0), 0);
             
-            const confirmMsg = `팀장 사용료 ₩${Math.floor(targetItem.amount).toLocaleString()} 입금을 확인하시겠습니까?`;
+            const confirmMsg = `팀장 입금액 ₩${Math.floor(totalInbound).toLocaleString()} 입금을 확인하시겠습니까?\n(기본 사용료 및 추가 매출 수수료 일괄 확인)`;
             
             if (!confirm(confirmMsg)) return;
 
             try {
-                // 1. 사용료 입금 확인 (paid 처리)
+                // 1. 본사 입금건 (사용료 + 추가 매출 수수료) paid 처리
                 const { error: mainErr } = await supabase
                     .from('settlements')
                     .update({ status: 'paid' })
-                    .eq('id', id);
+                    .eq('case_id', caseId)
+                    .in('type', ['usage_fee_remittance', 'extra_sales_fee']);
                 if (mainErr) throw mainErr;
 
-                // 2. 같은 케이스의 나머지 정산건을 pending(지급대기)으로 전환
+                // 2. 같은 케이스의 나머지 출금 정산건을 pending(지급대기)으로 전환
                 const { error: otherErr } = await supabase
                     .from('settlements')
                     .update({ status: 'pending' })
                     .eq('case_id', caseId)
                     .eq('status', 'awaiting_payment')
-                    .neq('type', 'usage_fee_remittance');
+                    .neq('type', 'usage_fee_remittance')
+                    .neq('type', 'extra_sales_fee');
                 if (otherErr) console.warn('하위 정산 전환 실패:', otherErr);
 
                 // 3. 장례 케이스도 hq_check 처리
@@ -506,55 +486,6 @@ export default function SettlementManager() {
         }
     };
 
-    const handleSettleAdditionalIncome = async (caseItem) => {
-        const rateStr = prompt(`[부가수입 정산]\n총 수입: ₩${caseItem.additional_income_total.toLocaleString()}\n\n본사에 배분할 비율을 입력하세요 (ex: 50 = 50%):`, "50");
-        if (!rateStr) return;
-        
-        const rate = parseInt(rateStr);
-        if (isNaN(rate) || rate < 0 || rate > 100) {
-            alert('올바른 비율을 입력해주세요 (0~100)');
-            return;
-        }
-
-        const hqAmount = Math.floor(caseItem.additional_income_total * (rate / 100));
-        const leaderAmount = caseItem.additional_income_total - hqAmount;
-
-        if (!confirm(`배분 비율: 본사 ${rate}% (${hqAmount}원) / 팀장 ${100-rate}% (${leaderAmount}원)\n\n정산을 확정하시겠습니까?`)) return;
-
-        try {
-            const { error: insertError } = await supabase
-                .from('settlements')
-                .insert([{
-                    case_id: caseItem.id,
-                    recipient_id: caseItem.team_leader_id,
-                    type: 'additional_income',
-                    status: 'pending',
-                    amount: leaderAmount,
-                    base_amount: leaderAmount,
-                    net_amount: leaderAmount,
-                    tax_type: 'none',
-                    tax_amount: 0,
-                    admin_memo: `총 부가수입: ${caseItem.additional_income_total} / 본사비율: ${rate}%`
-                }]);
-            
-            if (insertError) throw insertError;
-
-            const { error: updateError } = await supabase
-                .from('funeral_cases')
-                .update({ additional_income_settled: true, additional_income_rate: rate })
-                .eq('id', caseItem.id);
-            
-            if (updateError) throw updateError;
-
-            alert('부가수입 정산 처리가 완료되었습니다.');
-            fetchPendingIncomes();
-            fetchSettlements();
-        } catch (error) {
-            console.error('Error settling additional income', error);
-            alert('처리 중 오류가 발생했습니다.');
-        }
-    };
-
     // Filter Logic
     const filteredSettlements = periodSettlements.filter(item => {
         let matchesStatus = true;
@@ -578,6 +509,7 @@ export default function SettlementManager() {
             'dealer_override': '관리수수료',
             'leader_override': '관리수수료',
             'usage_fee_remittance': '본사 입금(사용료)',
+            'extra_sales_fee': '추가 매출 수수료',
             'additional_income': '부가수입 분배금',
             'customer_cashback': '상주 캐시백',
             'refund': '환불',
@@ -590,7 +522,9 @@ export default function SettlementManager() {
         const map = {
             'exempt': '면세',
             'vat': '부가세 10%',
+            'vat_10': '부가세 10%',
             'withholding': '원천징수 3.3%',
+            'withholding_33': '원천징수 3.3%',
             'none': '-',
         };
         return map[taxType] || '-';
@@ -823,30 +757,6 @@ export default function SettlementManager() {
                 </div>
 
 
-                {/* 미정산 부가수입 */}
-                {pendingIncomes.length > 0 && (
-                    <div className="px-6 py-3 bg-amber-50/50 border-b border-amber-200">
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-bold text-amber-800">💰 부가수입 정산 대기건</span>
-                            <span className="bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold">{pendingIncomes.length}</span>
-                        </div>
-                        <div className="flex gap-3 overflow-x-auto pb-1">
-                            {pendingIncomes.map(pcase => (
-                                <div key={pcase.id} className="flex-shrink-0 bg-white px-3 py-2 rounded-lg border border-amber-100 flex items-center gap-3">
-                                    <div>
-                                        <div className="text-[10px] text-gray-500">{pcase.package_name || '(상품없음)'}</div>
-                                        <div className="text-xs font-bold text-gray-900">₩{pcase.additional_income_total.toLocaleString()}</div>
-                                    </div>
-                                    <button onClick={() => handleSettleAdditionalIncome(pcase)}
-                                        className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">
-                                        정산 확정
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
                 {/* 그룹화된 정산 목록 */}
                 <div className="overflow-y-auto max-h-[55vh]">
                     {loading ? (
@@ -887,8 +797,8 @@ export default function SettlementManager() {
                                         <div className="w-32 flex-shrink-0 text-center">상태</div>
                                     </div>
                                     {Object.entries(grouped).map(([caseId, items]) => {
-                                const totalIncome = items.filter(i => i.type === 'usage_fee_remittance').reduce((s, i) => s + Math.abs(i.net_amount || i.amount || 0), 0);
-                                const totalExpense = items.filter(i => i.type !== 'usage_fee_remittance').reduce((s, i) => s + Math.abs(i.net_amount || i.amount || 0), 0);
+                                const totalIncome = items.filter(i => isInboundFee(i.type)).reduce((s, i) => s + Math.abs(i.net_amount || i.amount || 0), 0);
+                                const totalExpense = items.filter(i => !isInboundFee(i.type)).reduce((s, i) => s + Math.abs(i.net_amount || i.amount || 0), 0);
                                 const allDone = items.every(i => i.status === 'completed' || i.status === 'paid');
                                 const hasPending = items.some(i => i.status === 'pending' || i.status === 'awaiting_payment');
                                 const fcInfo = items[0]?.funeral_cases;
@@ -1026,19 +936,24 @@ export default function SettlementManager() {
                                                                     </div>
                                                                 ) : (
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className={`text-sm font-black ${item.type === 'usage_fee_remittance' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                                {item.type === 'usage_fee_remittance' ? '+' : '-'}₩{Math.floor(item.net_amount || item.amount || 0).toLocaleString()}
+                                                                            <span className={`text-sm font-black ${isInboundFee(item.type) ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                {isInboundFee(item.type) ? '+' : '-'}₩{Math.floor(item.net_amount || item.amount || 0).toLocaleString()}
                                                                             </span>
                                                                             {item.tax_type && item.tax_type !== 'none' && (
                                                                                 <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${
                                                                                     item.tax_type === 'exempt' ? 'bg-gray-100 text-gray-500' :
-                                                                                    item.tax_type === 'vat' ? 'bg-blue-50 text-blue-600' :
+                                                                                    (item.tax_type === 'vat' || item.tax_type === 'vat_10') ? 'bg-blue-50 text-blue-600' :
                                                                                     'bg-amber-50 text-amber-600'
                                                                                 }`}>
                                                                                     {getTaxLabel(item.tax_type)}
                                                                                     {item.tax_type !== 'exempt' && (
                                                                                         <span className="opacity-70 font-medium">| ₩{Math.floor(item.tax_amount || 0).toLocaleString()}</span>
                                                                                     )}
+                                                                                </span>
+                                                                            )}
+                                                                            {item.type === 'extra_sales_fee' && item.base_amount != null && (
+                                                                                <span className="text-[9px] text-gray-500 font-medium ml-1">
+                                                                                    (공급가 ₩{Math.floor(item.base_amount || 0).toLocaleString()} + 부가세 ₩{Math.floor(item.tax_amount || 0).toLocaleString()})
                                                                                 </span>
                                                                             )}
                                                                             {item.admin_memo && <span className="text-[9px] text-gray-400">📝 {item.admin_memo}</span>}
@@ -1064,8 +979,8 @@ export default function SettlementManager() {
                                                                         <span className="text-[10px] text-purple-500 font-bold">정산 예정</span>
                                                                     ) : item.status === 'awaiting_payment' ? (
                                                                         (() => {
-                                                                            const isUsageFee = item.type === 'usage_fee_remittance';
-                                                                            return isUsageFee ? (
+                                                                            const isInbound = isInboundFee(item.type);
+                                                                            return isInbound ? (
                                                                                 <button onClick={() => handleStatusChange(item.id, 'paid')}
                                                                                     className="px-2 py-1 text-[10px] text-white rounded-lg font-bold bg-blue-600 hover:bg-blue-700">
                                                                                     입금확인
@@ -1077,13 +992,14 @@ export default function SettlementManager() {
                                                                     ) : item.status === 'pending' ? (
                                                                         (() => {
                                                                             const isFuneralEnded = ['completed', 'hq_check', 'team_settling', 'cancelled'].includes(item.funeral_cases?.status);
+                                                                            const isInbound = isInboundFee(item.type);
                                                                             return (
                                                                         <>
                                                                             <button onClick={() => { setEditingId(item.id); setEditAmount(item.amount); setEditMemo(item.admin_memo || ''); }}
                                                                                 className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="수정">
                                                                                 <Edit2 className="w-3 h-3" />
                                                                             </button>
-                                                                            {item.type === 'usage_fee_remittance' ? (
+                                                                            {isInbound ? (
                                                                                 <button onClick={() => handleStatusChange(item.id, 'paid')}
                                                                                     disabled={!isFuneralEnded}
                                                                                     className={`px-2 py-1 text-[10px] text-white rounded-lg font-bold ${isFuneralEnded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}

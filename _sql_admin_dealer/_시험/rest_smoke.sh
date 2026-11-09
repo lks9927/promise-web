@@ -4,7 +4,7 @@
 # 사용: 프로젝트 루트에서 bash _sql_admin_dealer/_시험/rest_smoke.sh  (.env 의 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 사용)
 K=$(grep -h "^VITE_SUPABASE_ANON_KEY" .env .env.local 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"\r')
 U=$(grep -h "^VITE_SUPABASE_URL" .env .env.local 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"\r')
-grep -rhoE "\.from\('(partners|funeral_cases|settlements|coupons|custom_packages)'\)\s*\.select\((\`[^\`]*\`|'[^']*')" src --include=*.jsx | sed -E "s/\.from\('([a-z_]+)'\)\s*\.select\(.(.*).\$/\1|\2/" | sort -u > /tmp/sel.txt
+grep -rhoE "\.from\('(partners|funeral_cases|settlements|coupons|custom_packages|additional_income_items)'\)\s*\.select\((\`[^\`]*\`|'[^']*')" src --include=*.jsx | sed -E "s/\.from\('([a-z_]+)'\)\s*\.select\(.(.*).\$/\1|\2/" | sort -u > /tmp/sel.txt
 bad=0
 while IFS='|' read -r t s; do
   enc=$(node -e "process.stdout.write(encodeURIComponent(process.argv[1].replace(/\\n/g, ' ')))" "$s")
