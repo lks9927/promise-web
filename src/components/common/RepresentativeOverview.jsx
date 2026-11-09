@@ -36,6 +36,15 @@ const formatKstTime = (value) => {
     return date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 };
 
+/** v2 함수 반환 열인지 판단 (소속마스터경로 존재 여부) */
+const isV2Row = (row) => Object.prototype.hasOwnProperty.call(row, '소속마스터경로');
+
+/** 수수료 상태 배지 스타일 */
+const FEE_BADGE = {
+    '지급 완료': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    '대기':      'bg-amber-50 text-amber-700 border border-amber-200',
+};
+
 export default function RepresentativeOverview({ user, title }) {
     const [summary, setSummary] = useState(null);
     const [downlineList, setDownlineList] = useState([]);
@@ -43,6 +52,7 @@ export default function RepresentativeOverview({ user, title }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [usingV2, setUsingV2] = useState(false);
 
     const refreshPromotionRequests = async () => {
         try {
@@ -78,7 +88,12 @@ export default function RepresentativeOverview({ user, title }) {
                         ? summaryRes.data[0]
                         : summaryRes.data;
                     setSummary(row || null);
-                    setDownlineList(Array.isArray(downlineRes.data) ? downlineRes.data : []);
+
+                    const list = Array.isArray(downlineRes.data) ? downlineRes.data : [];
+                    setDownlineList(list);
+                    // v2 여부: 첫 행에 소속마스터경로 열이 있으면 v2
+                    setUsingV2(list.length > 0 && isV2Row(list[0]));
+
                     if (!promoRes.error && Array.isArray(promoRes.data)) {
                         setPromotionRequests(promoRes.data);
                     }
@@ -144,7 +159,7 @@ export default function RepresentativeOverview({ user, title }) {
                     {title}
                 </h3>
                 <p className="mt-1 text-xs text-gray-500">
-                    하위 딜러(또는 팀장)의 개별 금액·연락처·고객 정보는 표시되지 않습니다.
+                    하위 파트너의 개인정보·금액·연락처는 표시되지 않습니다.
                 </p>
             </div>
 
@@ -159,7 +174,7 @@ export default function RepresentativeOverview({ user, title }) {
                 </div>
             ) : (
                 <>
-                    {/* 상단 요약 카드 4개 */}
+                    {/* 상단 요약 카드 (본인 몫은 본인 것만, 하위 파트너 금액은 표시하지 않음) */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                         <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                             <div className="text-xs font-medium text-gray-500">진행 중</div>
@@ -196,65 +211,116 @@ export default function RepresentativeOverview({ user, title }) {
                                     <tr>
                                         <th className="py-2.5 px-3 font-semibold whitespace-nowrap">담당자명</th>
                                         <th className="py-2.5 px-3 font-semibold whitespace-nowrap">지역</th>
+                                        {usingV2 && (
+                                            <th className="py-2.5 px-3 font-semibold whitespace-nowrap">소속 마스터</th>
+                                        )}
                                         <th className="py-2.5 px-3 font-semibold whitespace-nowrap">단계</th>
                                         <th className="py-2.5 px-3 font-semibold whitespace-nowrap">접수일</th>
                                         <th className="py-2.5 px-3 font-semibold whitespace-nowrap">입관시각</th>
                                         <th className="py-2.5 px-3 font-semibold whitespace-nowrap">종료시각</th>
+                                        {usingV2 && (
+                                            <>
+                                                <th className="py-2.5 px-3 font-semibold whitespace-nowrap text-center">예비 등록</th>
+                                                <th className="py-2.5 px-3 font-semibold whitespace-nowrap text-center">수수료</th>
+                                            </>
+                                        )}
                                         <th className="py-2.5 px-3 font-semibold whitespace-nowrap text-center">승격 요청</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 bg-white">
                                     {downlineList.length === 0 ? (
                                         <tr>
-                                            <td colSpan={7} className="py-8 text-center text-gray-400">
+                                            <td colSpan={usingV2 ? 10 : 7} className="py-8 text-center text-gray-400">
                                                 조회된 하위 현황 내역이 없습니다.
                                             </td>
                                         </tr>
                                     ) : (
-                                        downlineList.map((row, idx) => (
-                                            <tr key={row.partner_id ? `${row.partner_id}-${idx}` : idx} className="hover:bg-gray-50/80 transition-colors">
-                                                <td className="py-2.5 px-3 font-medium text-gray-900 whitespace-nowrap">
-                                                    {row['담당자명'] || '-'}
-                                                </td>
-                                                <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                                                    {row['지역'] || '-'}
-                                                </td>
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                                                        {STATUS_LABELS[row['단계']] || row['단계'] || '-'}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                                                    {formatKstTime(row['접수일'])}
-                                                </td>
-                                                <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                                                    {formatKstTime(row['입관시각'])}
-                                                </td>
-                                                <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                                                    {formatKstTime(row['종료시각'])}
-                                                </td>
-                                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                                    {row.relationship === 'direct_c' ? (
-                                                        pendingTargetIds.has(row.partner_id) ? (
-                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                                                요청 대기 중
-                                                            </span>
-                                                        ) : (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRequestPromotion(row)}
-                                                                disabled={isSubmitting}
-                                                                className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded transition-colors"
-                                                            >
-                                                                마스터 승격 요청
-                                                            </button>
-                                                        )
-                                                    ) : (
-                                                        <span className="text-gray-400">-</span>
+                                        downlineList.map((row, idx) => {
+                                            const preregTotal = row['예비등록건수'] ?? null;
+                                            const preregStored = row['예비보관중'] ?? 0;
+                                            const preregConverted = row['예비접수완료'] ?? 0;
+                                            const feeStatus = row['수수료상태'] ?? null;
+                                            const masterPath = row['소속마스터경로'] ?? null;
+
+                                            return (
+                                                <tr key={row.partner_id ? `${row.partner_id}-${idx}` : idx} className="hover:bg-gray-50/80 transition-colors">
+                                                    <td className="py-2.5 px-3 font-medium text-gray-900 whitespace-nowrap">
+                                                        {row['담당자명'] || '-'}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
+                                                        {row['지역'] || '-'}
+                                                    </td>
+                                                    {usingV2 && (
+                                                        <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap text-xs max-w-[160px] truncate" title={masterPath ?? undefined}>
+                                                            {masterPath || '-'}
+                                                        </td>
                                                     )}
-                                                </td>
-                                            </tr>
-                                        ))
+                                                    <td className="py-2.5 px-3 whitespace-nowrap">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                                            {STATUS_LABELS[row['단계']] || row['단계'] || '-'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
+                                                        {formatKstTime(row['접수일'])}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
+                                                        {formatKstTime(row['입관시각'])}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
+                                                        {formatKstTime(row['종료시각'])}
+                                                    </td>
+                                                    {usingV2 && (
+                                                        <>
+                                                            {/* 예비 등록: 딜러 라인만 표시, 팀장 라인은 '-' */}
+                                                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                                {preregTotal != null && Number(preregTotal) >= 0 ? (
+                                                                    <span className="text-gray-700 font-medium">
+                                                                        {Number(preregTotal)}건
+                                                                        {Number(preregTotal) > 0 && (
+                                                                            <span className="ml-1 text-gray-400 font-normal text-[11px]">
+                                                                                (보관중 {Number(preregStored)}·접수완료 {Number(preregConverted)})
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-gray-300">-</span>
+                                                                )}
+                                                            </td>
+                                                            {/* 수수료 상태: '대기' or '지급 완료' */}
+                                                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                                {feeStatus ? (
+                                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${FEE_BADGE[feeStatus] || 'bg-gray-100 text-gray-700'}`}>
+                                                                        {feeStatus}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-gray-300">-</span>
+                                                                )}
+                                                            </td>
+                                                        </>
+                                                    )}
+                                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                        {row.relationship === 'direct_c' ? (
+                                                            pendingTargetIds.has(row.partner_id) ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                                                    요청 대기 중
+                                                                </span>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRequestPromotion(row)}
+                                                                    disabled={isSubmitting}
+                                                                    className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded transition-colors"
+                                                                >
+                                                                    마스터 승격 요청
+                                                                </button>
+                                                            )
+                                                        ) : (
+                                                            <span className="text-gray-400">-</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>

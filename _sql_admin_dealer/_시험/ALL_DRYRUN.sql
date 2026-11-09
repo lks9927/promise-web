@@ -36,6 +36,7 @@ DECLARE
   v_apply_24 boolean := false;
   v_apply_25 boolean := false;
   v_apply_26 boolean := false;
+  v_apply_27 boolean := false;
   v_prereg_alert_was_enabled boolean := false;
   v_funeral_alert_def text;
   v_profile_alert_def text;
@@ -2260,6 +2261,227 @@ REVOKE ALL ON FUNCTION public.p17_install_prereg_dealer_alert() FROM PUBLIC, ano
 [PASS] apply P17 pre-registration dealer SMS webhook (disabled for dryrun)';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P17: ' || SQLERRM; END;
+BEGIN
+-- P18 대표마스터 화면 확장 (2026-11-09)
+-- 목적: s_downline_overview() 를 대체하는 s_downline_overview_v2() 를 추가한다.
+--   - 반환 컬럼: 소속 마스터 경로(이름만), 예비 등록 건수(딜러 라인만), 장례 단계/시각, 수수료 상태
+--   - 사진·25단계 보고·고객 정보·금액·연락처·계좌 반환 없음
+--   - 호출자 grade='S' 검사: 아니면 빈 결과 반환(오류 아님)
+--   - 라인 분리: 딜러 대표 → 딜러 라인만, 팀장 대표 → 팀장 라인만
+--   - 새 테이블/FK 없음; pre_registrations 는 SECURITY DEFINER 내에서만 집계
+-- 되돌리기: DROP FUNCTION IF EXISTS public.s_downline_overview_v2();
+-- 주의: s_downline_overview() 는 기존 호환을 위해 그대로 유지한다.
+--       화면은 v2 를 먼저 시도하고, v2 가 없으면(적용 전) 기존 함수로 폴백한다.
+
+-- 정산 type 목록 (기준선_calculate_settlements_본문.sql 참조):
+--   dealer_commission  : 딜러 → S 딜러 대표 대상
+--   dealer_override    : 마스터딜러 관리수수료 → S 딜러 대표 대상
+--   leader_override    : 마스터팀장 관리수수료 → S 팀장 대표 대상
+--   usage_fee_remittance : 팀장→본사 사용료 (수취인=팀장; 팀장 대표 대상 아님, 제외)
+--   customer_cashback  : 고객 캐시백 (제외)
+-- '취소' 정산: status='cancelled' → 집계에서 제외
+-- '지급 완료' 조건: 해당 사건의 대상 정산이 1건 이상이고 모두 status='paid'
+-- '대기' 조건: paid 아닌 정산이 1건이라도 있거나, 아직 정산 없음
+
+DROP FUNCTION IF EXISTS public.s_downline_overview_v2();
+
+CREATE FUNCTION public.s_downline_overview_v2()
+RETURNS TABLE (
+  relationship          text,
+  partner_id            uuid,
+  담당자명              text,
+  지역                  text,
+  파트너상태            text,
+  소속마스터경로        text,
+  예비등록건수          bigint,
+  예비보관중            bigint,
+  예비접수완료          bigint,
+  접수일                timestamptz,
+  단계                  text,
+  관시작시각            timestamptz,
+  입관시각              timestamptz,
+  종료시각              timestamptz,
+  수수료상태            text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_uid    uuid := auth.uid();
+  v_grade  text;
+  v_line   text;  -- 'dealer' or 'leader'
+BEGIN
+  -- 호출자 등급·라인 확인
+  SELECT pa.grade,
+         CASE WHEN pr.role = 'dealer' THEN 'dealer'
+              WHEN pr.role = 'leader' THEN 'leader'
+         END
+    INTO v_grade, v_line
+    FROM public.partners pa
+    JOIN public.profiles pr ON pr.id = pa.user_id
+   WHERE pa.user_id = v_uid;
+
+  -- S 등급이 아니면 빈 결과 (오류 없음)
+  IF v_grade IS DISTINCT FROM 'S' OR v_line IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  WITH RECURSIVE tree AS (
+    SELECT
+      p.user_id,
+      p.master_id,
+      p.grade,
+      pr.role,
+      1                       AS depth,
+      ARRAY[p.user_id]        AS path,
+      -- 직속 상위가 대표 본인이면 '직속', 아니면 상위 이름
+      '직속'::text            AS master_name,
+      -- 경로(대표→마스터→딜러): depth=1 이면 '직속'만
+      '직속'::text            AS master_path
+    FROM public.partners p
+    JOIN public.profiles pr ON pr.id = p.user_id
+    WHERE p.master_id = v_uid
+
+    UNION ALL
+
+    SELECT
+      c.user_id,
+      c.master_id,
+      c.grade,
+      pr.role,
+      t.depth + 1,
+      t.path || c.user_id,
+      -- 직속 상위(master_id)의 이름
+      (SELECT pn.name FROM public.profiles pn WHERE pn.id = c.master_id),
+      -- 경로: 이전 경로 → 현재 상위 이름
+      CASE WHEN t.depth = 1 THEN COALESCE((SELECT pn.name FROM public.profiles pn WHERE pn.id = c.master_id), '?')
+           ELSE t.master_path || ' → ' || COALESCE((SELECT pn.name FROM public.profiles pn WHERE pn.id = c.master_id), '?') END
+    FROM public.partners c
+    JOIN public.profiles pr ON pr.id = c.user_id
+    JOIN tree t ON c.master_id = t.user_id
+    WHERE t.depth < 8
+      AND NOT c.user_id = ANY(t.path)
+  ),
+  -- 각 하위 파트너의 가장 최신 사건 1건(완료·취소 제외 우선, 없으면 취소 포함)
+  latest_case AS (
+    SELECT DISTINCT ON (fc_role.pid)
+      fc_role.pid,
+      fc.id            AS case_id,
+      fc.created_at    AS fc_created_at,
+      fc.status        AS fc_status,
+      fc.started_at    AS fc_started_at,
+      fc.encoffinment_time,
+      fc.funeral_end_time
+    FROM (
+      SELECT t2.user_id AS pid, 'dealer' AS role
+      FROM tree t2
+      WHERE v_line = 'dealer' AND t2.role = 'dealer'
+      UNION ALL
+      SELECT t2.user_id AS pid, 'leader' AS role
+      FROM tree t2
+      WHERE v_line = 'leader' AND t2.role = 'leader'
+    ) fc_role
+    LEFT JOIN public.funeral_cases fc
+      ON (v_line = 'dealer' AND fc.dealer_id = fc_role.pid)
+      OR (v_line = 'leader' AND fc.team_leader_id = fc_role.pid)
+    ORDER BY
+      fc_role.pid,
+      -- 진행 중 사건 우선
+      CASE WHEN fc.status NOT IN ('completed', 'cancelled') THEN 0 ELSE 1 END,
+      fc.created_at DESC NULLS LAST
+  ),
+  -- 예비 등록 집계 (딜러 라인만; pre_registrations 는 RLS 로 직접 접근 불가 → SECURITY DEFINER 내부에서만)
+  prereg_agg AS (
+    SELECT
+      pr.dealer_id,
+      count(*) FILTER (WHERE pr.status = 'registered') AS cnt_보관중,
+      count(*) FILTER (WHERE pr.status = 'converted')  AS cnt_접수완료,
+      count(*)                                          AS cnt_total
+    FROM public.pre_registrations pr
+    WHERE pr.dealer_id IN (
+      SELECT t2.user_id FROM tree t2 WHERE v_line = 'dealer' AND t2.role = 'dealer'
+    )
+    GROUP BY pr.dealer_id
+  ),
+  -- 수수료 상태 집계: 해당 사건에서 이 파트너가 수취인인 정산(type 필터, cancelled 제외)
+  -- 딜러 라인: dealer_commission, dealer_override
+  -- 팀장 라인: leader_override
+  fee_agg AS (
+    SELECT
+      s.recipient_id,
+      lc2.case_id,
+      CASE
+        WHEN count(*) FILTER (WHERE s.status <> 'cancelled') = 0 THEN '대기'
+        WHEN count(*) FILTER (WHERE s.status NOT IN ('paid', 'cancelled')) = 0
+             AND count(*) FILTER (WHERE s.status = 'paid') > 0 THEN '지급 완료'
+        ELSE '대기'
+      END AS fee_status
+    FROM latest_case lc2
+    JOIN public.settlements s
+      ON s.case_id = lc2.case_id
+      AND s.recipient_id IN (
+        SELECT t2.user_id FROM tree t2
+        WHERE (v_line = 'dealer' AND t2.role = 'dealer')
+           OR (v_line = 'leader' AND t2.role = 'leader')
+      )
+      AND (
+        (v_line = 'dealer' AND s.type IN ('dealer_commission', 'dealer_override'))
+        OR
+        (v_line = 'leader' AND s.type = 'leader_override')
+      )
+      AND s.status <> 'cancelled'
+    WHERE lc2.case_id IS NOT NULL
+    GROUP BY s.recipient_id, lc2.case_id
+  )
+  SELECT
+    -- relationship: 직속 C 여부
+    CASE
+      WHEN t.depth = 1 AND t.grade = 'C' THEN 'direct_c'
+      ELSE 'restricted_downline'
+    END                             AS relationship,
+    t.user_id                       AS partner_id,
+    pr.name                         AS 담당자명,
+    pa.region                       AS 지역,
+    pa.status                       AS 파트너상태,
+    -- 소속 마스터 경로: depth=1 이면 '직속', depth>1 이면 경로 문자열
+    t.master_path                   AS 소속마스터경로,
+    -- 예비 등록: 딜러 라인만, 팀장 라인은 NULL(0)
+    COALESCE(pra.cnt_total,  0)     AS 예비등록건수,
+    COALESCE(pra.cnt_보관중, 0)     AS 예비보관중,
+    COALESCE(pra.cnt_접수완료,0)    AS 예비접수완료,
+    -- 장례 사건
+    lc.fc_created_at                AS 접수일,
+    lc.fc_status                    AS 단계,
+    lc.fc_started_at                AS 관시작시각,
+    lc.encoffinment_time            AS 입관시각,
+    lc.funeral_end_time             AS 종료시각,
+    -- 수수료 상태
+    COALESCE(fa.fee_status, '대기') AS 수수료상태
+  FROM tree t
+  JOIN public.partners pa   ON pa.user_id = t.user_id
+  JOIN public.profiles pr   ON pr.id      = t.user_id
+  LEFT JOIN latest_case lc  ON lc.pid     = t.user_id
+  LEFT JOIN prereg_agg pra  ON pra.dealer_id = t.user_id AND v_line = 'dealer'
+  LEFT JOIN fee_agg fa      ON fa.recipient_id = t.user_id AND fa.case_id = lc.case_id
+  WHERE
+    -- 라인 분리: 대표 라인과 동일한 role 의 하위만
+    (v_line = 'dealer' AND t.role = 'dealer')
+    OR
+    (v_line = 'leader' AND t.role = 'leader');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.s_downline_overview_v2() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.s_downline_overview_v2() FROM anon;
+GRANT EXECUTE ON FUNCTION public.s_downline_overview_v2() TO authenticated;
+
+  v_apply_27 := true; v_result := v_result || E'
+[PASS] apply P18 representative-master overview v2';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P18: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
 -- 반드시 P1d_계좌_비공개테이블_생성_이관.sql 적용 및 대조 후 마지막에만 실행한다.
@@ -3125,6 +3347,103 @@ IF v_apply_26 THEN
   EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P17 trigger static checks: '||SQLERRM; END;
 ELSE v_result:=v_result||E'\n[SKIP] P17 | apply prerequisite missing'; END IF;
 
+
+-- P18: s_downline_overview_v2(). The hierarchy is built inside this rolled-back transaction, so the test never depends on production rows.
+IF v_apply_27 AND v_customer IS NOT NULL THEN
+  DECLARE
+    sa uuid; sb uuid; sc uuid; sx uuid; lead uuid; nm_b text; cols text;
+    c1 uuid; code1 text; coup_id uuid; r record; u uuid; got_n int; ok boolean := true; why text := '';
+    fee1 text; fee2 text; fee3 text; path_ok boolean; iso_ok boolean; nonS_ok boolean; hidden_ok boolean;
+  BEGIN
+    SELECT pa.user_id INTO sa FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO sb FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id<>sa ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO sc FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO sx FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id NOT IN (sa,sb,sc) ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO lead FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='leader' ORDER BY pa.user_id LIMIT 1;
+    IF sa IS NULL OR sb IS NULL OR sc IS NULL OR sx IS NULL OR lead IS NULL THEN
+      v_result:=v_result||E'\n[SKIP] P18 | need 4 approved dealers and 1 leader';
+    ELSE
+      SELECT name INTO nm_b FROM public.profiles WHERE id=sb;
+      -- clear links into/out of the test members, then build S(sa) -> Master(sb) -> C(sc); sx is an unrelated second S.
+      UPDATE public.partners SET master_id=NULL WHERE master_id IN (sa,sb,sc,sx) OR user_id IN (sa,sb,sc,sx);
+      UPDATE public.partners SET grade='S' WHERE user_id IN (sa,sx);
+      UPDATE public.partners SET grade='Master', master_id=sa WHERE user_id=sb;
+      UPDATE public.partners SET grade='C', master_id=sb WHERE user_id=sc;
+
+      -- a) static column check: no customer, money, contact, photo, or bank column can be returned.
+      SELECT pg_get_function_result(p.oid) INTO cols FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname='public' AND p.proname='s_downline_overview_v2' LIMIT 1;
+      IF cols IS NULL OR cols ~* '(phone|contact|연락처|금액|amount|photo|avatar|image|customer|elder|사진|계좌|bank|tax|net_)' THEN ok:=false; why:=why||' cols'; END IF;
+
+      -- b) pre-registrations: two stored + one converted for sc (expected counts 3 / 2 / 1).
+      SELECT id, code INTO coup_id, code1 FROM public.coupons WHERE issued_by=sc AND is_card ORDER BY created_at LIMIT 1;
+      IF coup_id IS NULL THEN
+        PERFORM public.ensure_dealer_card_coupon(sc);
+        SELECT id, code INTO coup_id, code1 FROM public.coupons WHERE issued_by=sc AND is_card ORDER BY created_at LIMIT 1;
+      END IF;
+      DELETE FROM public.pre_registrations WHERE dealer_id IN (sa,sb,sc,sx);
+      INSERT INTO public.pre_registrations(coupon_id,coupon_code,dealer_id,name,phone,relationship,consent_at,status) VALUES
+        (coup_id,code1,sc,'P18a','01011110001','자녀',now(),'registered'),
+        (coup_id,code1,sc,'P18b','01011110002','자녀',now(),'registered'),
+        (coup_id,code1,sc,'P18c','01011110003','자녀',now(),'converted');
+
+      -- c) one case for sc with a leader: settlements are generated by the production trigger.
+      INSERT INTO public.funeral_cases(customer_id,dealer_id,team_leader_id,status,location,package_name) VALUES(v_customer,sc,lead,'requested','P18 case','기본형') RETURNING id INTO c1;
+      UPDATE public.funeral_cases SET status='in_progress' WHERE id=c1;
+
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',sa::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', sa::text, true);
+      SELECT count(*) INTO got_n FROM public.s_downline_overview_v2();
+      IF got_n<>2 THEN ok:=false; why:=why||' rows='||got_n; END IF;
+      SELECT * INTO r FROM public.s_downline_overview_v2() WHERE partner_id=sb;
+      path_ok := r.소속마스터경로='직속' AND r.예비등록건수=0;
+      SELECT * INTO r FROM public.s_downline_overview_v2() WHERE partner_id=sc;
+      path_ok := path_ok AND r.소속마스터경로=nm_b AND r.예비등록건수=3 AND r.예비보관중=2 AND r.예비접수완료=1 AND r.단계='in_progress';
+      fee1 := r.수수료상태;
+      IF NOT path_ok THEN ok:=false; why:=why||' path/prereg('||coalesce(r.소속마스터경로,'null')||','||coalesce(r.예비등록건수::text,'null')||','||coalesce(r.단계,'null')||')'; END IF;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- d) fee status: draft rows -> wait; sc's own commission rows all paid -> paid; one reopened -> wait again.
+      UPDATE public.settlements SET status='paid' WHERE case_id=c1 AND recipient_id=sc AND type IN ('dealer_commission','dealer_override');
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',sa::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', sa::text, true);
+      SELECT 수수료상태 INTO fee2 FROM public.s_downline_overview_v2() WHERE partner_id=sc;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      UPDATE public.settlements SET status='awaiting_payment' WHERE case_id=c1 AND recipient_id=sc AND type='dealer_commission';
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',sa::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', sa::text, true);
+      SELECT 수수료상태 INTO fee3 FROM public.s_downline_overview_v2() WHERE partner_id=sc;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      IF fee1 IS DISTINCT FROM '대기' OR fee2 IS DISTINCT FROM '지급 완료' OR fee3 IS DISTINCT FROM '대기' THEN
+        ok:=false; why:=why||' fee='||coalesce(fee1,'null')||'/'||coalesce(fee2,'null')||'/'||coalesce(fee3,'null');
+      END IF;
+
+      -- e) isolation: another S gets 0 rows; Master, child, leader, customer callers get 0 rows.
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',sx::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', sx::text, true);
+      SELECT count(*) INTO got_n FROM public.s_downline_overview_v2(); iso_ok := (got_n=0);
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      nonS_ok := true;
+      FOREACH u IN ARRAY ARRAY[sb,sc,lead,v_customer] LOOP
+        SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',u::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', u::text, true);
+        SELECT count(*) INTO got_n FROM public.s_downline_overview_v2(); IF got_n<>0 THEN nonS_ok:=false; END IF;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      END LOOP;
+      IF NOT iso_ok OR NOT nonS_ok THEN ok:=false; why:=why||' isolation(iso='||iso_ok||',nonS='||nonS_ok||')'; END IF;
+
+      -- f) the S caller cannot read progress reports, pre-registrations, or settlements directly.
+      hidden_ok := true;
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',sa::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', sa::text, true);
+      BEGIN SELECT count(*) INTO got_n FROM public.funeral_progress_reports; IF got_n<>0 THEN hidden_ok:=false; END IF; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+      BEGIN SELECT count(*) INTO got_n FROM public.pre_registrations; IF got_n<>0 THEN hidden_ok:=false; END IF; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+      BEGIN SELECT count(*) INTO got_n FROM public.settlements WHERE case_id=c1; IF got_n<>0 THEN hidden_ok:=false; END IF; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      IF NOT hidden_ok THEN ok:=false; why:=why||' direct-read'; END IF;
+
+      IF ok THEN v_result:=v_result||E'\n[PASS] P18 columns, owner path, exact prereg counts 3/2/1, fee wait/paid/wait, S isolation, non-S zero rows, no direct reads';
+      ELSE v_result:=v_result||E'\n[FAIL] P18:'||why; END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    v_result:=v_result||E'\n[FAIL] P18: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P18 | apply/customer prerequisite missing'; END IF;
 
 v_result := E'[SUMMARY] PASS ' || regexp_count(v_result,E'\\[PASS\\]') || ' / FAIL ' || regexp_count(v_result,E'\\[FAIL\\]') || ' / SKIP ' || regexp_count(v_result,E'\\[SKIP\\]') || E'\n' || ltrim(v_result,E'\n');
 RAISE EXCEPTION '%', 'DRYRUN_RESULT'||E'\n'||v_result;
