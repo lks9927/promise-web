@@ -32,6 +32,7 @@ DECLARE
   v_apply_20 boolean := false;
   v_apply_21 boolean := false;
   v_apply_22 boolean := false;
+  v_apply_23 boolean := false;
   v_dealer uuid;
   v_other_dealer uuid;
   v_card_code text;

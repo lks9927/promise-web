@@ -15,6 +15,7 @@ const DEFAULT_POLICY = {
     sales_leader_master_direct: 700000,
     exec_leader_master_override: 100000,
     exec_leader_master_direct: 200000,
+    team_leader_fee: 0,
     s_dealer_management_fee: 0,
     s_leader_management_fee: 0,
 };
@@ -31,16 +32,17 @@ const TAG_COLORS = {
 };
 
 const ROWS = [
-    { label: '고객 페이백', name: 'customer_payback', tag: '지출', tagColor: 'red' },
-    { label: '딜러 직접 영업', name: 'sales_dealer_regular', tag: '딜러', tagColor: 'blue' },
-    { label: '마스터딜러 관리수수료', name: 'sales_dealer_master_override', tag: '딜러', tagColor: 'blue' },
+    { label: '고객 캐시백', name: 'customer_payback', tag: '지출', tagColor: 'red' },
+    { label: '영업 수수료', name: 'sales_dealer_regular', tag: '딜러', tagColor: 'blue' },
+    { label: '관리 수수료 – 마스터 딜러', name: 'sales_dealer_master_override', tag: '딜러', tagColor: 'blue' },
     { label: '마스터딜러 직접 영업', name: 'sales_dealer_master_direct', tag: '딜러', tagColor: 'blue' },
     { label: '팀장 직접 영업', name: 'sales_leader_regular', tag: '팀장', tagColor: 'purple' },
     { label: '마스터팀장 직접 영업', name: 'sales_leader_master_direct', tag: '팀장', tagColor: 'purple' },
-    { label: '마스터팀장 직속 관리수수료', name: 'exec_leader_master_override', tag: '팀장', tagColor: 'purple' },
+    { label: '팀장 수수료', name: 'team_leader_fee', tag: '팀장', tagColor: 'purple' },
+    { label: '관리 수수료 – 마스터 팀장', name: 'exec_leader_master_override', tag: '팀장', tagColor: 'purple' },
     { label: '마스터팀장 직접 영업수수료', name: 'exec_leader_master_direct', tag: '팀장', tagColor: 'purple' },
-    { label: `${GRADE_LABELS.dealer.S} 관리수수료`, name: 's_dealer_management_fee', tag: '딜러', tagColor: 'blue' },
-    { label: `${GRADE_LABELS.leader.S} 관리수수료`, name: 's_leader_management_fee', tag: '팀장', tagColor: 'purple' },
+    { label: '관리 수수료 – 대표마스터 딜러', name: 's_dealer_management_fee', tag: '딜러', tagColor: 'blue' },
+    { label: '관리 수수료 – 대표마스터 팀장', name: 's_leader_management_fee', tag: '팀장', tagColor: 'purple' },
 ];
 
 const ROW_GROUPS = [
@@ -52,7 +54,6 @@ const ROW_GROUPS = [
         names: [
             'sales_dealer_regular',
             'sales_dealer_master_override',
-            'sales_dealer_master_direct',
             's_dealer_management_fee',
         ],
     },
@@ -62,10 +63,8 @@ const ROW_GROUPS = [
         headerClass: 'bg-purple-50/80 text-purple-900 border-t border-b border-purple-200',
         dotClass: 'bg-purple-600',
         names: [
-            'sales_leader_regular',
-            'sales_leader_master_direct',
+            'team_leader_fee',
             'exec_leader_master_override',
-            'exec_leader_master_direct',
             's_leader_management_fee',
         ],
     },
@@ -82,40 +81,28 @@ const ROW_GROUPS = [
 
 const ROW_DESC = {
     customer_payback: {
-        desc: '고객이 쿠폰을 입력하여 장례가 접수되고 진행 시작될 때 본사가 고객에게 직접 페이백으로 지급합니다.',
+        desc: '쿠폰 사용 시 본사가 고객에게 지급합니다. 명함 쿠폰 사용 건은 제외됩니다.',
         needsCheck: false,
     },
     sales_dealer_regular: {
-        desc: '일반 딜러가 장례를 직접 유치(직접 접수 또는 쿠폰 접수)했을 때 영업수수료로 지급합니다. (원천징수 3.3% 공제)',
+        desc: '딜러가 영업한 건에 딜러 라인 모두 같은 금액입니다. (원천징수 3.3% 공제)',
         needsCheck: false,
     },
     sales_dealer_master_override: {
-        desc: '직속 산하 딜러가 장례를 유치했을 때 마스터딜러에게 관리수수료로 지급합니다. (원천징수 3.3% 공제)',
+        desc: '직속 산하 일반 딜러가 영업한 건에 마스터 딜러에게 지급합니다. (원천징수 3.3% 공제)',
         needsCheck: false,
-    },
-    sales_dealer_master_direct: {
-        desc: '마스터딜러가 직접 장례를 유치했을 때 받는 수수료입니다. (화면 시뮬레이션 기준)',
-        needsCheck: true,
     },
     s_dealer_management_fee: {
         desc: `${GRADE_LABELS.dealer.S}가 산하 전체 딜러 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)`,
         needsCheck: false,
     },
-    sales_leader_regular: {
-        desc: '의전팀장이 직접 장례를 유치하고 다른 팀장이 진행할 때 받는 영업수수료입니다. (화면 시뮬레이션 기준)',
-        needsCheck: true,
-    },
-    sales_leader_master_direct: {
-        desc: '마스터팀장이 직접 장례도 유치하고 의전도 진행했을 때 받는 수수료입니다. (화면 시뮬레이션 기준)',
-        needsCheck: true,
-    },
-    exec_leader_master_override: {
-        desc: '직속 산하 일반 팀장이 의전을 진행했을 때 마스터팀장에게 관리수수료로 지급합니다. (면세)',
+    team_leader_fee: {
+        desc: '팀장 본인 건(기록용)에서 팀장이 본사에 내는 금액입니다. 0이면 정산서가 생성되지 않습니다.',
         needsCheck: false,
     },
-    exec_leader_master_direct: {
-        desc: '마스터팀장이 직접 의전을 진행했을 때 받는 수수료입니다. (화면 시뮬레이션 기준)',
-        needsCheck: true,
+    exec_leader_master_override: {
+        desc: '직속 산하 일반 팀장이 진행한 건에 마스터 팀장에게 지급합니다. (면세)',
+        needsCheck: false,
     },
     s_leader_management_fee: {
         desc: `${GRADE_LABELS.leader.S}가 산하 전체 팀장 조직의 당월 진행 건당 받는 관리수수료입니다. (단, 변호사 확인 전까지 0원 유지)`,
@@ -291,8 +278,8 @@ export default function CommissionSettings({ supabase }) {
             let { error: policyError } = await db.from('commission_policies').upsert(toSave);
             // Before P3c reaches the DB, retain the existing settings-save path and omit
             // only the two unavailable columns. The visible values remain safely at zero.
-            if (policyError && /s_(dealer|leader)_management_fee|column/i.test(policyError.message || '')) {
-                const { s_dealer_management_fee, s_leader_management_fee, ...legacyPolicy } = toSave;
+            if (policyError && /s_(dealer|leader)_management_fee|team_leader_fee|column/i.test(policyError.message || '')) {
+                const { s_dealer_management_fee, s_leader_management_fee, team_leader_fee, ...legacyPolicy } = toSave;
                 ({ error: policyError } = await db.from('commission_policies').upsert(legacyPolicy));
             }
             if (policyError) throw policyError;
@@ -335,12 +322,10 @@ export default function CommissionSettings({ supabase }) {
     };
 
     const simCases = policy ? [
-        { title: '일반딜러 영업 / 일반팀장 진행', payouts: [{ label: '고객 페이백', v: actualPayout('customer_payback') }, { label: '딜러', v: actualPayout('sales_dealer_regular') }, { label: '마스터딜러', v: actualPayout('sales_dealer_master_override') }, { label: '마스터팀장', v: actualPayout('exec_leader_master_override') }] },
-        { title: '마스터딜러 영업 / 일반팀장 진행', payouts: [{ label: '고객 페이백', v: actualPayout('customer_payback') }, { label: '마스터딜러', v: actualPayout('sales_dealer_master_direct') }, { label: '마스터팀장', v: actualPayout('exec_leader_master_override') }] },
-        { title: '팀장 영업 / 마스터팀장 진행', payouts: [{ label: '고객 페이백', v: actualPayout('customer_payback') }, { label: '팀장(영업)', v: actualPayout('sales_leader_regular') }, { label: '마스터팀장', v: actualPayout('exec_leader_master_direct') }] },
-        { title: '마스터팀장 영업 / 마스터팀장 진행', payouts: [{ label: '고객 페이백', v: actualPayout('customer_payback') }, { label: '마스터팀장', v: actualPayout('sales_leader_master_direct') }] },
-        { title: '본사 영업 / 일반팀장 진행', payouts: [{ label: '고객 페이백', v: actualPayout('customer_payback') }, { label: '마스터팀장', v: actualPayout('exec_leader_master_override') }] },
-        { title: '본사 영업 / 마스터팀장 진행', payouts: [{ label: '고객 페이백', v: actualPayout('customer_payback') }, { label: '마스터팀장', v: actualPayout('exec_leader_master_direct') }] },
+        { title: '일반 딜러 영업 / 일반 팀장 진행', payouts: [{ label: '영업 수수료', v: actualPayout('sales_dealer_regular') }] },
+        { title: '일반 딜러 영업 / 마스터 딜러·팀장 관리', payouts: [{ label: '영업 수수료', v: actualPayout('sales_dealer_regular') }, { label: '마스터 딜러 관리', v: actualPayout('sales_dealer_master_override') }, { label: '마스터 팀장 관리', v: actualPayout('exec_leader_master_override') }] },
+        { title: '기록용 팀장 본인 건', payouts: [{ label: '팀장 수수료', v: actualPayout('team_leader_fee') }] },
+        { title: '쿠폰 사용 건', payouts: [{ label: '고객 캐시백', v: actualPayout('customer_payback') }] },
     ] : [];
 
     const isPct = policy?.is_percentage;

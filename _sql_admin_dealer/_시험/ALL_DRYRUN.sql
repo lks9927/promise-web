@@ -32,6 +32,7 @@ DECLARE
   v_apply_20 boolean := false;
   v_apply_21 boolean := false;
   v_apply_22 boolean := false;
+  v_apply_23 boolean := false;
   v_dealer uuid;
   v_other_dealer uuid;
   v_card_code text;
@@ -1709,6 +1710,7 @@ $bootstrap$;
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P10: ' || SQLERRM; END;
 BEGIN
+  DROP FUNCTION IF EXISTS public.get_my_card_coupon(uuid); DROP FUNCTION IF EXISTS public.get_my_pre_registrations(uuid); -- harness only: prod already has P11 signatures
 -- P10b 관리자 '화면 미리보기'(딜러 임퍼소네이트)에서도 명함 QR·안심 혜택 명단이 보이게 한다 (2026-11-06)
 -- 관리자가 p_dealer 를 넘기면 그 딜러의 것을, 그 외에는 호출자 본인의 것을 돌려준다(관리자가 아닌 사용자가 다른 id 를 넘겨도 본인 것으로 취급).
 -- 되돌리기: 인자 없는 원래 함수(P10_예비상주.sql)로 CREATE OR REPLACE 후 이 파일의 p_dealer 버전을 DROP.
@@ -1916,6 +1918,70 @@ ON CONFLICT (key) DO NOTHING;
 [PASS] apply P11 family registration extension';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P11: ' || SQLERRM; END;
+BEGIN
+-- P13 정산 5줄 모델 (2026-11-09)
+-- 목적: 패키지별 팀장 기록용 수수료를 추가하고, is_private 사건의 팀장→본사 사용료 초안만 만든다.
+-- 되돌리기: DROP TRIGGER IF EXISTS trg_private_case_leader_fee ON public.funeral_cases;
+--           DROP FUNCTION IF EXISTS public.create_private_case_leader_fee();
+--           ALTER TABLE public.commission_policies DROP COLUMN IF EXISTS team_leader_fee;
+-- calculate_settlements는 P10 본문을 유지한다. 일반 사건의 딜러/마스터/쿠폰 계산은 변경하지 않는다.
+
+ALTER TABLE public.commission_policies
+  ADD COLUMN IF NOT EXISTS team_leader_fee integer NOT NULL DEFAULT 0;
+
+ALTER TABLE public.commission_policies
+  DROP CONSTRAINT IF EXISTS commission_policies_team_leader_fee_nonnegative,
+  ADD CONSTRAINT commission_policies_team_leader_fee_nonnegative
+    CHECK (team_leader_fee >= 0);
+
+CREATE OR REPLACE FUNCTION public.create_private_case_leader_fee()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_fee integer := 0;
+  v_base integer;
+  v_tax integer;
+BEGIN
+  IF NEW.team_leader_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COALESCE(cp.team_leader_fee, 0)
+    INTO v_fee
+    FROM public.commission_policies cp
+   WHERE cp.id = public.policy_id_for_package(NEW.package_name)
+   LIMIT 1;
+
+  IF COALESCE(v_fee, 0) <= 0 THEN
+    RETURN NEW;
+  END IF;
+
+  v_base := ROUND(v_fee / 1.1);
+  v_tax := v_fee - v_base;
+  UPDATE public.funeral_cases SET usage_fee = v_fee WHERE id = NEW.id;
+  INSERT INTO public.settlements
+    (case_id, recipient_id, amount, type, status, tax_type, base_amount, tax_amount, net_amount)
+  VALUES
+    (NEW.id, NEW.team_leader_id, v_fee, 'usage_fee_remittance', 'draft', 'vat_10', v_base, v_tax, v_fee)
+  ON CONFLICT ON CONSTRAINT unique_settlement_per_case DO NOTHING;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_private_case_leader_fee ON public.funeral_cases;
+CREATE TRIGGER trg_private_case_leader_fee
+AFTER INSERT ON public.funeral_cases
+FOR EACH ROW
+WHEN (NEW.is_private)
+EXECUTE FUNCTION public.create_private_case_leader_fee();
+
+  v_apply_23 := true; v_result := v_result || E'
+[PASS] apply P13 five-line settlement model';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P13: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
 -- 반드시 P1d_계좌_비공개테이블_생성_이관.sql 적용 및 대조 후 마지막에만 실행한다.
@@ -2533,6 +2599,54 @@ IF v_apply_22 THEN
     v_result:=v_result||E'\n[FAIL] P11 public benefit label: '||SQLERRM;
   END;
 ELSE v_result:=v_result||E'\n[SKIP] P11 public benefit label | apply prerequisite missing'; END IF;
+
+-- P13: policy values are deliberately changed, then every controlled case is compared as an exact row set.
+IF v_apply_23 AND v_customer IS NOT NULL THEN
+  DECLARE dm uuid; dc uuid; lm uuid; lc uuid; c uuid; p1 record; p2 record; ordinary text; card text; bad bigint; margin_ok boolean; private_zero_ok boolean; private_usage_ok boolean;
+  BEGIN
+    SELECT pa.user_id INTO dm FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO dc FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='dealer' AND pa.user_id IS DISTINCT FROM dm ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO lm FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='leader' ORDER BY pa.user_id LIMIT 1;
+    SELECT pa.user_id INTO lc FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='leader' AND pa.user_id IS DISTINCT FROM lm ORDER BY pa.user_id LIMIT 1;
+    IF dm IS NULL OR dc IS NULL OR lm IS NULL OR lc IS NULL THEN v_result:=v_result||E'\n[SKIP] P13 | need 2 approved dealers and leaders';
+    ELSE
+      UPDATE public.commission_policies SET base_margin=765432,sales_dealer_regular=123456,sales_dealer_master_override=34567,exec_leader_master_override=45678,customer_payback=23456,team_leader_fee=98765 WHERE id=1;
+      UPDATE public.commission_policies SET base_margin=654321,sales_dealer_regular=223344,sales_dealer_master_override=33445,exec_leader_master_override=44556,customer_payback=55667,team_leader_fee=66778 WHERE id=2;
+      SELECT * INTO p1 FROM public.commission_policies WHERE id=1; SELECT * INTO p2 FROM public.commission_policies WHERE id=2;
+      CREATE TEMP TABLE p13_expected(case_id uuid,type text,recipient_id uuid,amount integer,base_amount integer,tax_amount integer,net_amount integer,status text) ON COMMIT DROP;
+      UPDATE public.partners SET master_id=NULL WHERE user_id IN(dm,dc,lm,lc); UPDATE public.partners SET grade='Master' WHERE user_id IN(dm,lm); UPDATE public.partners SET grade='C' WHERE user_id IN(dc,lc);
+      -- S1 ordinary dealer / ordinary leader.
+      INSERT INTO public.funeral_cases(customer_id,dealer_id,team_leader_id,status,location,package_name) VALUES(v_customer,dc,lc,'requested','P13 S1','기본형') RETURNING id INTO c; UPDATE public.funeral_cases SET status='in_progress' WHERE id=c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p1.base_margin,ROUND(p1.base_margin/1.1),p1.base_margin-ROUND(p1.base_margin/1.1),p1.base_margin,'draft'),(c,'dealer_commission',dc,p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular,ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),'draft');
+      -- S2 master dealer direct / child leader.
+      UPDATE public.partners SET master_id=lm WHERE user_id=lc; INSERT INTO public.funeral_cases(customer_id,dealer_id,team_leader_id,status,location,package_name) VALUES(v_customer,dm,lc,'requested','P13 S2','기본형') RETURNING id INTO c; UPDATE public.funeral_cases SET status='in_progress' WHERE id=c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p1.base_margin,ROUND(p1.base_margin/1.1),p1.base_margin-ROUND(p1.base_margin/1.1),p1.base_margin,'draft'),(c,'dealer_commission',dm,p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular,ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),'draft'),(c,'leader_override',lm,p1.exec_leader_master_override,p1.exec_leader_master_override,0,p1.exec_leader_master_override,'draft');
+      -- S3 child dealer under master.
+      UPDATE public.partners SET master_id=dm WHERE user_id=dc; INSERT INTO public.funeral_cases(customer_id,dealer_id,team_leader_id,status,location,package_name) VALUES(v_customer,dc,lc,'requested','P13 S3','기본형') RETURNING id INTO c; UPDATE public.funeral_cases SET status='in_progress' WHERE id=c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p1.base_margin,ROUND(p1.base_margin/1.1),p1.base_margin-ROUND(p1.base_margin/1.1),p1.base_margin,'draft'),(c,'dealer_commission',dc,p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular,ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),'draft'),(c,'dealer_override',dm,p1.sales_dealer_master_override-ROUND(p1.sales_dealer_master_override*.033),p1.sales_dealer_master_override,ROUND(p1.sales_dealer_master_override*.033),p1.sales_dealer_master_override-ROUND(p1.sales_dealer_master_override*.033),'draft'),(c,'leader_override',lm,p1.exec_leader_master_override,p1.exec_leader_master_override,0,p1.exec_leader_master_override,'draft');
+      -- S4 headquarters customer.
+      INSERT INTO public.funeral_cases(customer_id,team_leader_id,status,location,package_name) VALUES(v_customer,lc,'requested','P13 S4','기본형') RETURNING id INTO c; UPDATE public.funeral_cases SET status='in_progress' WHERE id=c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p1.base_margin,ROUND(p1.base_margin/1.1),p1.base_margin-ROUND(p1.base_margin/1.1),p1.base_margin,'draft'),(c,'leader_override',lm,p1.exec_leader_master_override,p1.exec_leader_master_override,0,p1.exec_leader_master_override,'draft');
+      SELECT p1.base_margin-p1.exec_leader_master_override=(SELECT amount FROM public.settlements WHERE case_id=c AND type='usage_fee_remittance')-(SELECT amount FROM public.settlements WHERE case_id=c AND type='leader_override') INTO margin_ok;
+      -- S5 ordinary coupon versus card coupon.
+      INSERT INTO public.coupons(code,amount,status) VALUES('P13ORDINARY',0,'issued') RETURNING code INTO ordinary;
+      INSERT INTO public.funeral_cases(customer_id,dealer_id,team_leader_id,status,location,package_name,coupon_code) VALUES(v_customer,dc,lc,'requested','P13 S5 ordinary','기본형',ordinary) RETURNING id INTO c; UPDATE public.funeral_cases SET status='in_progress' WHERE id=c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p1.base_margin,ROUND(p1.base_margin/1.1),p1.base_margin-ROUND(p1.base_margin/1.1),p1.base_margin,'draft'),(c,'dealer_commission',dc,p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular,ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),'draft'),(c,'dealer_override',dm,p1.sales_dealer_master_override-ROUND(p1.sales_dealer_master_override*.033),p1.sales_dealer_master_override,ROUND(p1.sales_dealer_master_override*.033),p1.sales_dealer_master_override-ROUND(p1.sales_dealer_master_override*.033),'draft'),(c,'leader_override',lm,p1.exec_leader_master_override,p1.exec_leader_master_override,0,p1.exec_leader_master_override,'draft'),(c,'customer_cashback',v_customer,p1.customer_payback,p1.customer_payback,0,p1.customer_payback,'draft');
+      SELECT public.ensure_dealer_card_coupon(dc) INTO card; INSERT INTO public.funeral_cases(customer_id,dealer_id,team_leader_id,status,location,package_name,coupon_code) VALUES(v_customer,dc,lc,'requested','P13 S5 card','기본형',card) RETURNING id INTO c; UPDATE public.funeral_cases SET status='in_progress' WHERE id=c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p1.base_margin,ROUND(p1.base_margin/1.1),p1.base_margin-ROUND(p1.base_margin/1.1),p1.base_margin,'draft'),(c,'dealer_commission',dc,p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular,ROUND(p1.sales_dealer_regular*.033),p1.sales_dealer_regular-ROUND(p1.sales_dealer_regular*.033),'draft'),(c,'dealer_override',dm,p1.sales_dealer_master_override-ROUND(p1.sales_dealer_master_override*.033),p1.sales_dealer_master_override,ROUND(p1.sales_dealer_master_override*.033),p1.sales_dealer_master_override-ROUND(p1.sales_dealer_master_override*.033),'draft'),(c,'leader_override',lm,p1.exec_leader_master_override,p1.exec_leader_master_override,0,p1.exec_leader_master_override,'draft');
+      -- S6 policy 2 mapping.
+      UPDATE public.partners SET master_id=NULL WHERE user_id IN(dc,lc); INSERT INTO public.funeral_cases(customer_id,dealer_id,team_leader_id,status,location,package_name) VALUES(v_customer,dc,lc,'requested','P13 S6','고급형') RETURNING id INTO c; UPDATE public.funeral_cases SET status='in_progress' WHERE id=c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p2.base_margin,ROUND(p2.base_margin/1.1),p2.base_margin-ROUND(p2.base_margin/1.1),p2.base_margin,'draft'),(c,'dealer_commission',dc,p2.sales_dealer_regular-ROUND(p2.sales_dealer_regular*.033),p2.sales_dealer_regular,ROUND(p2.sales_dealer_regular*.033),p2.sales_dealer_regular-ROUND(p2.sales_dealer_regular*.033),'draft');
+      -- S7 zero and positive private-team-leader fee.
+      UPDATE public.commission_policies SET team_leader_fee=0 WHERE id=1; INSERT INTO public.funeral_cases(customer_id,team_leader_id,status,location,package_name,is_private) VALUES(v_customer,lc,'in_progress','P13 S7 zero','기본형',true) RETURNING id INTO c; SELECT count(*)=0 INTO private_zero_ok FROM public.settlements WHERE case_id=c;
+      UPDATE public.commission_policies SET team_leader_fee=98765 WHERE id=1; SELECT * INTO p1 FROM public.commission_policies WHERE id=1; INSERT INTO public.funeral_cases(customer_id,team_leader_id,status,location,package_name,is_private) VALUES(v_customer,lc,'in_progress','P13 S7 fee','기본형',true) RETURNING id INTO c;
+      INSERT INTO p13_expected VALUES(c,'usage_fee_remittance',lc,p1.team_leader_fee,ROUND(p1.team_leader_fee/1.1),p1.team_leader_fee-ROUND(p1.team_leader_fee/1.1),p1.team_leader_fee,'draft');
+      SELECT usage_fee=p1.team_leader_fee INTO private_usage_ok FROM public.funeral_cases WHERE id=c;
+      SELECT count(*) INTO bad FROM ((SELECT s.case_id,s.type,s.recipient_id,s.amount,s.base_amount,s.tax_amount,s.net_amount,s.status FROM public.settlements s JOIN (SELECT DISTINCT case_id FROM p13_expected) e ON e.case_id=s.case_id EXCEPT ALL SELECT case_id,type,recipient_id,amount,base_amount,tax_amount,net_amount,status FROM p13_expected) UNION ALL (SELECT case_id,type,recipient_id,amount,base_amount,tax_amount,net_amount,status FROM p13_expected EXCEPT ALL SELECT s.case_id,s.type,s.recipient_id,s.amount,s.base_amount,s.tax_amount,s.net_amount,s.status FROM public.settlements s JOIN (SELECT DISTINCT case_id FROM p13_expected) e ON e.case_id=s.case_id)) x;
+      IF bad=0 AND margin_ok AND private_zero_ok AND private_usage_ok THEN v_result:=v_result||E'\n[PASS] P13 S1-S7 exact policy-derived settlement sets'; ELSE v_result:=v_result||E'\n[FAIL] P13 exact-set diff='||bad||' margin='||coalesce(margin_ok::text,'null')||' private-zero='||coalesce(private_zero_ok::text,'null')||' private-usage='||coalesce(private_usage_ok::text,'null'); END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P13: '||SQLERRM; END;
+ELSE v_result:=v_result||E'\n[SKIP] P13 | apply/customer prerequisite missing'; END IF;
 
 
 v_result := E'[SUMMARY] PASS ' || regexp_count(v_result,E'\\[PASS\\]') || ' / FAIL ' || regexp_count(v_result,E'\\[FAIL\\]') || ' / SKIP ' || regexp_count(v_result,E'\\[SKIP\\]') || E'\n' || ltrim(v_result,E'\n');
