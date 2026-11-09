@@ -55,6 +55,7 @@ export default function TeamLeaderDashboard() {
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState(null);
     const [myStatus, setMyStatus] = useState('waiting');
+    const [leaderDocsReady, setLeaderDocsReady] = useState(true);
     const [statusMenuOpen, setStatusMenuOpen] = useState(false);
     const [packages, setPackages] = useState([]);
     const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -164,7 +165,7 @@ export default function TeamLeaderDashboard() {
 
     const fetchMyStatus = async () => {
         if (!user) return;
-        const { data } = await supabase.from('partners').select('current_status, is_working').eq('user_id', user.id).single();
+        const { data } = await supabase.from('partners').select('current_status, is_working, business_doc_path').eq('user_id', user.id).single();
         if (data) {
             if (data.current_status) {
                 setMyStatus(data.current_status);
@@ -172,6 +173,8 @@ export default function TeamLeaderDashboard() {
                 setMyStatus(data.is_working ? 'waiting' : 'off');
                 handleStatusChange(data.is_working ? 'waiting' : 'off', false);
             }
+            const { data: bank } = await supabase.from('partner_bank_accounts').select('bank_code, bank_account, bank_holder').eq('partner_id', user.id).maybeSingle();
+            setLeaderDocsReady(Boolean(data.business_doc_path && bank?.bank_code && bank?.bank_account && bank?.bank_holder));
         }
     };
 
@@ -497,6 +500,12 @@ const isMasterUser = isMasterOrAbove(user.grade);
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20 font-sans">
+            {!leaderDocsReady && (
+                <div className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 flex items-center justify-between gap-3">
+                    <div><p className="font-bold">서류 등록이 필요합니다</p><p className="text-xs mt-1">사업자등록증과 정산 계좌를 등록하면 승인 및 배정 준비가 완료됩니다.</p></div>
+                    <button onClick={() => setActiveTab('profile')} className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white">등록하기</button>
+                </div>
+            )}
             {/* 관리자 미리보기 배너 */}
             {isPreviewMode && (
                 <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] bg-red-600/95 backdrop-blur-sm text-white px-4 py-2 flex items-center gap-4 rounded-full shadow-lg border border-red-500">

@@ -7,7 +7,7 @@ U=$(grep -h "^VITE_SUPABASE_URL" .env .env.local 2>/dev/null | head -1 | cut -d=
 grep -rhoE "\.from\('(partners|funeral_cases|settlements|coupons|custom_packages)'\)\s*\.select\((\`[^\`]*\`|'[^']*')" src --include=*.jsx | sed -E "s/\.from\('([a-z_]+)'\)\s*\.select\(.(.*).\$/\1|\2/" | sort -u > /tmp/sel.txt
 bad=0
 while IFS='|' read -r t s; do
-  enc=$(python -c "import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1].replace('\n',' ')))" "$s")
+  enc=$(node -e "process.stdout.write(encodeURIComponent(process.argv[1].replace(/\\n/g, ' ')))" "$s")
   code=$(curl -s -o /tmp/o.txt -w "%{http_code}" -H "apikey: $K" -H "Authorization: Bearer $K" "$U/rest/v1/$t?select=$enc&limit=1")
   if [ "$code" != "200" ]; then bad=$((bad+1)); echo "FAIL $code $t | $s | $(head -c 120 /tmp/o.txt)"; fi
 done < /tmp/sel.txt

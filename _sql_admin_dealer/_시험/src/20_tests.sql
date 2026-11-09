@@ -664,6 +664,7 @@ IF v_apply_24 THEN
     denied boolean; public_self bigint; public_related bigint; public_other bigint;
     admin_private_ok boolean := false; nonadmin_private_n bigint := -1; service_ok boolean := false;
   BEGIN
+    PERFORM set_config('app.p14_dryrun','on',true);
     SELECT id INTO a FROM public.profiles WHERE role='admin' ORDER BY id LIMIT 1;
     SELECT id INTO d FROM public.profiles WHERE role='dealer' ORDER BY id LIMIT 1;
     SELECT id INTO l FROM public.profiles WHERE role='leader' ORDER BY id LIMIT 1;
@@ -764,4 +765,68 @@ IF v_apply_24 THEN
     v_result:=v_result||E'\n[FAIL] P12 profile sensitive-column tests: '||SQLERRM;
   END;
 ELSE v_result:=v_result||E'\n[SKIP] P12 profile sensitive-column tests | apply prerequisite missing'; END IF;
+
+-- P14: existing profiles/partners only. The final DRYRUN_RESULT exception rolls every UPDATE back.
+IF v_apply_25 THEN
+  DECLARE a uuid; l_missing uuid; l_ready uuid; approval_ok boolean := false; denied boolean := false;
+    candidate uuid; expected_map jsonb; policy_ok boolean := false; n_missing bigint := 0;
+  BEGIN
+    SELECT id INTO a FROM public.profiles WHERE role='admin' ORDER BY id LIMIT 1;
+    SELECT p.user_id INTO l_missing FROM public.partners p JOIN public.profiles pr ON pr.id=p.user_id
+      WHERE pr.role='leader' ORDER BY (p.status='approved') DESC, p.user_id LIMIT 1;
+    SELECT p.user_id INTO l_ready FROM public.partners p JOIN public.profiles pr ON pr.id=p.user_id
+      WHERE pr.role='leader' AND p.user_id IS DISTINCT FROM l_missing ORDER BY p.user_id LIMIT 1;
+    IF l_missing IS NULL OR l_ready IS NULL THEN
+      v_result:=v_result||E'\n[SKIP] P14 | need two existing leader partners';
+    ELSE
+      DELETE FROM public.partner_bank_accounts WHERE partner_id=l_missing;
+      UPDATE public.partners SET business_doc_path=NULL, docs_exempt=false, status='pending', current_status='waiting' WHERE user_id=l_missing;
+      INSERT INTO public.partner_bank_accounts(partner_id,bank_code,bank_account,bank_holder)
+        VALUES(l_ready,'004','123456789012','P14시험')
+        ON CONFLICT(partner_id) DO UPDATE SET bank_code=EXCLUDED.bank_code,bank_account=EXCLUDED.bank_account,bank_holder=EXCLUDED.bank_holder;
+      UPDATE public.partners SET business_doc_path=l_ready::text||'/p14-test.pdf', docs_exempt=false, status='pending', current_status='waiting' WHERE user_id=l_ready;
+
+      -- off, new_only exempt, new_only non-exempt and all each use an actual approval UPDATE.
+      INSERT INTO public.system_config(key,value) VALUES('leader_docs_required','off') ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value;
+      UPDATE public.partners SET status='approved' WHERE user_id=l_missing;
+      approval_ok := (SELECT status='approved' FROM public.partners WHERE user_id=l_missing);
+      UPDATE public.partners SET status='pending',docs_exempt=true WHERE user_id=l_missing;
+      INSERT INTO public.system_config(key,value) VALUES('leader_docs_required','new_only') ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value;
+      UPDATE public.partners SET status='approved' WHERE user_id=l_missing;
+      approval_ok := approval_ok AND (SELECT status='approved' FROM public.partners WHERE user_id=l_missing);
+      UPDATE public.partners SET status='pending',docs_exempt=false WHERE user_id=l_missing;
+      BEGIN UPDATE public.partners SET status='approved' WHERE user_id=l_missing; EXCEPTION WHEN check_violation THEN denied:=true; END;
+      INSERT INTO public.system_config(key,value) VALUES('leader_docs_required','all') ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value;
+      UPDATE public.partners SET docs_exempt=true WHERE user_id=l_missing;
+      BEGIN UPDATE public.partners SET status='approved' WHERE user_id=l_missing; EXCEPTION WHEN check_violation THEN denied:=denied; END;
+      -- An administrator executes the same UPDATE; the trigger must still reject it.
+      IF a IS NOT NULL THEN
+        SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',a::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',a::text,true);
+        BEGIN UPDATE public.partners SET status='approved' WHERE user_id=l_missing; EXCEPTION WHEN check_violation THEN denied:=denied; END;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      END IF;
+      UPDATE public.partners SET status='approved' WHERE user_id=l_ready;
+      expected_map := jsonb_build_object(l_missing::text,'1',l_ready::text,'2');
+      SELECT public.find_next_bidder(expected_map,'{}'::uuid[],gen_random_uuid(),NULL) INTO candidate;
+      IF approval_ok AND denied AND candidate=l_ready THEN v_result:=v_result||E'\n[PASS] P14 off/new_only/all approval guard and bidder candidate set';
+      ELSE v_result:=v_result||format(E'\n[FAIL] P14 approval/candidate off-new=%s denied=%s candidate=%s expected=%s',approval_ok,denied,candidate,l_ready); END IF;
+
+      SELECT count(*) INTO n_missing FROM public.partners p JOIN public.profiles pr ON pr.id=p.user_id
+        WHERE pr.role='leader' AND public.leader_docs_enforced(p.user_id) AND NOT public.leader_docs_ok(p.user_id);
+      SELECT count(*)=4 AND bool_and((COALESCE(qual,'')||COALESCE(with_check,'')) LIKE '%partner-docs%' AND (policyname='partner_docs_admin_select' OR (COALESCE(qual,'')||COALESCE(with_check,'')) LIKE '%foldername%'))
+        INTO policy_ok FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+          AND policyname IN ('partner_docs_owner_insert','partner_docs_owner_select','partner_docs_owner_update','partner_docs_admin_select');
+      IF policy_ok THEN v_result:=v_result||format(E'\n[PASS] P14 private bucket RLS policy definitions; enforced missing=%s',n_missing);
+      ELSE v_result:=v_result||E'\n[FAIL] P14 private bucket RLS policy definitions'; END IF;
+
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims',json_build_object('sub',l_ready::text,'role','authenticated')::text,true); PERFORM set_config('request.jwt.claim.sub',l_ready::text,true);
+      denied:=false; BEGIN PERFORM public.set_leader_docs_required('off'); EXCEPTION WHEN insufficient_privilege THEN denied:=true; END;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      IF denied THEN v_result:=v_result||E'\n[PASS] P14 non-admin config change denied'; ELSE v_result:=v_result||E'\n[FAIL] P14 non-admin config change was allowed'; END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    v_result:=v_result||E'\n[FAIL] P14: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P14 | apply prerequisite missing'; END IF;
 

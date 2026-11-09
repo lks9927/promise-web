@@ -12,6 +12,7 @@ export default function PartnerApply() {
     const [phoneChecked, setPhoneChecked] = useState(false);
     const [phoneAvailable, setPhoneAvailable] = useState(false);
     const [phoneChecking, setPhoneChecking] = useState(false);
+    const [leaderDocument, setLeaderDocument] = useState(null);
     const [agreements, setAgreements] = useState({
         terms: false,
         privacy: false,
@@ -40,7 +41,10 @@ export default function PartnerApply() {
         business_type_biz: '',
         business_item: '',
         tax_email: '',
-        business_address: ''
+        business_address: '',
+        leader_bank_code: '',
+        leader_bank_account: '',
+        leader_bank_holder: ''
     });
 
     // 전화번호 중복확인 (auth.users + profiles 모두 확인)
@@ -98,6 +102,19 @@ export default function PartnerApply() {
         if (formData.password.length < 6) {
             alert('비밀번호는 최소 6자 이상이어야 합니다.');
             return;
+        }
+
+        if (formData.role === 'leader') {
+            const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+            const accountDigits = formData.leader_bank_account.replace(/\D/g, '');
+            if (!leaderDocument || !allowed.includes(leaderDocument.type) || leaderDocument.size > 5 * 1024 * 1024) {
+                alert('팀장 가입에는 JPG, PNG, WEBP 또는 PDF 사업자등록증(5MB 이하)이 필요합니다.');
+                return;
+            }
+            if (!formData.leader_bank_code || !/^\d{10,16}$/.test(accountDigits) || !formData.leader_bank_holder.trim()) {
+                alert('팀장 가입에는 은행 선택, 숫자 10~16자리 계좌번호, 예금주가 모두 필요합니다.');
+                return;
+            }
         }
 
         if (!window.confirm('입력하신 정보로 가입하시겠습니까?')) return;
@@ -194,6 +211,19 @@ export default function PartnerApply() {
                     ]);
 
                 if (partnerError) throw partnerError;
+                if (formData.role === 'leader') {
+                    const account = formData.leader_bank_account.replace(/\D/g, '');
+                    const { error: bankErr } = await supabase.from('partner_bank_accounts').upsert({
+                        partner_id: newUserId, bank_code: formData.leader_bank_code, bank_account: account, bank_holder: formData.leader_bank_holder.trim()
+                    });
+                    if (bankErr) throw bankErr;
+                    const ext = leaderDocument.name.split('.').pop()?.toLowerCase() || 'bin';
+                    const docPath = `${newUserId}/business-registration-${Date.now()}.${ext}`;
+                    const { error: docErr } = await supabase.storage.from('partner-docs').upload(docPath, leaderDocument, { contentType: leaderDocument.type, upsert: false });
+                    if (docErr) throw docErr;
+                    const { error: docPathErr } = await supabase.from('partners').update({ business_doc_path: docPath }).eq('user_id', newUserId);
+                    if (docPathErr) throw docPathErr;
+                }
                 // alert handled below after all inserts
             } else if (formData.role === 'vendor') {
                 // Create Vendor Record
@@ -405,6 +435,18 @@ export default function PartnerApply() {
                                         />
                                     </div>
                                 ))}
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">사업자등록증 파일 <span className="text-red-500">*</span></label>
+                                    <input type="file" required accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setLeaderDocument(e.target.files?.[0] || null)} className="w-full text-sm" />
+                                    <p className="text-[11px] text-gray-500 mt-1">이미지 또는 PDF, 5MB 이하 · 관리자와 본인만 열람</p>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <select required value={formData.leader_bank_code} onChange={e => setFormData({ ...formData, leader_bank_code: e.target.value })} className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg">
+                                        <option value="">은행 선택</option><option value="004">KB국민</option><option value="088">신한</option><option value="020">우리</option><option value="081">하나</option><option value="011">NH농협</option><option value="090">카카오</option><option value="092">토스</option>
+                                    </select>
+                                    <input required inputMode="numeric" maxLength="16" value={formData.leader_bank_account} onChange={e => setFormData({ ...formData, leader_bank_account: e.target.value.replace(/\D/g, '') })} placeholder="계좌번호" className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg" />
+                                    <input required value={formData.leader_bank_holder} onChange={e => setFormData({ ...formData, leader_bank_holder: e.target.value })} placeholder="예금주" className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg" />
+                                </div>
                             </div>
                         )}
 

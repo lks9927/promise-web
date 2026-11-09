@@ -95,6 +95,21 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
     const [roleModal, setRoleModal] = useState({ isOpen: false, partnerId: null, currentRole: '', currentMasterId: null, name: '' });
     const [isChangeRoleOpen, setIsChangeRoleOpen] = useState(false);
     const [roleChangeUser, setRoleChangeUser] = useState(null);
+    const [leaderDocs, setLeaderDocs] = useState({});
+
+    useEffect(() => {
+        supabase.rpc('admin_get_leader_docs_status').then(({ data }) => {
+            if (data) setLeaderDocs(Object.fromEntries(data.map(row => [row.partner_id, row])));
+        });
+    }, [partners]);
+
+    const missingLeaderDocs = Object.values(leaderDocs).filter(row => row.enforced && !row.docs_ok).length;
+    const LeaderDocsBadge = ({ partner }) => {
+        if (partner.profiles?.role !== 'leader') return null;
+        const row = leaderDocs[partner.user_id];
+        if (!row) return <span className="text-[10px] text-gray-400">서류 확인 중</span>;
+        return row.docs_ok ? <span className="text-[10px] font-bold text-green-700">서류/계좌 등록</span> : <span className="text-[10px] font-bold text-red-600">서류/계좌 미등록{row.enforced ? '' : ' (면제)'}</span>;
+    };
 
     const togglePartnerStatus = async (partnerId, currentStatus, role) => {
         const newStatus = (currentStatus === 'suspended' || currentStatus === 'pending') ? 'approved' : 'suspended';
@@ -284,6 +299,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                         </button>
                     ))}
                 </div>
+                <div className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">적용 대상 미등록 팀장 {missingLeaderDocs}명</div>
                 
                 <div className="relative w-full md:w-64 flex-shrink-0">
                     <input 
@@ -323,6 +339,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                             <span className={`font-bold ${partner.status === 'suspended' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                                                 {partner.profiles?.name}
                                             </span>
+                                            <LeaderDocsBadge partner={partner} />
                                             {partner._subCount > 0 && (
                                                 <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full font-bold">소속 {partner._subCount}명</span>
                                             )}
@@ -448,6 +465,7 @@ export default function PartnerTab({ partners, loading, onRefresh, onApproveRese
                                     <div className="flex items-center gap-2">
                                         {partner._isSubordinate && <span className="text-indigo-400 font-mono">└</span>}
                                         <span className={`font-bold text-lg ${partner.status === 'suspended' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{partner.profiles?.name}</span>
+                                        <LeaderDocsBadge partner={partner} />
                                         {partner._subCount > 0 && <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full font-bold">소속 {partner._subCount}명</span>}
                                         {partnerFilter === 'leader' && partner.master_id && <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">소속: {getMasterName(partner.master_id)}</span>}
                                     </div>

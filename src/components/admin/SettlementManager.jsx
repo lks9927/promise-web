@@ -222,7 +222,8 @@ export default function SettlementManager() {
                         name,
                         role,
                         phone,
-                        partners:partners!partners_user_id_fkey(bank_account, grade)
+                        partners:partners!partners_user_id_fkey(grade),
+                        partner_bank_accounts(bank_code, bank_account, bank_holder)
                     )
                 `)
                 .order('created_at', { ascending: false });
@@ -1144,7 +1145,8 @@ export default function SettlementManager() {
                             <h3 className="text-sm font-bold text-gray-500 mb-6 tracking-wide">토스 앱 카메라로 스캔하세요 📸</h3>
                             <div className="font-sans">
                                 {(() => {
-                                    const raw = ocrModal.item.profiles?.partners?.bank_account || '';
+                                    const privateBank = ocrModal.item.profiles?.partner_bank_accounts;
+                                    const raw = privateBank ? `${privateBank.bank_code || ''} ${privateBank.bank_account || ''} ${privateBank.bank_holder || ''}`.trim() : '';
                                     const parts = raw.split(' ').filter(Boolean);
                                     let bank = '은행명 없음';
                                     let account = raw || '계좌번호 없음';
@@ -1204,7 +1206,9 @@ export default function SettlementManager() {
                         <div className="p-4 bg-gray-50/50 flex flex-col gap-3">
                             <button
                                 onClick={() => {
-                                    const textForToss = `${ocrModal.item.profiles?.partners?.bank_account || ''} ${Math.floor(ocrModal.item.net_amount || ocrModal.item.amount)}원`;
+                                    const privateBank = ocrModal.item.profiles?.partner_bank_accounts;
+                                    const accountText = privateBank ? `${privateBank.bank_code || ''} ${privateBank.bank_account || ''} ${privateBank.bank_holder || ''}`.trim() : '';
+                                    const textForToss = `${accountText} ${Math.floor(ocrModal.item.net_amount || ocrModal.item.amount)}원`;
                                     navigator.clipboard.writeText(textForToss);
                                     alert('계좌번호와 금액이 복사되었습니다.\n모바일 접속 시 폰에서 토스를 열면 자동 인식됩니다!');
                                 }}

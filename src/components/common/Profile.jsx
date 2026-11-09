@@ -19,6 +19,8 @@ export default function Profile({ user, onUpdate }) {
     const [uploading, setUploading] = useState(false);
     const [bankInfo, setBankInfo] = useState({ bank_code: '', bank_account: '', bank_holder: '' });
     const [savingBank, setSavingBank] = useState(false);
+    const [privateBizDocPath, setPrivateBizDocPath] = useState('');
+    const [privateBizDocUploading, setPrivateBizDocUploading] = useState(false);
 
     const [galleryUrls, setGalleryUrls] = useState([]);
     const [galleryUploading, setGalleryUploading] = useState(false);
@@ -207,6 +209,9 @@ export default function Profile({ user, onUpdate }) {
             });
             setGalleryUrls(data.gallery_urls || []);
 
+            const { data: partnerData } = await supabase.from('partners').select('business_doc_path').eq('user_id', user.id).maybeSingle();
+            setPrivateBizDocPath(partnerData?.business_doc_path || '');
+
             // 파트너 계좌는 본인/관리자 전용 partner_bank_accounts에 저장한다.
             let bankStr = '';
             if (user.role === 'vendor') {
@@ -353,6 +358,34 @@ export default function Profile({ user, onUpdate }) {
             showToast('error', '저장 실패', '계좌 정보 저장 중 오류가 발생했습니다.');
         } finally {
             setSavingBank(false);
+        }
+    };
+
+    const handlePrivateBizDocUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+        if (!allowed.includes(file.type) || file.size > 5 * 1024 * 1024) {
+            showToast('error', '파일 확인', 'JPG, PNG, WEBP, PDF만 가능하며 파일당 5MB 이하여야 합니다.');
+            e.target.value = null;
+            return;
+        }
+        try {
+            setPrivateBizDocUploading(true);
+            const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
+            const path = `${user.id}/business-registration-${Date.now()}.${ext}`;
+            const { error: uploadError } = await supabase.storage.from('partner-docs').upload(path, file, { contentType: file.type, upsert: false });
+            if (uploadError) throw uploadError;
+            const { error: partnerError } = await supabase.from('partners').update({ business_doc_path: path }).eq('user_id', user.id);
+            if (partnerError) throw partnerError;
+            setPrivateBizDocPath(path);
+            showToast('success', '등록 완료', '비공개 사업자등록증이 저장되었습니다.');
+        } catch (error) {
+            console.error('Private business document upload error:', error);
+            showToast('error', '등록 실패', error.message || '사업자등록증 저장 중 오류가 발생했습니다.');
+        } finally {
+            setPrivateBizDocUploading(false);
+            e.target.value = null;
         }
     };
 
@@ -744,6 +777,20 @@ user.role === 'dealer' ? gradeLabel(user.role, user.grade) :
                         </button>
                     </div>
                 </div>
+
+                {(profileData?.role || user.role) === 'leader' && (
+                    <div className="bg-amber-50 rounded-xl border border-amber-200 p-5 mt-4">
+                        <h3 className="font-bold flex items-center gap-2 text-amber-900"><FileBadge className="w-5 h-5" /> 배정 필수 서류</h3>
+                        <p className="text-xs text-amber-800 mt-2">사업자등록증과 정산 계좌가 모두 등록되어야 설정 적용 시 승인·배정 대상이 됩니다. 파일은 관리자와 본인만 열람합니다.</p>
+                        <div className="mt-3 flex items-center gap-3">
+                            <label className={`px-3 py-2 rounded-lg text-sm font-bold cursor-pointer ${privateBizDocUploading ? 'bg-gray-200 text-gray-500' : 'bg-amber-600 text-white hover:bg-amber-700'}`}>
+                                {privateBizDocUploading ? '업로드 중...' : privateBizDocPath ? '사업자등록증 교체' : '사업자등록증 등록'}
+                                <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handlePrivateBizDocUpload} disabled={privateBizDocUploading} />
+                            </label>
+                            <span className={`text-xs font-bold ${privateBizDocPath ? 'text-green-700' : 'text-red-600'}`}>{privateBizDocPath ? '등록됨 (비공개)' : '미등록'}</span>
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-gray-50 rounded-xl border border-gray-100 p-5 mt-4">
                     <h3 className="font-bold gap-2 flex items-center mb-4 text-gray-800">
