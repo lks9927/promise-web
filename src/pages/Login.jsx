@@ -75,6 +75,10 @@ const Login = () => {
 
             if (data) {
                 const safeProfile = { ...data };
+                // P12 may not yet be applied while this client deployment rolls out. Keep login usable
+                // with the public profile if the private RPC is temporarily unavailable.
+                const { data: privateRows, error: privateError } = await supabase.rpc('get_my_profile_private');
+                if (!privateError && privateRows?.[0]) Object.assign(safeProfile, privateRows[0]);
 
                 // 🔹 Check Partner Status (Approval)
                 if (safeProfile.role === 'leader' || safeProfile.role === 'dealer' || safeProfile.role === 'master') {

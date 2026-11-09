@@ -104,6 +104,12 @@ BEGIN
 [PASS] apply P13 five-line settlement model';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P13: ' || SQLERRM; END;
+BEGIN
+  -- @@INCLUDE ../../P12_프로필_민감열_제한.sql
+  v_apply_24 := true; v_result := v_result || E'
+[PASS] apply P12 profile sensitive-column restriction';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P12: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
   -- @@INCLUDE ../../P1d_계좌_기존열_제거.sql

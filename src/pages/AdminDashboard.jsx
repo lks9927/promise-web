@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { PROFILE_COLUMNS } from '../lib/profileColumns';
+import { PROFILE_PUBLIC_COLUMNS } from '../lib/profileColumns';
 import { VENDOR_COLUMNS } from '../lib/vendorColumns';
 import { logout } from '../lib/logout';
 import { translateError } from '../lib/errorHandler';
@@ -67,6 +67,17 @@ export default function AdminDashboard() {
     const CURRENT_ADMIN_LEVEL = searchParams.get('role') === 'operating' ? 'operating' : 'super';
     const isReadonly = CURRENT_ADMIN_LEVEL === 'operating';
 
+    const loadAdminPrivate = async (ids = null) => {
+        const { data, error } = await supabase.rpc('admin_get_profile_private', { p_ids: ids });
+        // The public profile remains usable until P12 reaches the DB.
+        return error ? new Map() : new Map((data || []).map(row => [row.id, row]));
+    };
+
+    const mergePartnerPrivate = (rows, privateById) => rows.map(row => ({
+        ...row,
+        profiles: row.profiles ? { ...row.profiles, ...(privateById.get(row.user_id) || {}) } : row.profiles
+    }));
+
     useEffect(() => {
         fetchData();
         fetchVendors();
@@ -87,7 +98,10 @@ export default function AdminDashboard() {
                 if (eventType === 'INSERT') showToast('info', '정산 요청', '💰 새로운 정산 요청이 등록되었습니다.');
                 break;
             case 'partners':
-                supabase.from('partners').select(`*, profiles:user_id (name, phone, role, email)`).then(({ data }) => { if (data) setPartners(data); });
+                Promise.all([
+                    supabase.from('partners').select(`*, profiles:user_id (name, phone, role)`),
+                    loadAdminPrivate()
+                ]).then(([{ data }, privateById]) => { if (data) setPartners(mergePartnerPrivate(data, privateById)); });
                 break;
             case 'coupons':
                 supabase.from('coupons').select('*, profiles:issued_by(name)').order('created_at', { ascending: false }).then(({ data }) => { if (data) setCoupons(data); });
@@ -128,29 +142,36 @@ export default function AdminDashboard() {
             const results = await Promise.allSettled([
                 supabase.from('settlements').select('*, funeral_cases (id, status, final_price, package_name), profiles:recipient_id (name, role)'),
                 supabase.from('funeral_cases').select('*, profiles!funeral_cases_customer_id_fkey (name, phone), team_leader:profiles!funeral_cases_team_leader_id_fkey (name, phone), dealer:profiles!funeral_cases_dealer_id_fkey (name, phone)').order('created_at', { ascending: false }),
-                supabase.from('partners').select('*, profiles:user_id (name, phone, role, email)'),
+                supabase.from('partners').select('*, profiles:user_id (name, phone, role)'),
                 supabase.from('system_config').select('*'),
-                supabase.from('profiles').select(PROFILE_COLUMNS).eq('password_reset_requested', true),
+                supabase.from('profiles').select(PROFILE_PUBLIC_COLUMNS),
                 supabase.from('coupons').select('*, profiles:issued_by(name)').order('created_at', { ascending: false }),
-                supabase.from('profiles').select(PROFILE_COLUMNS).eq('role', 'customer').order('created_at', { ascending: false })
+                supabase.from('profiles').select(PROFILE_PUBLIC_COLUMNS).eq('role', 'customer').order('created_at', { ascending: false }),
+                loadAdminPrivate()
             ]);
 
-            const [settlementRes, caseRes, partnerRes, configRes, requestRes, couponRes, customerRes] = results.map(r => r.status === 'fulfilled' ? r.value : { data: null });
+            const [settlementRes, caseRes, partnerRes, configRes, adminRes, couponRes, customerRes, privateById] = results.map(r => r.status === 'fulfilled' ? r.value : { data: null });
 
             if (settlementRes.data) setSettlements(settlementRes.data);
             if (caseRes.data) setCases(caseRes.data);
-            if (partnerRes.data) setPartners(partnerRes.data);
+            if (partnerRes.data) setPartners(mergePartnerPrivate(partnerRes.data, privateById instanceof Map ? privateById : new Map()));
             if (configRes.data) {
                 const configMap = configRes.data.reduce((acc, cur) => ({ ...acc, [cur.key]: cur.value }), {});
                 setConfig(configMap);
             }
-            if (requestRes.data) setPasswordRequests(requestRes.data);
+            if (adminRes.data) {
+                const privateMap = privateById instanceof Map ? privateById : new Map();
+                setPasswordRequests(adminRes.data
+                    .map(profile => ({ ...profile, ...(privateMap.get(profile.id) || {}) }))
+                    .filter(profile => profile.password_reset_requested));
+            }
             if (couponRes.data) setCoupons(couponRes.data);
             if (customerRes && customerRes.data) {
                 // 주소는 profiles 가 아니라 관리자만 읽는 profile_private 에 있다 (고객 목록에 합쳐서 보여준다)
                 const { data: privRows } = await supabase.from('profile_private').select('id, address');
                 const addrById = new Map((privRows || []).map(r => [r.id, r.address]));
-                setCustomers(customerRes.data.map(c => ({ ...c, address: addrById.get(c.id) || '' })));
+                const privateMap = privateById instanceof Map ? privateById : new Map();
+                setCustomers(customerRes.data.map(c => ({ ...c, ...(privateMap.get(c.id) || {}), address: addrById.get(c.id) || '' })));
             }
 
         } catch (error) {

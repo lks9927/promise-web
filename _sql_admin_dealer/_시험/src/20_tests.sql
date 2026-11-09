@@ -656,3 +656,112 @@ IF v_apply_23 AND v_customer IS NOT NULL THEN
   EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P13: '||SQLERRM; END;
 ELSE v_result:=v_result||E'\n[SKIP] P13 | apply/customer prerequisite missing'; END IF;
 
+-- P12: existing profiles only. Each caller is simulated with authenticated JWT claims,
+-- then RESET ROLE so this dry-run never leaves an impersonated role behind.
+IF v_apply_24 THEN
+  DECLARE a uuid; d uuid; l uuid; c uuid; other_l uuid; relation_l uuid; relation_c uuid;
+    who uuid; got_id uuid; expected_email text; got_email text; got_os text; expected_os text;
+    denied boolean; public_self bigint; public_related bigint; public_other bigint;
+    admin_private_ok boolean := false; nonadmin_private_n bigint := -1; service_ok boolean := false;
+  BEGIN
+    SELECT id INTO a FROM public.profiles WHERE role='admin' ORDER BY id LIMIT 1;
+    SELECT id INTO d FROM public.profiles WHERE role='dealer' ORDER BY id LIMIT 1;
+    SELECT id INTO l FROM public.profiles WHERE role='leader' ORDER BY id LIMIT 1;
+    SELECT id INTO c FROM public.profiles WHERE role='customer' ORDER BY id LIMIT 1;
+    SELECT fc.customer_id, fc.team_leader_id INTO relation_c, relation_l
+      FROM public.funeral_cases fc JOIN public.profiles lp ON lp.id=fc.team_leader_id AND lp.role='leader'
+     WHERE fc.customer_id IS NOT NULL ORDER BY fc.created_at NULLS LAST LIMIT 1;
+    SELECT id INTO other_l FROM public.profiles pr WHERE pr.role='leader' AND pr.id IS DISTINCT FROM relation_l AND NOT EXISTS(SELECT 1 FROM public.funeral_cases x WHERE x.customer_id=relation_c AND x.team_leader_id=pr.id) AND NOT EXISTS(SELECT 1 FROM public.partners pa WHERE (pa.user_id=pr.id AND pa.master_id IS NOT NULL) OR pa.master_id=pr.id) ORDER BY pr.id LIMIT 1; -- unrelated: no case with this customer, no master/child links (P13 test data lives in this transaction)
+
+    IF a IS NULL OR d IS NULL OR l IS NULL OR c IS NULL THEN
+      v_result:=v_result||E'\n[SKIP] P12 profile tests | need admin, dealer, leader, customer';
+    ELSE
+      -- Direct sensitive-column reads must fail even for the caller's own row.
+      FOREACH who IN ARRAY ARRAY[a,d,l,c] LOOP
+        denied := false;
+        SET LOCAL ROLE authenticated;
+        PERFORM set_config('request.jwt.claims', json_build_object('sub',who::text,'role','authenticated')::text, true);
+        PERFORM set_config('request.jwt.claim.sub', who::text, true);
+        BEGIN
+          EXECUTE format('SELECT email FROM public.profiles WHERE id=%L', who);
+        EXCEPTION WHEN insufficient_privilege THEN denied := true;
+        END;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+        IF NOT denied THEN RAISE EXCEPTION 'P12 direct email read did not fail for %', who; END IF;
+      END LOOP;
+
+      -- P6 row behavior remains: own + related public fields visible, unrelated leader invisible.
+      IF relation_c IS NOT NULL AND relation_l IS NOT NULL AND other_l IS NOT NULL THEN
+        SET LOCAL ROLE authenticated;
+        PERFORM set_config('request.jwt.claims', json_build_object('sub',relation_c::text,'role','authenticated')::text, true);
+        PERFORM set_config('request.jwt.claim.sub', relation_c::text, true);
+        SELECT count(*) INTO public_self FROM public.profiles WHERE id=relation_c;
+        SELECT count(*) INTO public_related FROM public.profiles WHERE id=relation_l;
+        SELECT count(*) INTO public_other FROM public.profiles WHERE id=other_l;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+        IF public_self=1 AND public_related=1 AND public_other=0 THEN
+          v_result:=v_result||E'\n[PASS] P12 direct sensitive denial and P6 public own/related/unrelated rows';
+        ELSE v_result:=v_result||format(E'\n[FAIL] P12 public P6 rows self=%s related=%s unrelated=%s',public_self,public_related,public_other); END IF;
+      ELSE v_result:=v_result||E'\n[SKIP] P12 P6 public-row check | need related customer/leader and another leader'; END IF;
+
+      -- Each role receives only its own sensitive values through the self RPC.
+      FOREACH who IN ARRAY ARRAY[a,d,l,c] LOOP
+        SELECT email, os_type INTO expected_email, expected_os FROM public.profiles WHERE id=who;
+        SET LOCAL ROLE authenticated;
+        PERFORM set_config('request.jwt.claims', json_build_object('sub',who::text,'role','authenticated')::text, true);
+        PERFORM set_config('request.jwt.claim.sub', who::text, true);
+        SELECT id, email, os_type INTO got_id, got_email, got_os FROM public.get_my_profile_private();
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+        IF got_id IS DISTINCT FROM who OR got_email IS DISTINCT FROM expected_email OR got_os IS DISTINCT FROM expected_os THEN
+          RAISE EXCEPTION 'P12 self RPC mismatch for %', who;
+        END IF;
+      END LOOP;
+      v_result:=v_result||E'\n[PASS] P12 get_my_profile_private returns each caller own email/os_type';
+
+      SELECT email INTO expected_email FROM public.profiles WHERE id=d;
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',a::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', a::text, true);
+      SELECT (SELECT email FROM public.admin_get_profile_private(ARRAY[d]) LIMIT 1) IS NOT DISTINCT FROM expected_email
+         AND (SELECT count(*) FROM public.admin_get_profile_private(NULL)) = (SELECT count(*) FROM public.profiles)
+        INTO admin_private_ok;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',d::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', d::text, true);
+      SELECT count(*) INTO nonadmin_private_n FROM public.admin_get_profile_private(ARRAY[a,d]);
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      IF admin_private_ok AND nonadmin_private_n=0 THEN
+        v_result:=v_result||E'\n[PASS] P12 admin private RPC returns requested values; non-admin gets zero rows';
+      ELSE v_result:=v_result||format(E'\n[FAIL] P12 admin private RPC admin=%s nonadmin_rows=%s',admin_private_ok,nonadmin_private_n); END IF;
+
+      -- These are the public profile field combinations used by screen embeds after P12.
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',a::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', a::text, true);
+      PERFORM 1 FROM public.partners pa LEFT JOIN public.profiles p ON p.id=pa.user_id
+        WHERE (p.name IS NULL OR p.name IS NOT NULL) AND (p.phone IS NULL OR p.phone IS NOT NULL) AND (p.role IS NULL OR p.role IS NOT NULL) LIMIT 1;
+      PERFORM 1 FROM public.funeral_cases fc LEFT JOIN public.profiles customer ON customer.id=fc.customer_id
+        LEFT JOIN public.profiles leader ON leader.id=fc.team_leader_id
+        WHERE (customer.name IS NULL OR customer.name IS NOT NULL) AND (customer.phone IS NULL OR customer.phone IS NOT NULL)
+          AND (leader.avatar_url IS NULL OR leader.avatar_url IS NOT NULL) LIMIT 1;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      v_result:=v_result||E'\n[PASS] P12 admin screen public profile embed field combinations are selectable';
+
+      SELECT has_column_privilege('postgres','public.profiles','id','SELECT')
+         AND has_column_privilege('postgres','public.profiles','phone','SELECT')
+         AND has_column_privilege('postgres','public.profiles','name','SELECT')
+         AND has_column_privilege('postgres','public.profiles','os_type','SELECT')
+         AND has_column_privilege('postgres','public.profiles','fcm_token','SELECT')
+         AND has_column_privilege('postgres','public.profiles','role','SELECT')
+        INTO service_ok;
+      IF service_ok THEN v_result:=v_result||E'\n[PASS] P12 postgres/service-role send-alert profile columns remain selectable';
+      ELSE v_result:=v_result||E'\n[FAIL] P12 postgres/service-role send-alert column privilege missing'; END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    v_result:=v_result||E'\n[FAIL] P12 profile sensitive-column tests: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P12 profile sensitive-column tests | apply prerequisite missing'; END IF;
+

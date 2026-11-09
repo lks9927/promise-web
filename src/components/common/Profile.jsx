@@ -189,13 +189,15 @@ export default function Profile({ user, onUpdate }) {
         try {
             setLoading(true);
             // 주소/사업자 정보는 본인만 읽는 profile_private 에 있다 (두 요청을 동시에)
-            const [profileRes, privateRes] = await Promise.all([
+            const [profileRes, privateRes, sensitiveRes] = await Promise.all([
                 supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', user.id).single(),
-                supabase.from('profile_private').select(PRIVATE_COLUMNS).eq('id', user.id).maybeSingle()
+                supabase.from('profile_private').select(PRIVATE_COLUMNS).eq('id', user.id).maybeSingle(),
+                supabase.rpc('get_my_profile_private')
             ]);
             if (profileRes.error) throw profileRes.error;
             if (privateRes.error) throw privateRes.error; // 실패를 빈 값으로 처리하면 저장 시 기존 정보를 덮어쓸 수 있다
-            const data = { ...profileRes.data, ...(privateRes.data || {}) };
+            // RPC failure is intentionally non-fatal during the DB migration rollout.
+            const data = { ...profileRes.data, ...(privateRes.data || {}), ...(sensitiveRes.data?.[0] || {}) };
             setProfileData(data);
             setProfileDetails({
                 introduction: data.introduction || '',
