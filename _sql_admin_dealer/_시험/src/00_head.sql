@@ -35,6 +35,10 @@ DECLARE
   v_apply_23 boolean := false;
   v_apply_24 boolean := false;
   v_apply_25 boolean := false;
+  v_apply_26 boolean := false;
+  v_prereg_alert_was_enabled boolean := false;
+  v_funeral_alert_def text;
+  v_profile_alert_def text;
   v_dealer uuid;
   v_other_dealer uuid;
   v_card_code text;
@@ -43,9 +47,19 @@ DECLARE
 BEGIN
   ALTER TABLE public.funeral_cases DISABLE TRIGGER "funeral-case-alert";
   ALTER TABLE public.profiles DISABLE TRIGGER "profile-signup-alert";
+  SELECT pg_get_triggerdef(t.oid) INTO v_funeral_alert_def
+    FROM pg_trigger t WHERE t.tgrelid='public.funeral_cases'::regclass AND t.tgname='funeral-case-alert' AND NOT t.tgisinternal;
+  SELECT pg_get_triggerdef(t.oid) INTO v_profile_alert_def
+    FROM pg_trigger t WHERE t.tgrelid='public.profiles'::regclass AND t.tgname='profile-signup-alert' AND NOT t.tgisinternal;
+  IF to_regclass('public.pre_registrations') IS NOT NULL AND EXISTS (
+    SELECT 1 FROM pg_trigger t WHERE t.tgrelid='public.pre_registrations'::regclass AND t.tgname='pre-registration-dealer-alert' AND NOT t.tgisinternal
+  ) THEN
+    ALTER TABLE public.pre_registrations DISABLE TRIGGER "pre-registration-dealer-alert";
+  END IF;
   SELECT string_agg(c.relname || ':' || t.tgname || '=' || t.tgenabled::text, ', ' ORDER BY c.relname)
     INTO v_detail
   FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
   WHERE NOT t.tgisinternal AND (c.oid='public.funeral_cases'::regclass AND t.tgname='funeral-case-alert'
-    OR c.oid='public.profiles'::regclass AND t.tgname='profile-signup-alert');
+    OR c.oid='public.profiles'::regclass AND t.tgname='profile-signup-alert'
+    OR c.oid=to_regclass('public.pre_registrations') AND t.tgname='pre-registration-dealer-alert');
   v_result := v_result || E'\n[INFO] alert triggers disabled and recorded: ' || coalesce(v_detail, 'not found');

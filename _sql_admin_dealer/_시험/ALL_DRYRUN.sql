@@ -35,6 +35,10 @@ DECLARE
   v_apply_23 boolean := false;
   v_apply_24 boolean := false;
   v_apply_25 boolean := false;
+  v_apply_26 boolean := false;
+  v_prereg_alert_was_enabled boolean := false;
+  v_funeral_alert_def text;
+  v_profile_alert_def text;
   v_dealer uuid;
   v_other_dealer uuid;
   v_card_code text;
@@ -43,11 +47,21 @@ DECLARE
 BEGIN
   ALTER TABLE public.funeral_cases DISABLE TRIGGER "funeral-case-alert";
   ALTER TABLE public.profiles DISABLE TRIGGER "profile-signup-alert";
+  SELECT pg_get_triggerdef(t.oid) INTO v_funeral_alert_def
+    FROM pg_trigger t WHERE t.tgrelid='public.funeral_cases'::regclass AND t.tgname='funeral-case-alert' AND NOT t.tgisinternal;
+  SELECT pg_get_triggerdef(t.oid) INTO v_profile_alert_def
+    FROM pg_trigger t WHERE t.tgrelid='public.profiles'::regclass AND t.tgname='profile-signup-alert' AND NOT t.tgisinternal;
+  IF to_regclass('public.pre_registrations') IS NOT NULL AND EXISTS (
+    SELECT 1 FROM pg_trigger t WHERE t.tgrelid='public.pre_registrations'::regclass AND t.tgname='pre-registration-dealer-alert' AND NOT t.tgisinternal
+  ) THEN
+    ALTER TABLE public.pre_registrations DISABLE TRIGGER "pre-registration-dealer-alert";
+  END IF;
   SELECT string_agg(c.relname || ':' || t.tgname || '=' || t.tgenabled::text, ', ' ORDER BY c.relname)
     INTO v_detail
   FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
   WHERE NOT t.tgisinternal AND (c.oid='public.funeral_cases'::regclass AND t.tgname='funeral-case-alert'
-    OR c.oid='public.profiles'::regclass AND t.tgname='profile-signup-alert');
+    OR c.oid='public.profiles'::regclass AND t.tgname='profile-signup-alert'
+    OR c.oid=to_regclass('public.pre_registrations') AND t.tgname='pre-registration-dealer-alert');
   v_result := v_result || E'\n[INFO] alert triggers disabled and recorded: ' || coalesce(v_detail, 'not found');
 
 -- Every include is a savepoint-like PL/pgSQL sub-block.  A failed prerequisite leaves its flag false.
@@ -2190,6 +2204,62 @@ END; $$;
 [PASS] apply P14 leader document requirement';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P14: ' || SQLERRM; END;
+BEGIN
+-- P17 가족 안심 등록: 담당 딜러 문자 알림
+-- 적용 순서: (1) send-alert Edge Function을 먼저 배포하고 (2) 이 SQL(설치 함수 생성)을 실행한 뒤 (3) SELECT public.p17_install_prereg_dealer_alert(); 를 실행하고 (4) 설치 함수를 DROP 한다.
+-- 되돌리기: DROP TRIGGER IF EXISTS "pre-registration-dealer-alert" ON public.pre_registrations;
+--            DELETE FROM public.system_config WHERE key IN ('sms_alert_prereg_dealer','sms_alert_prereg_hourly_cap');
+-- 이 트리거는 기존 funeral-case-alert의 URL/Authorization 헤더/timeout 인자를 그대로 복제한다.
+-- 따라서 운영에서 기존 웹훅 인증 방식이 바뀌어도 이 파일에 키를 복사해 두지 않는다.
+
+INSERT INTO public.system_config(key, value) VALUES
+  ('sms_alert_prereg_dealer', 'true'),
+  ('sms_alert_prereg_hourly_cap', '10')
+ON CONFLICT (key) DO NOTHING;
+
+CREATE OR REPLACE FUNCTION public.p17_install_prereg_dealer_alert()
+RETURNS void LANGUAGE plpgsql AS $p17$
+DECLARE
+  v_http_args text;
+  v_def text;
+BEGIN
+  -- 운영 기준선의 실제 webhook 정의에서 http_request 인자를 복제한다.
+  -- (URL, Authorization 헤더, params, timeout) 모두 기존 funeral 알림과 같아야 한다.
+  SELECT pg_get_triggerdef(t.oid)
+    INTO v_def
+  FROM pg_trigger t
+  WHERE t.tgrelid = 'public.funeral_cases'::regclass
+    AND t.tgname = 'funeral-case-alert'
+    AND NOT t.tgisinternal
+    AND t.tgfoid = 'supabase_functions.http_request'::regproc;
+
+  IF v_def IS NOT NULL AND position('http_request(' IN v_def) > 0 THEN
+    v_http_args := left(substr(v_def, position('http_request(' IN v_def) + length('http_request(')), -1);
+  END IF;
+
+  IF NULLIF(btrim(v_http_args),'') IS NULL THEN
+    RAISE EXCEPTION 'P17 requires public.funeral_cases trigger funeral-case-alert using supabase_functions.http_request; no trigger was changed.';
+  END IF;
+
+  DROP TRIGGER IF EXISTS "pre-registration-dealer-alert" ON public.pre_registrations;
+  EXECUTE format(
+    'CREATE TRIGGER "pre-registration-dealer-alert" AFTER INSERT ON public.pre_registrations FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request(%s)',
+    v_http_args
+  );
+END
+$p17$;
+REVOKE ALL ON FUNCTION public.p17_install_prereg_dealer_alert() FROM PUBLIC, anon, authenticated;
+-- 이 파일 실행 뒤 별도 문장으로: SELECT public.p17_install_prereg_dealer_alert();  (설치 후 DROP FUNCTION public.p17_install_prereg_dealer_alert();)
+
+  PERFORM public.p17_install_prereg_dealer_alert();
+  DROP FUNCTION public.p17_install_prereg_dealer_alert(); -- same as the production procedure step 4
+  SELECT t.tgenabled='O' INTO v_prereg_alert_was_enabled
+    FROM pg_trigger t WHERE t.tgrelid='public.pre_registrations'::regclass AND t.tgname='pre-registration-dealer-alert' AND NOT t.tgisinternal;
+  ALTER TABLE public.pre_registrations DISABLE TRIGGER "pre-registration-dealer-alert";
+  v_apply_26 := true; v_result := v_result || E'
+[PASS] apply P17 pre-registration dealer SMS webhook (disabled for dryrun)';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P17: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
 -- 반드시 P1d_계좌_비공개테이블_생성_이관.sql 적용 및 대조 후 마지막에만 실행한다.
@@ -3029,6 +3099,31 @@ IF v_apply_25 THEN
     v_result:=v_result||E'\n[FAIL] P14: '||SQLERRM;
   END;
 ELSE v_result:=v_result||E'\n[SKIP] P14 | apply prerequisite missing'; END IF;
+
+-- P17: only a new pre_registrations INSERT invokes the existing authenticated
+-- webhook machinery. The trigger remains disabled throughout this dry-run, so
+-- no public HTTP/network call can be queued by the P10/P11 registration tests.
+IF v_apply_26 THEN
+  DECLARE prereg_def text; funeral_now text; profile_now text; prereg_enabled text; cfg_ok boolean;
+  BEGIN
+    SELECT pg_get_triggerdef(t.oid), t.tgenabled::text INTO prereg_def, prereg_enabled
+      FROM pg_trigger t WHERE t.tgrelid='public.pre_registrations'::regclass AND t.tgname='pre-registration-dealer-alert' AND NOT t.tgisinternal;
+    SELECT pg_get_triggerdef(t.oid) INTO funeral_now
+      FROM pg_trigger t WHERE t.tgrelid='public.funeral_cases'::regclass AND t.tgname='funeral-case-alert' AND NOT t.tgisinternal;
+    SELECT pg_get_triggerdef(t.oid) INTO profile_now
+      FROM pg_trigger t WHERE t.tgrelid='public.profiles'::regclass AND t.tgname='profile-signup-alert' AND NOT t.tgisinternal;
+    SELECT count(*)=2 INTO cfg_ok FROM public.system_config
+      WHERE (key='sms_alert_prereg_dealer' AND value='true') OR (key='sms_alert_prereg_hourly_cap' AND value ~ '^[1-9][0-9]*$');
+    IF v_prereg_alert_was_enabled AND prereg_enabled='D'
+       AND prereg_def ILIKE '%AFTER INSERT ON public.pre_registrations%'
+       AND prereg_def ILIKE '%supabase_functions.http_request%'
+       AND funeral_now=v_funeral_alert_def AND profile_now=v_profile_alert_def AND cfg_ok THEN
+      v_result:=v_result||E'\n[PASS] P17 pre-registration-only webhook exists/enabled-before-dryrun; existing alerts unchanged; dryrun trigger disabled';
+    ELSE
+      v_result:=v_result||format(E'\n[FAIL] P17 webhook/trigger invariants enabled-before=%s now=%s config=%s',v_prereg_alert_was_enabled,coalesce(prereg_enabled,'NULL'),cfg_ok);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P17 trigger static checks: '||SQLERRM; END;
+ELSE v_result:=v_result||E'\n[SKIP] P17 | apply prerequisite missing'; END IF;
 
 
 v_result := E'[SUMMARY] PASS ' || regexp_count(v_result,E'\\[PASS\\]') || ' / FAIL ' || regexp_count(v_result,E'\\[FAIL\\]') || ' / SKIP ' || regexp_count(v_result,E'\\[SKIP\\]') || E'\n' || ltrim(v_result,E'\n');

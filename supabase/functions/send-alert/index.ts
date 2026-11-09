@@ -17,6 +17,14 @@ const TEST_PHONE_DEALER = "01096751474";    // 딜러/마스터딜러 알림 →
 const TEST_PHONE_LEADER = "01056541474";    // 팀장/마스터팀장 알림 → 이 번호로
 const TEST_PHONE_ADMIN = "01052549927";    // 관리자/기타 알림 → 이 번호로
 
+// Pure on purpose: its only accepted recipient identity is the row's dealer_id.
+// Keeping this separate makes it possible to test that family/profile fields
+// can never be selected as the pre-registration SMS destination.
+export function preRegistrationDealerId(record) {
+    const dealerId = record && typeof record === 'object' ? record.dealer_id : null;
+    return typeof dealerId === 'string' && dealerId.trim().length > 0 ? dealerId : null;
+}
+
 serve(async (req) => {
     try {
         // 1. Webhook Payload 파싱
@@ -37,7 +45,8 @@ serve(async (req) => {
             .in('key', [
                 'ios_bidding_sms_only', 'all_users_bidding_sms',
                 'sms_alert_signup', 'sms_alert_funeral', 'sms_alert_emergency',
-                'sms_alert_phones', 'regional_alert_mode'
+                'sms_alert_phones', 'regional_alert_mode',
+                'sms_alert_prereg_dealer', 'sms_alert_prereg_hourly_cap'
             ]);
 
         let iosBiddingSmsOnly = true;
@@ -47,6 +56,12 @@ serve(async (req) => {
         let smsAlertEmergency = false;
         let smsAlertPhones: string[] = [];
         let regionalAlertMode = 'off';
+        // Missing switch deliberately means enabled, so a pre-existing deployment
+        // can receive the new webhook before the P17 config seed is applied.
+        let smsAlertPreregDealer = true;
+        // The P17 seed owns the default. Missing/invalid means no cap, never a
+        // hidden numeric fallback in function code.
+        let smsAlertPreregHourlyCap: number | null = null;
 
         if (configs) {
             const conf1 = configs.find(c => c.key === 'ios_bidding_sms_only');
@@ -70,6 +85,69 @@ serve(async (req) => {
             }
             const confRegional = configs.find(c => c.key === 'regional_alert_mode');
             if (confRegional && ['sido', 'sigungu'].includes(confRegional.value)) regionalAlertMode = confRegional.value;
+            const confPreregDealer = configs.find(c => c.key === 'sms_alert_prereg_dealer');
+            if (confPreregDealer) smsAlertPreregDealer = confPreregDealer.value !== 'false';
+            const confPreregCap = configs.find(c => c.key === 'sms_alert_prereg_hourly_cap');
+            if (confPreregCap && /^\d+$/.test(confPreregCap.value) && Number(confPreregCap.value) > 0) {
+                smsAlertPreregHourlyCap = Number(confPreregCap.value);
+            }
+        }
+
+        // Family registration is deliberately a stand-alone path: one row stores
+        // dealer_id from the card coupon's issued_by, and only that profile may
+        // receive the fixed, no-PII SMS. sms_alert_phones is never consulted.
+        if ((table === 'pre_registrations') && (type === 'INSERT')) {
+            const dealerId = preRegistrationDealerId(record);
+            if (!smsAlertPreregDealer || !dealerId) {
+                return new Response(JSON.stringify({ success: true, message: 'Pre-registration dealer SMS skipped' }), {
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+
+            if (smsAlertPreregHourlyCap !== null) {
+                const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+                const { data: recentRows, error: capError } = await supabase
+                    .from('pre_registrations')
+                    .select('id')
+                    .eq('dealer_id', dealerId)
+                    .gte('created_at', oneHourAgo);
+                if (capError) {
+                    console.error('[Webhook Alert] pre-registration cap lookup failed; skipping SMS:', capError);
+                    return new Response(JSON.stringify({ success: true, message: 'Pre-registration dealer SMS skipped: cap lookup failed' }), {
+                        headers: { "Content-Type": "application/json" }
+                    });
+                }
+                if ((recentRows?.length ?? 0) > smsAlertPreregHourlyCap) {
+                    console.log('[Webhook Alert] pre-registration dealer SMS skipped: hourly cap reached');
+                    return new Response(JSON.stringify({ success: true, message: 'Pre-registration dealer SMS skipped: hourly cap' }), {
+                        headers: { "Content-Type": "application/json" }
+                    });
+                }
+            }
+
+            const { data: dealer, error: dealerError } = await supabase
+                .from('profiles')
+                .select('id, phone, name')
+                .eq('id', dealerId)
+                .maybeSingle();
+            if (dealerError) throw dealerError;
+            if (!dealer?.phone) {
+                console.log('[Webhook Alert] pre-registration dealer SMS skipped: dealer phone missing');
+                return new Response(JSON.stringify({ success: true, message: 'Pre-registration dealer SMS skipped: dealer phone missing' }), {
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+
+            await sendNaverSms({
+                phone: dealer.phone,
+                name: dealer.name || '담당 딜러',
+                title: '가족 안심 등록',
+                content: '[10년의약속] 가족 안심 등록이 들어왔습니다. 확인하세요.'
+            });
+            console.log('[Webhook Alert] pre-registration dealer SMS sent to one dealer');
+            return new Response(JSON.stringify({ success: true, message: 'Pre-registration dealer SMS sent: 1' }), {
+                headers: { "Content-Type": "application/json" }
+            });
         }
 
         // 3. 알림 대상자 조회 (역할 포함)

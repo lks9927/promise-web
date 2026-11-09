@@ -116,6 +116,17 @@ BEGIN
 [PASS] apply P14 leader document requirement';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P14: ' || SQLERRM; END;
+BEGIN
+  -- @@INCLUDE ../../P17_예비등록_딜러문자.sql
+  PERFORM public.p17_install_prereg_dealer_alert();
+  DROP FUNCTION public.p17_install_prereg_dealer_alert(); -- same as the production procedure step 4
+  SELECT t.tgenabled='O' INTO v_prereg_alert_was_enabled
+    FROM pg_trigger t WHERE t.tgrelid='public.pre_registrations'::regclass AND t.tgname='pre-registration-dealer-alert' AND NOT t.tgisinternal;
+  ALTER TABLE public.pre_registrations DISABLE TRIGGER "pre-registration-dealer-alert";
+  v_apply_26 := true; v_result := v_result || E'
+[PASS] apply P17 pre-registration dealer SMS webhook (disabled for dryrun)';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P17: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
   -- @@INCLUDE ../../P1d_계좌_기존열_제거.sql

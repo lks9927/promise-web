@@ -830,3 +830,28 @@ IF v_apply_25 THEN
   END;
 ELSE v_result:=v_result||E'\n[SKIP] P14 | apply prerequisite missing'; END IF;
 
+-- P17: only a new pre_registrations INSERT invokes the existing authenticated
+-- webhook machinery. The trigger remains disabled throughout this dry-run, so
+-- no public HTTP/network call can be queued by the P10/P11 registration tests.
+IF v_apply_26 THEN
+  DECLARE prereg_def text; funeral_now text; profile_now text; prereg_enabled text; cfg_ok boolean;
+  BEGIN
+    SELECT pg_get_triggerdef(t.oid), t.tgenabled::text INTO prereg_def, prereg_enabled
+      FROM pg_trigger t WHERE t.tgrelid='public.pre_registrations'::regclass AND t.tgname='pre-registration-dealer-alert' AND NOT t.tgisinternal;
+    SELECT pg_get_triggerdef(t.oid) INTO funeral_now
+      FROM pg_trigger t WHERE t.tgrelid='public.funeral_cases'::regclass AND t.tgname='funeral-case-alert' AND NOT t.tgisinternal;
+    SELECT pg_get_triggerdef(t.oid) INTO profile_now
+      FROM pg_trigger t WHERE t.tgrelid='public.profiles'::regclass AND t.tgname='profile-signup-alert' AND NOT t.tgisinternal;
+    SELECT count(*)=2 INTO cfg_ok FROM public.system_config
+      WHERE (key='sms_alert_prereg_dealer' AND value='true') OR (key='sms_alert_prereg_hourly_cap' AND value ~ '^[1-9][0-9]*$');
+    IF v_prereg_alert_was_enabled AND prereg_enabled='D'
+       AND prereg_def ILIKE '%AFTER INSERT ON public.pre_registrations%'
+       AND prereg_def ILIKE '%supabase_functions.http_request%'
+       AND funeral_now=v_funeral_alert_def AND profile_now=v_profile_alert_def AND cfg_ok THEN
+      v_result:=v_result||E'\n[PASS] P17 pre-registration-only webhook exists/enabled-before-dryrun; existing alerts unchanged; dryrun trigger disabled';
+    ELSE
+      v_result:=v_result||format(E'\n[FAIL] P17 webhook/trigger invariants enabled-before=%s now=%s config=%s',v_prereg_alert_was_enabled,coalesce(prereg_enabled,'NULL'),cfg_ok);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P17 trigger static checks: '||SQLERRM; END;
+ELSE v_result:=v_result||E'\n[SKIP] P17 | apply prerequisite missing'; END IF;
+
