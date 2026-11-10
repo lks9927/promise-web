@@ -139,6 +139,18 @@ BEGIN
 [PASS] apply P15 extra sales and fee settlements';
 EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
 [FAIL] apply P15: ' || SQLERRM; END;
+BEGIN
+  -- @@INCLUDE ../../P16_웹푸시_구독열.sql
+  v_apply_29 := true; v_result := v_result || E'
+[PASS] apply P16 push subscription column';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P16: ' || SQLERRM; END;
+BEGIN
+  -- @@INCLUDE ../../P19_알림중복수정.sql
+  v_apply_30 := true; v_result := v_result || E'
+[PASS] apply P19 private-case fee without UPDATE';
+EXCEPTION WHEN OTHERS THEN v_result := v_result || E'
+[FAIL] apply P19: ' || SQLERRM; END;
 -- P1d DROP is intentionally last: the final exception rolls this DDL back.
 BEGIN
   -- @@INCLUDE ../../P1d_계좌_기존열_제거.sql

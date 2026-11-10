@@ -99,15 +99,24 @@ export default async function handler(req, res) {
         );
 
         // --- Validate body ---
-        const { subscriptions, title, body, url } = req.body || {};
+        const { userIds, title, body, url } = req.body || {};
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-        if (!Array.isArray(subscriptions) || subscriptions.length === 0 || subscriptions.length > 100) {
-            return res.status(400).json({ error: 'Invalid subscriptions' });
+        if (!Array.isArray(userIds) || userIds.length === 0 || userIds.length > 100 || !userIds.every(id => typeof id === 'string' && UUID_RE.test(id))) {
+            return res.status(400).json({ error: 'Invalid userIds' });
         }
 
-        const validSubs = subscriptions.filter(validateSubscription);
+        // 구독 정보는 서비스 롤로만 읽는다(profiles.push_subscription 은 일반 사용자에게 읽기 권한이 없다).
+        const { data: subRows, error: subError } = await supabaseAdmin
+            .from('profiles')
+            .select('id, push_subscription')
+            .in('id', userIds)
+            .not('push_subscription', 'is', null);
+        if (subError) throw subError;
+
+        const validSubs = (subRows || []).map(r => r.push_subscription).filter(validateSubscription);
         if (validSubs.length === 0) {
-            return res.status(400).json({ error: 'Invalid subscriptions' });
+            return res.status(200).json({ succeeded: 0, failed: 0, skipped: 'no subscriptions' });
         }
 
         const safeTitle = typeof title === 'string' ? title.trim().slice(0, 100) : '10년의 약속';

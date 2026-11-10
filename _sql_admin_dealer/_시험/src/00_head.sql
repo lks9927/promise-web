@@ -38,6 +38,8 @@ DECLARE
   v_apply_26 boolean := false;
   v_apply_27 boolean := false;
   v_apply_28 boolean := false;
+  v_apply_29 boolean := false;
+  v_apply_30 boolean := false;
   v_prereg_alert_was_enabled boolean := false;
   v_funeral_alert_def text;
   v_profile_alert_def text;

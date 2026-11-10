@@ -1588,3 +1588,100 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
 ELSE
   v_result := v_result || E'\n[SKIP] P15 | apply/customer prerequisite missing';
 END IF;
+
+-- P12 (app select strings): every role can read the 12 public columns used by the app; SELECT * and sensitive columns are denied.
+IF v_apply_24 THEN
+  DECLARE a uuid; d uuid; l uuid; c uuid; who uuid; n bigint; denied_star boolean; denied_email boolean; denied_fcm boolean; ok boolean := true; why text := '';
+  BEGIN
+    SELECT id INTO a FROM public.profiles WHERE role='admin' ORDER BY id LIMIT 1;
+    SELECT id INTO d FROM public.profiles WHERE role='dealer' ORDER BY id LIMIT 1;
+    SELECT id INTO l FROM public.profiles WHERE role='leader' ORDER BY id LIMIT 1;
+    SELECT id INTO c FROM public.profiles WHERE role='customer' ORDER BY id LIMIT 1;
+    IF a IS NULL OR d IS NULL OR l IS NULL OR c IS NULL THEN v_result:=v_result||E'\n[SKIP] P12 app select strings | need admin, dealer, leader, customer';
+    ELSE
+      FOREACH who IN ARRAY ARRAY[a,d,l,c] LOOP
+        denied_star:=false; denied_email:=false; denied_fcm:=false;
+        SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',who::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', who::text, true);
+        EXECUTE format('SELECT count(*) FROM (SELECT id, name, phone, role, avatar_url, introduction, experience_years, certificate_url, gallery_urls, business_license_url, has_business, created_at FROM public.profiles WHERE id=%L) x', who) INTO n;
+        IF n<>1 THEN ok:=false; why:=why||' own_row('||who||')='||n; END IF;
+        EXECUTE format('SELECT count(*) FROM (SELECT id, name, role FROM public.profiles WHERE id=%L UNION ALL SELECT id, phone, role FROM public.profiles WHERE id=%L) x', who, who) INTO n;
+        IF n<>2 THEN ok:=false; why:=why||' short_lists('||who||')='||n; END IF;
+        BEGIN EXECUTE format('SELECT * FROM public.profiles WHERE id=%L', who); EXCEPTION WHEN insufficient_privilege THEN denied_star:=true; END;
+        BEGIN EXECUTE format('SELECT id FROM public.profiles WHERE email=%L', 'x@x'); EXCEPTION WHEN insufficient_privilege THEN denied_email:=true; END;
+        BEGIN EXECUTE format('SELECT id FROM public.profiles WHERE fcm_token IS NOT NULL AND id=%L', who); EXCEPTION WHEN insufficient_privilege THEN denied_fcm:=true; END;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+        IF NOT (denied_star AND denied_email AND denied_fcm) THEN ok:=false; why:=why||' denial('||who||':'||denied_star||','||denied_email||','||denied_fcm||')'; END IF;
+      END LOOP;
+      IF ok THEN v_result:=v_result||E'\n[PASS] P12 app select strings: 12 public columns readable by admin/dealer/leader/customer, SELECT * / email / fcm_token denied';
+      ELSE v_result:=v_result||E'\n[FAIL] P12 app select strings:'||why; END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    v_result:=v_result||E'\n[FAIL] P12 app select strings: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P12 app select strings | apply prerequisite missing'; END IF;
+
+-- P16: push_subscription is writable by the owner only (RLS) and never readable by authenticated users.
+IF v_apply_29 THEN
+  DECLARE l uuid; o uuid; got jsonb; upd_n int; denied_sel boolean := false; ok boolean := true; why text := '';
+    sub jsonb := '{"endpoint":"https://fcm.googleapis.com/fcm/send/p16test","keys":{"p256dh":"p","auth":"a"}}'::jsonb;
+  BEGIN
+    SELECT id INTO l FROM public.profiles WHERE role='leader' ORDER BY id LIMIT 1;
+    SELECT id INTO o FROM public.profiles WHERE role='dealer' ORDER BY id LIMIT 1;
+    IF l IS NULL OR o IS NULL THEN v_result:=v_result||E'\n[SKIP] P16 | need leader and dealer';
+    ELSE
+      IF NOT has_column_privilege('authenticated','public.profiles','push_subscription','UPDATE') THEN ok:=false; why:=why||' no_update_grant'; END IF;
+      IF has_column_privilege('authenticated','public.profiles','push_subscription','SELECT') THEN ok:=false; why:=why||' select_granted'; END IF;
+      IF has_column_privilege('anon','public.profiles','push_subscription','SELECT') OR has_column_privilege('anon','public.profiles','push_subscription','UPDATE') THEN ok:=false; why:=why||' anon_access'; END IF;
+      SET LOCAL ROLE authenticated; PERFORM set_config('request.jwt.claims', json_build_object('sub',l::text,'role','authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', l::text, true);
+      UPDATE public.profiles SET push_subscription=sub WHERE id=l; GET DIAGNOSTICS upd_n = ROW_COUNT;
+      IF upd_n<>1 THEN ok:=false; why:=why||' own_update_rows='||upd_n; END IF;
+      UPDATE public.profiles SET push_subscription='{"hack":1}'::jsonb WHERE id=o; GET DIAGNOSTICS upd_n = ROW_COUNT;
+      IF upd_n<>0 THEN ok:=false; why:=why||' other_update_rows='||upd_n; END IF;
+      BEGIN PERFORM push_subscription FROM public.profiles WHERE id=l; EXCEPTION WHEN insufficient_privilege THEN denied_sel:=true; END;
+      IF NOT denied_sel THEN ok:=false; why:=why||' select_not_denied'; END IF;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      SELECT push_subscription INTO got FROM public.profiles WHERE id=l;
+      IF got IS DISTINCT FROM sub THEN ok:=false; why:=why||' stored_value_mismatch'; END IF;
+      SELECT push_subscription INTO got FROM public.profiles WHERE id=o;
+      IF got IS NOT NULL THEN ok:=false; why:=why||' other_row_changed'; END IF;
+      IF ok THEN v_result:=v_result||E'\n[PASS] P16 push_subscription: owner update works, other row untouched, select denied for authenticated and anon';
+      ELSE v_result:=v_result||E'\n[FAIL] P16:'||why; END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+    v_result:=v_result||E'\n[FAIL] P16: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P16 | apply prerequisite missing'; END IF;
+
+-- P19: inserting a private case with a positive leader fee must not UPDATE funeral_cases (that UPDATE re-fired the alert webhook).
+IF v_apply_30 AND v_customer IS NOT NULL THEN
+  DECLARE lc uuid; c0 uuid; c1 uuid; n0 int; n1 int; u1 int; s1 int; amt int; ok boolean := true; why text := '';
+  BEGIN
+    SELECT pa.user_id INTO lc FROM public.partners pa JOIN public.profiles pr ON pr.id=pa.user_id WHERE pa.status='approved' AND pr.role='leader' ORDER BY pa.user_id LIMIT 1;
+    IF lc IS NULL THEN v_result:=v_result||E'\n[SKIP] P19 | need approved leader';
+    ELSE
+      CREATE OR REPLACE FUNCTION public.p19_probe() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN PERFORM set_config('p19.upd', (coalesce(nullif(current_setting('p19.upd', true),''),'0')::int+1)::text, true); RETURN NEW; END $f$;
+      CREATE TRIGGER p19_probe_trg AFTER UPDATE ON public.funeral_cases FOR EACH ROW EXECUTE FUNCTION public.p19_probe();
+      UPDATE public.commission_policies SET team_leader_fee=0 WHERE id=1;
+      PERFORM set_config('p19.upd','0',true);
+      INSERT INTO public.funeral_cases(customer_id,team_leader_id,status,location,package_name,is_private) VALUES(v_customer,lc,'in_progress','P19 base','기본형',true) RETURNING id INTO c0;
+      n0 := current_setting('p19.upd')::int;
+      UPDATE public.commission_policies SET team_leader_fee=98765 WHERE id=1;
+      PERFORM set_config('p19.upd','0',true);
+      INSERT INTO public.funeral_cases(customer_id,team_leader_id,status,location,package_name,is_private) VALUES(v_customer,lc,'in_progress','P19 fee','기본형',true) RETURNING id INTO c1;
+      n1 := current_setting('p19.upd')::int;
+      IF n1<>n0 THEN ok:=false; why:=why||' extra_updates='||(n1-n0); END IF;
+      SELECT usage_fee INTO u1 FROM public.funeral_cases WHERE id=c1;
+      IF u1 IS DISTINCT FROM 98765 THEN ok:=false; why:=why||' usage_fee='||coalesce(u1::text,'null'); END IF;
+      SELECT count(*), coalesce(max(amount),0) INTO s1, amt FROM public.settlements WHERE case_id=c1 AND type='usage_fee_remittance' AND recipient_id=lc AND status='draft' AND base_amount=ROUND(98765/1.1) AND tax_amount=98765-ROUND(98765/1.1) AND net_amount=98765;
+      IF s1<>1 OR amt<>98765 THEN ok:=false; why:=why||' settlement_rows='||s1||'/'||amt; END IF;
+      IF (SELECT count(*) FROM public.settlements WHERE case_id=c0)<>0 THEN ok:=false; why:=why||' zero_fee_has_rows'; END IF;
+      DROP TRIGGER p19_probe_trg ON public.funeral_cases;
+      DROP FUNCTION public.p19_probe();
+      IF ok THEN v_result:=v_result||E'\n[PASS] P19 private-case fee: no extra funeral_cases UPDATE, usage_fee and draft settlement exact, zero fee creates nothing';
+      ELSE v_result:=v_result||E'\n[FAIL] P19:'||why; END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN v_result:=v_result||E'\n[FAIL] P19: '||SQLERRM;
+  END;
+ELSE v_result:=v_result||E'\n[SKIP] P19 | apply/customer prerequisite missing'; END IF;

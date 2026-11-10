@@ -67,35 +67,12 @@ export async function registerPushSubscription(userId) {
 }
 
 /**
- * 대상 유저들의 push_subscription 가져오기
- */
-export async function fetchPushSubscriptions(userIds) {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('id, push_subscription')
-        .in('id', userIds)
-        .not('push_subscription', 'is', null);
-
-    if (error) {
-        console.error('[Push] 구독 조회 실패:', error);
-        return [];
-    }
-
-    return data
-        .filter(p => p.push_subscription)
-        .map(p => p.push_subscription);
-}
-
-/**
  * Web Push 발송 (Vercel API 통해서)
  */
 export async function sendWebPush(userIds, title, body, url = '/') {
     try {
-        const subscriptions = await fetchPushSubscriptions(userIds);
-        if (subscriptions.length === 0) {
-            console.log('[Push] 구독자 없음 - 스킵');
-            return;
-        }
+        // 구독 정보(push_subscription)는 다른 사용자가 읽을 수 없다. 서버(/api/send-push)가 userIds 로 직접 조회한다.
+        if (!Array.isArray(userIds) || userIds.length === 0) return;
 
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
@@ -109,7 +86,7 @@ export async function sendWebPush(userIds, title, body, url = '/') {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${session.access_token}`,
             },
-            body: JSON.stringify({ subscriptions, title, body, url }),
+            body: JSON.stringify({ userIds, title, body, url }),
         });
 
         const result = await res.json();
