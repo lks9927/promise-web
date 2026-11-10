@@ -19,7 +19,7 @@ export default function PackagePanel({ supabase, isReadonly }) {
             setLoading(true);
             const { data, error } = await supabase
                 .from('custom_packages')
-                .select('*, profiles:team_leader_id(name, phone, grade)')
+                .select('*, profiles:team_leader_id(name, phone)')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -139,7 +139,7 @@ export default function PackagePanel({ supabase, isReadonly }) {
                                         
                                         <div className="flex items-center gap-3 mt-3 text-sm">
                                             <div className="text-gray-600 bg-gray-50 px-2 py-1 rounded w-fit text-xs font-medium">
-                                                제안자: <strong>{pkg.profiles?.name}</strong> ({pkg.profiles?.grade})
+                                                제안자: <strong>{pkg.profiles?.name}</strong>
                                             </div>
                                         </div>
                                     </div>
