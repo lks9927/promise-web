@@ -154,6 +154,105 @@ function ProgressPipeline({ status, caseStatus }) {
     );
 }
 
+// ─── 추가 매출 변경 기록 컴포넌트 (테이블 없을 때 안전 폴백) ────
+function CaseExtraSalesLogsSection({ caseId }) {
+    const [logs, setLogs] = useState([]);
+
+    useEffect(() => {
+        if (!caseId) return;
+        const fetchLogs = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('additional_income_item_logs')
+                    .select(`
+                        id,
+                        item_id,
+                        action,
+                        old_row,
+                        new_row,
+                        reason,
+                        changed_at,
+                        profiles:actor_id ( id, name, role )
+                    `)
+                    .eq('case_id', caseId)
+                    .order('changed_at', { ascending: false });
+                if (!error && data) {
+                    setLogs(data);
+                }
+            } catch {
+                // additional_income_item_logs 테이블이 없으면 조용히 숨김
+                setLogs([]);
+            }
+        };
+        fetchLogs();
+    }, [caseId]);
+
+    if (!logs || logs.length === 0) return null;
+
+    const actionBadge = {
+        'create': { label: '등록', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+        'cancel': { label: '취소', cls: 'bg-red-100 text-red-700 border-red-200' },
+        'restore': { label: '되살림', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+        'update': { label: '수정', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+    };
+
+    return (
+        <div className="mt-3 bg-white rounded-xl border border-gray-200 p-3.5 space-y-2">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                    <span className="w-1.5 h-3.5 bg-indigo-500 rounded-full inline-block"></span>
+                    추가 매출 변경 기록
+                </span>
+                <span className="text-[10px] text-gray-400 font-medium">총 {logs.length}건</span>
+            </div>
+            <div className="divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                {logs.map(log => {
+                    const badge = actionBadge[log.action] || { label: log.action, cls: 'bg-gray-100 text-gray-700 border-gray-200' };
+                    const itemName = log.new_row?.item_name || log.old_row?.item_name || '품목';
+                    const oldPrice = log.old_row ? ((log.old_row.unit_price || 0) * (log.old_row.quantity || 1)) : null;
+                    const newPrice = log.new_row ? ((log.new_row.unit_price || 0) * (log.new_row.quantity || 1)) : null;
+
+                    return (
+                        <div key={log.id} className="py-2 text-[11px] space-y-0.5">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${badge.cls}`}>
+                                        {badge.label}
+                                    </span>
+                                    <span className="font-bold text-gray-800">{itemName}</span>
+                                    <span className="text-gray-400 text-[10px]">by {log.profiles?.name || '담당자'}</span>
+                                </div>
+                                <span className="text-[10px] text-gray-400 font-mono">
+                                    {new Date(log.changed_at).toLocaleString()}
+                                </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-gray-600 pl-0.5">
+                                {log.action === 'create' && newPrice != null && (
+                                    <span>등록: <strong>₩{newPrice.toLocaleString()}</strong> ({log.new_row.quantity || 1}개)</span>
+                                )}
+                                {log.action === 'cancel' && oldPrice != null && (
+                                    <span>취소: <strong className="text-red-600">₩{oldPrice.toLocaleString()}</strong> ({log.old_row.quantity || 1}개)</span>
+                                )}
+                                {log.action === 'restore' && newPrice != null && (
+                                    <span>되살림: <strong className="text-emerald-600">₩{newPrice.toLocaleString()}</strong> ({log.new_row.quantity || 1}개)</span>
+                                )}
+                                {log.action === 'update' && oldPrice != null && newPrice != null && (
+                                    <span>변경: ₩{oldPrice.toLocaleString()} → <strong>₩{newPrice.toLocaleString()}</strong></span>
+                                )}
+                                {log.reason && (
+                                    <span className="text-red-700 bg-red-50 px-1 rounded border border-red-100">
+                                        사유: {log.reason}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 
 export default function SettlementManager() {
     const [settlements, setSettlements] = useState([]);
@@ -1024,6 +1123,7 @@ export default function SettlementManager() {
                                                         </div>
                                                     ))}
                                                 </div>
+                                                <CaseExtraSalesLogsSection caseId={caseId} />
                                             </div>
                                         )}
                                     </div>

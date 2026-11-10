@@ -1,7 +1,12 @@
--- P15 추가 매출 등록과 수수료 정산 (2026-11-09)
--- 목적: 장례 진행 중 상주 요청에 따른 추가 매출 항목 등록/취소, 정책별 수수료(extra_sales_fee) 자동 산정/정산 행 연동,
---       장례 종료 시 잠금, 비공개 사진 버킷(case-extra-photos) 구축.
+-- P15 추가 매출 등록과 수수료 정산 (2026-11-09, 보완)
+-- 목적: 장례 진행 중 및 정산 대기(team_settling) 중 상주 요청에 따른 추가 매출 항목 등록/취소,
+--       정책별 수수료(extra_sales_fee) 자동 산정/정산 행 연동(상태 유지 및 신규 생성 시 상태 분기),
+--       본사 입금 확인(hq_check) 전까지 등록·취소 허용, 변경 이력(additional_income_item_logs) 기록,
+--       취소 사유(cancel_reason) 및 취소자(cancelled_by) 관리, 비공개 사진 버킷(case-extra-photos) 구축.
 -- 되돌리기:
+--   DROP TRIGGER IF EXISTS trg_additional_income_log ON public.additional_income_items;
+--   DROP FUNCTION IF EXISTS public.log_additional_income_item();
+--   DROP TABLE IF EXISTS public.additional_income_item_logs CASCADE;
 --   DROP TRIGGER IF EXISTS trg_lock_extra_sales_on_team_settling ON public.funeral_cases;
 --   DROP FUNCTION IF EXISTS public.lock_extra_sales_on_team_settling();
 --   DROP TRIGGER IF EXISTS trg_additional_income_sync ON public.additional_income_items;
@@ -14,9 +19,12 @@
 --   DROP POLICY IF EXISTS case_extra_photos_update ON storage.objects;
 --   DROP POLICY IF EXISTS case_extra_photos_select ON storage.objects;
 --   DROP POLICY IF EXISTS case_extra_photos_insert ON storage.objects;
+--   DROP POLICY IF EXISTS additional_income_items_delete ON public.additional_income_items;
 --   DROP POLICY IF EXISTS additional_income_items_update ON public.additional_income_items;
 --   DROP POLICY IF EXISTS additional_income_items_insert ON public.additional_income_items;
 --   DROP POLICY IF EXISTS additional_income_items_select ON public.additional_income_items;
+--   ALTER TABLE public.additional_income_items DROP COLUMN IF EXISTS cancelled_by;
+--   ALTER TABLE public.additional_income_items DROP COLUMN IF EXISTS cancel_reason;
 --   ALTER TABLE public.commission_policies DROP COLUMN IF EXISTS extra_sales_fee_rate;
 --   ALTER TABLE public.settlements DROP CONSTRAINT IF EXISTS settlements_type_check;
 --   ALTER TABLE public.settlements ADD CONSTRAINT settlements_type_check CHECK (type IN (
@@ -55,7 +63,9 @@ ALTER TABLE public.additional_income_items
   ADD COLUMN IF NOT EXISTS photo_urls text[] NOT NULL DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS is_cancelled boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS cancelled_at timestamptz,
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS cancel_reason text,
+  ADD COLUMN IF NOT EXISTS cancelled_by uuid REFERENCES public.profiles(id);
 
 ALTER TABLE public.additional_income_items
   DROP CONSTRAINT IF EXISTS chk_additional_income_items_desc_len,
@@ -77,7 +87,39 @@ ALTER TABLE public.additional_income_items
   ADD CONSTRAINT chk_additional_income_items_price
     CHECK (unit_price >= 0);
 
--- 3. settlements 테이블의 type CHECK 제약에 extra_sales_fee 추가 (기존 목록 완전 보존)
+-- 3. 추가 매출 변경 이력 테이블 (additional_income_item_logs)
+CREATE TABLE IF NOT EXISTS public.additional_income_item_logs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    item_id uuid NOT NULL,
+    case_id uuid NOT NULL,
+    action text NOT NULL CHECK (action IN ('create','update','cancel','restore')),
+    old_row jsonb,
+    new_row jsonb,
+    actor_id uuid DEFAULT auth.uid() REFERENCES public.profiles(id),
+    reason text,
+    changed_at timestamptz DEFAULT clock_timestamp()
+);
+
+-- RLS 활성화 및 권한 설정
+ALTER TABLE public.additional_income_item_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS additional_income_item_logs_select ON public.additional_income_item_logs;
+CREATE POLICY additional_income_item_logs_select ON public.additional_income_item_logs
+FOR SELECT TO authenticated
+USING (
+  public.is_admin()
+  OR EXISTS (
+    SELECT 1 FROM public.funeral_cases fc
+    WHERE fc.id = additional_income_item_logs.case_id
+      AND fc.team_leader_id = auth.uid()
+  )
+);
+
+-- 직접 변경 권한 회수 (오직 트리거로만 작성)
+REVOKE ALL ON public.additional_income_item_logs FROM anon, public, authenticated;
+GRANT SELECT ON public.additional_income_item_logs TO authenticated;
+
+-- 4. settlements 테이블의 type CHECK 제약에 extra_sales_fee 추가 (기존 목록 완전 보존)
 ALTER TABLE public.settlements DROP CONSTRAINT IF EXISTS settlements_type_check;
 ALTER TABLE public.settlements ADD CONSTRAINT settlements_type_check
 CHECK (type IN (
@@ -93,7 +135,7 @@ CHECK (type IN (
   'extra_sales_fee'
 ));
 
--- 4. 부가세 포함 수수료 분리 함수 (유일한 1.1 분리 공식 위치)
+-- 5. 부가세 포함 수수료 분리 함수 (유일한 1.1 분리 공식 위치)
 CREATE OR REPLACE FUNCTION public.extra_sales_fee_split(p_fee integer)
 RETURNS TABLE (base_amount integer, tax_amount integer)
 LANGUAGE sql
@@ -109,7 +151,7 @@ $$;
 REVOKE ALL ON FUNCTION public.extra_sales_fee_split(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.extra_sales_fee_split(integer) TO authenticated;
 
--- 5. 추가 매출 등록/수정/삭제 제한 검증 트리거 (BEFORE)
+-- 6. 추가 매출 등록/수정/삭제 제한 검증 트리거 (BEFORE)
 CREATE OR REPLACE FUNCTION public.check_additional_income_item_allowed()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -119,7 +161,7 @@ AS $$
 DECLARE
   v_case_id uuid;
   v_case_status text;
-  v_non_draft_count integer;
+  v_settlement_blocked boolean;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     -- 사건 자체가 지워지는 연쇄 삭제(ON DELETE CASCADE)는 허용하고, 사건이 남아 있는 직접 삭제만 막는다.
@@ -136,26 +178,39 @@ BEGIN
     RAISE EXCEPTION '추가 매출 항목 금액은 2,147,483,647원을 초과할 수 없습니다.' USING ERRCODE='22003';
   END IF;
 
-  -- 1. 장례 상태 확인: in_progress 일 때만 등록/수정/취소 가능
+  -- 1. 장례 상태 확인: in_progress 또는 team_settling 일 때만 허용
   SELECT fc.status INTO v_case_status
   FROM public.funeral_cases fc
   WHERE fc.id = v_case_id;
 
-  IF v_case_status IS DISTINCT FROM 'in_progress' THEN
-    RAISE EXCEPTION '장례 진행 중(in_progress) 상태에서만 추가 매출을 등록·수정·취소할 수 있습니다.';
+  IF v_case_status NOT IN ('in_progress', 'team_settling') OR v_case_status IS NULL THEN
+    RAISE EXCEPTION '본사 입금 확인 이후에는 추가 매출을 수정할 수 없습니다.';
   END IF;
 
-  -- 2. 정산 확정 여부 확인: draft 가 아닌 정산 행이 있으면 차단
-  SELECT COUNT(*) INTO v_non_draft_count
-  FROM public.settlements s
-  WHERE s.case_id = v_case_id
-    AND s.status IS DISTINCT FROM 'draft';
+  -- 2. 정산 확정 여부 확인: 이미 입금 처리 중(pending)이거나 paid/completed 이상이면 거부
+  SELECT EXISTS (
+    SELECT 1 FROM public.settlements s
+    WHERE s.case_id = v_case_id
+      AND s.status IN ('pending', 'paid', 'completed')
+  ) INTO v_settlement_blocked;
 
-  IF v_non_draft_count > 0 THEN
-    RAISE EXCEPTION '정산이 확정되어 수정할 수 없습니다.';
+  IF v_settlement_blocked THEN
+    RAISE EXCEPTION '이미 입금 처리 중이라 수정할 수 없습니다.';
   END IF;
 
-  -- 3. 생성자 및 갱신 시각 처리
+  -- 3. 취소 사유 및 취소자/복원 처리
+  IF NEW.is_cancelled = true THEN
+    IF NEW.cancel_reason IS NULL OR trim(NEW.cancel_reason) = '' THEN
+      RAISE EXCEPTION '취소 사유를 입력해 주세요.';
+    END IF;
+    IF auth.uid() IS NOT NULL THEN
+      NEW.cancelled_by := auth.uid();
+    END IF;
+    IF NEW.cancelled_at IS NULL THEN
+      NEW.cancelled_at := now();
+    END IF;
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     IF auth.uid() IS NOT NULL THEN
       NEW.created_by := auth.uid();
@@ -163,9 +218,10 @@ BEGIN
     NEW.updated_at := now();
   ELSIF TG_OP = 'UPDATE' THEN
     NEW.updated_at := now();
-    IF NEW.is_cancelled = true AND (OLD.is_cancelled = false OR OLD.is_cancelled IS NULL) THEN
-      NEW.cancelled_at := now();
-    ELSIF NEW.is_cancelled = false AND OLD.is_cancelled = true THEN
+    -- 되살림(restore): is_cancelled true -> false
+    IF NEW.is_cancelled = false AND OLD.is_cancelled = true THEN
+      NEW.cancelled_by := NULL;
+      NEW.cancel_reason := NULL;
       NEW.cancelled_at := NULL;
     END IF;
   END IF;
@@ -180,7 +236,59 @@ BEFORE INSERT OR UPDATE OR DELETE ON public.additional_income_items
 FOR EACH ROW
 EXECUTE FUNCTION public.check_additional_income_item_allowed();
 
--- 6. 추가 매출 합계 및 정산 행 자동 연동 트리거 (AFTER)
+-- 7. 추가 매출 변경 이력 기록 트리거 (AFTER)
+CREATE OR REPLACE FUNCTION public.log_additional_income_item()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_action text;
+  v_reason text;
+  v_actor_id uuid;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    v_action := 'create';
+    v_reason := NEW.cancel_reason;
+    v_actor_id := COALESCE(auth.uid(), NEW.created_by);
+
+    INSERT INTO public.additional_income_item_logs (
+      item_id, case_id, action, old_row, new_row, actor_id, reason, changed_at
+    ) VALUES (
+      NEW.id, NEW.case_id, v_action, NULL, to_jsonb(NEW), v_actor_id, v_reason, clock_timestamp()
+    );
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF OLD.is_cancelled = false AND NEW.is_cancelled = true THEN
+      v_action := 'cancel';
+      v_reason := NEW.cancel_reason;
+    ELSIF OLD.is_cancelled = true AND NEW.is_cancelled = false THEN
+      v_action := 'restore';
+      v_reason := OLD.cancel_reason;
+    ELSE
+      v_action := 'update';
+      v_reason := NEW.cancel_reason;
+    END IF;
+    v_actor_id := COALESCE(auth.uid(), NEW.cancelled_by, NEW.created_by);
+
+    INSERT INTO public.additional_income_item_logs (
+      item_id, case_id, action, old_row, new_row, actor_id, reason, changed_at
+    ) VALUES (
+      NEW.id, NEW.case_id, v_action, to_jsonb(OLD), to_jsonb(NEW), v_actor_id, v_reason, clock_timestamp()
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_additional_income_log ON public.additional_income_items;
+CREATE TRIGGER trg_additional_income_log
+AFTER INSERT OR UPDATE ON public.additional_income_items
+FOR EACH ROW
+EXECUTE FUNCTION public.log_additional_income_item();
+
+-- 8. 추가 매출 합계 및 정산 행 자동 연동 트리거 (AFTER)
 CREATE OR REPLACE FUNCTION public.sync_additional_income_case_and_settlement()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -191,12 +299,14 @@ DECLARE
   v_case_id uuid;
   v_tot integer := 0;
   v_team_leader_id uuid;
+  v_case_status text;
   v_pkg text;
   v_pol_id integer;
   v_rate numeric := 0;
   v_fee integer := 0;
   v_base integer := 0;
   v_tax integer := 0;
+  v_init_status text;
 BEGIN
   v_case_id := COALESCE(NEW.case_id, OLD.case_id);
 
@@ -213,9 +323,9 @@ BEGIN
   WHERE id = v_case_id
     AND additional_income_total IS DISTINCT FROM v_tot;
 
-  -- 담당 팀장 및 패키지 정책 확인
-  SELECT fc.team_leader_id, fc.package_name
-  INTO v_team_leader_id, v_pkg
+  -- 담당 팀장 및 패키지 정책, 사건 상태 확인
+  SELECT fc.team_leader_id, fc.package_name, fc.status
+  INTO v_team_leader_id, v_pkg, v_case_status
   FROM public.funeral_cases fc
   WHERE fc.id = v_case_id;
 
@@ -235,25 +345,32 @@ BEGIN
     SELECT s.base_amount, s.tax_amount INTO v_base, v_tax
     FROM public.extra_sales_fee_split(v_fee) s;
 
-    -- 사건 진행 중 담당 팀장이 바뀐 경우, 이전 팀장의 draft 행을 남기면 수수료가 이중 집계된다.
+    -- 사건이 이미 team_settling 상태인 경우 신규 수수료 행은 awaiting_payment 로 생성
+    IF v_case_status = 'team_settling' THEN
+      v_init_status := 'awaiting_payment';
+    ELSE
+      v_init_status := 'draft';
+    END IF;
+
+    -- 사건 진행 중 담당 팀장이 바뀐 경우, 이전 팀장의 대기/예정 행 삭제
     DELETE FROM public.settlements
     WHERE case_id = v_case_id
       AND type = 'extra_sales_fee'
       AND recipient_id IS DISTINCT FROM v_team_leader_id
-      AND status = 'draft';
+      AND status IN ('draft', 'awaiting_payment');
 
     INSERT INTO public.settlements (
       case_id, recipient_id, amount, type, status, tax_type, base_amount, tax_amount, net_amount
     ) VALUES (
-      v_case_id, v_team_leader_id, v_fee, 'extra_sales_fee', 'draft', 'vat_10', v_base, v_tax, v_fee
+      v_case_id, v_team_leader_id, v_fee, 'extra_sales_fee', v_init_status, 'vat_10', v_base, v_tax, v_fee
     )
     ON CONFLICT (case_id, recipient_id, type)
     DO UPDATE SET
       amount = EXCLUDED.amount,
       base_amount = EXCLUDED.base_amount,
       tax_amount = EXCLUDED.tax_amount,
-      net_amount = EXCLUDED.net_amount,
-      status = 'draft';
+      net_amount = EXCLUDED.net_amount;
+      -- 주의: status 는 덮어쓰지 않고 기존 행의 상태(draft 또는 awaiting_payment)를 그대로 유지한다.
   ELSE
     -- 합계가 0 이거나 전액 취소된 경우 정산 행 삭제
     DELETE FROM public.settlements
@@ -271,7 +388,7 @@ AFTER INSERT OR UPDATE OR DELETE ON public.additional_income_items
 FOR EACH ROW
 EXECUTE FUNCTION public.sync_additional_income_case_and_settlement();
 
--- 7. 장례 종료(team_settling) 전환 시 extra_sales_fee 행 잠금(awaiting_payment) 트리거
+-- 9. 장례 종료(team_settling) 전환 시 extra_sales_fee 행 잠금(awaiting_payment) 트리거
 CREATE OR REPLACE FUNCTION public.lock_extra_sales_on_team_settling()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -296,7 +413,7 @@ AFTER UPDATE OF status ON public.funeral_cases
 FOR EACH ROW
 EXECUTE FUNCTION public.lock_extra_sales_on_team_settling();
 
--- 8. 고객 전용 추가 매출 요약 조회 RPC (수수료율·본사 수수료·팀장 몫 완벽 은닉)
+-- 10. 고객 전용 추가 매출 요약 조회 RPC (수수료율·본사 수수료·팀장 몫 완벽 은닉)
 CREATE OR REPLACE FUNCTION public.get_customer_extra_sales_summary(p_case_id uuid)
 RETURNS TABLE (
   total_amount integer,
@@ -332,7 +449,7 @@ $$;
 REVOKE ALL ON FUNCTION public.get_customer_extra_sales_summary(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_customer_extra_sales_summary(uuid) TO authenticated;
 
--- 9. additional_income_items RLS 정책 재작성
+-- 11. additional_income_items RLS 정책 재작성 (team_settling 허용)
 ALTER TABLE public.additional_income_items ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Anyone can view additional_income_items" ON public.additional_income_items;
@@ -368,7 +485,7 @@ WITH CHECK (
     SELECT 1 FROM public.funeral_cases fc
     WHERE fc.id = additional_income_items.case_id
       AND fc.team_leader_id = auth.uid()
-      AND fc.status = 'in_progress'
+      AND fc.status IN ('in_progress', 'team_settling')
   )
 );
 
@@ -379,7 +496,7 @@ USING (
     SELECT 1 FROM public.funeral_cases fc
     WHERE fc.id = additional_income_items.case_id
       AND fc.team_leader_id = auth.uid()
-      AND fc.status = 'in_progress'
+      AND fc.status IN ('in_progress', 'team_settling')
   )
 )
 WITH CHECK (
@@ -387,14 +504,14 @@ WITH CHECK (
     SELECT 1 FROM public.funeral_cases fc
     WHERE fc.id = additional_income_items.case_id
       AND fc.team_leader_id = auth.uid()
-      AND fc.status = 'in_progress'
+      AND fc.status IN ('in_progress', 'team_settling')
   )
 );
 
 REVOKE ALL ON public.additional_income_items FROM anon, public;
 GRANT SELECT, INSERT, UPDATE ON public.additional_income_items TO authenticated;
 
--- 10. 비공개 사진 버킷 case-extra-photos 생성 및 RLS 정책
+-- 12. 비공개 사진 버킷 case-extra-photos 생성 및 RLS 정책 (team_settling 허용)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('case-extra-photos', 'case-extra-photos', false, 5242880,
   ARRAY['image/jpeg','image/png','image/webp'])
@@ -410,7 +527,7 @@ WITH CHECK (
     SELECT 1 FROM public.funeral_cases fc
     WHERE fc.id::text = (storage.foldername(name))[1]
       AND fc.team_leader_id = auth.uid()
-      AND fc.status = 'in_progress'
+      AND fc.status IN ('in_progress', 'team_settling')
   )
 );
 
@@ -440,7 +557,7 @@ USING (
       SELECT 1 FROM public.funeral_cases fc
       WHERE fc.id::text = (storage.foldername(name))[1]
         AND fc.team_leader_id = auth.uid()
-        AND fc.status = 'in_progress'
+        AND fc.status IN ('in_progress', 'team_settling')
     )
   )
 )
@@ -452,7 +569,7 @@ WITH CHECK (
       SELECT 1 FROM public.funeral_cases fc
       WHERE fc.id::text = (storage.foldername(name))[1]
         AND fc.team_leader_id = auth.uid()
-        AND fc.status = 'in_progress'
+        AND fc.status IN ('in_progress', 'team_settling')
     )
   )
 );
@@ -468,7 +585,7 @@ USING (
       SELECT 1 FROM public.funeral_cases fc
       WHERE fc.id::text = (storage.foldername(name))[1]
         AND fc.team_leader_id = auth.uid()
-        AND fc.status = 'in_progress'
+        AND fc.status IN ('in_progress', 'team_settling')
     )
   )
 );

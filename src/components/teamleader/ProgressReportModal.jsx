@@ -77,6 +77,8 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
     const [loadingItems, setLoadingItems] = useState(false);
     const [feeRate, setFeeRate] = useState(null);
     const [signedUrls, setSignedUrls] = useState({});
+    const [cancellingItemId, setCancellingItemId] = useState(null);
+    const [cancelReasonInput, setCancelReasonInput] = useState('');
     const photoInputRef = useRef(null);
 
     useEffect(() => {
@@ -294,18 +296,32 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
         }
     };
 
-    const handleCancelAdditionalItem = async (itemId) => {
-        if (!window.confirm('이 추가 매출 항목을 취소하시겠습니까?\n취소된 항목은 정산 합계에서 제외됩니다.')) return;
-        
+    const handleStartCancel = (itemId) => {
+        setCancellingItemId(itemId);
+        setCancelReasonInput('');
+    };
+
+    const handleConfirmCancelAdditionalItem = async (itemId) => {
+        const trimmedReason = cancelReasonInput.trim();
+        if (!trimmedReason) {
+            showToast('error', '취소 사유 필수', '취소 사유를 입력해 주세요.');
+            return;
+        }
+
         try {
             setLoadingItems(true);
             const { error } = await supabase
                 .from('additional_income_items')
-                .update({ is_cancelled: true })
+                .update({ 
+                    is_cancelled: true,
+                    cancel_reason: trimmedReason
+                })
                 .eq('id', itemId);
-                
+
             if (error) throw error;
             showToast('success', '취소 완료', '추가 매출 항목이 취소되었습니다.');
+            setCancellingItemId(null);
+            setCancelReasonInput('');
             fetchAdditionalItems();
         } catch (error) {
             console.error('Error cancelling item:', error);
@@ -605,8 +621,9 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                         ))}
                     </div>
 
-                    {/* 추가 매출 항목 (in_progress 진행 중일 때만 편집 허용, 종료 시엔 읽기 전용) */}
+                    {/* 추가 매출 항목 (in_progress 진행 중 및 team_settling 정산 대기 중 등록·취소 허용, hq_check 이후 읽기 전용) */}
                     {(() => {
+                        const canEditExtraSales = ['in_progress', 'team_settling'].includes(caseItem?.status) && isMyCase;
                         const activeItems = additionalItems.filter(i => !i.is_cancelled);
                         const totalActive = activeItems.reduce((acc, curr) => acc + (curr.total_price || curr.unit_price * curr.quantity || 0), 0);
                         const expectedFee = feeRate != null ? Math.round(totalActive * feeRate / 100) : null;
@@ -614,18 +631,37 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
 
                         return (
                             <div className="mt-2 mb-6 border border-emerald-200 rounded-xl bg-emerald-50/40 overflow-hidden shadow-sm">
-                                <div className="bg-emerald-100/60 p-3 border-b border-emerald-200 flex justify-between items-center">
+                                <div className="bg-emerald-100/60 p-3 border-b border-emerald-200 flex flex-wrap gap-2 justify-between items-center">
                                     <h4 className="font-bold text-emerald-900 flex items-center gap-2 text-sm">
                                         📦 추가 매출 (영정사진, 제단꽃, 수의 변경 등)
                                     </h4>
-                                    {caseItem.status !== 'in_progress' && (
+                                    {!canEditExtraSales ? (
                                         <span className="text-[11px] font-bold text-gray-500 bg-white/80 px-2 py-0.5 rounded-full border border-gray-200">
-                                            🔒 정산 확정 (수정 불가)
+                                            {['hq_check', 'completed', 'cancelled'].includes(caseItem?.status)
+                                                ? '🔒 본사 입금 확인 완료 (수정 불가)'
+                                                : '🔒 수정 불가'}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                                            {caseItem?.status === 'team_settling'
+                                                ? '🟢 정산 대기 (등록·취소 가능)'
+                                                : '🔵 진행 중 (등록·취소 가능)'}
                                         </span>
                                     )}
                                 </div>
                                 
                                 <div className="p-3">
+                                    {/* 안내 문구 */}
+                                    <div className="mb-3 p-2.5 bg-emerald-50/80 rounded-lg border border-emerald-100 space-y-1 text-xs text-emerald-900">
+                                        <p className="font-semibold flex items-center gap-1.5">
+                                            <span>💡</span> 수정하려면 취소 후 다시 등록하세요. 취소와 등록 기록은 본사에서 확인합니다.
+                                        </p>
+                                        {caseItem?.status === 'team_settling' && (
+                                            <p className="text-[11px] text-emerald-700">
+                                                * 장례 종료 후에도 본사 입금 확인 전까지 추가 매출을 등록·취소할 수 있으며, 변경 시 본사 정산 입금액이 자동으로 재계산됩니다.
+                                            </p>
+                                        )}
+                                    </div>
                                     {additionalItems.length > 0 ? (
                                         <div className="space-y-2 mb-3">
                                             <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-emerald-800 uppercase px-1">
@@ -640,7 +676,8 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                                                 const subtotal = item.total_price || item.unit_price * item.quantity || 0;
 
                                                 return (
-                                                    <div key={item.id} className={`grid grid-cols-12 gap-1 items-center bg-white p-2.5 rounded-lg border text-xs sm:text-sm transition-all ${item.is_cancelled ? 'border-gray-200 bg-gray-50/80 opacity-60' : 'border-emerald-100'}`}>
+                                                    <React.Fragment key={item.id}>
+                                                        <div className={`grid grid-cols-12 gap-1 items-center bg-white p-2.5 rounded-lg border text-xs sm:text-sm transition-all ${item.is_cancelled ? 'border-gray-200 bg-gray-50/80 opacity-60' : 'border-emerald-100'}`}>
                                                         <div className="col-span-5 flex flex-col justify-center">
                                                             <div className={`font-bold text-gray-900 truncate ${item.is_cancelled ? 'line-through text-gray-400' : ''}`} title={item.item_name}>
                                                                 {item.item_name}
@@ -677,13 +714,13 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
 
                                                         <div className="col-span-2 flex justify-center items-center">
                                                             {item.is_cancelled ? (
-                                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500" title={item.cancel_reason ? `취소 사유: ${item.cancel_reason}` : '취소됨'}>
                                                                     취소됨
                                                                 </span>
                                                             ) : (
-                                                                caseItem.status === 'in_progress' && isMyCase && (
+                                                                canEditExtraSales && (
                                                                     <button 
-                                                                        onClick={() => handleCancelAdditionalItem(item.id)}
+                                                                        onClick={() => handleStartCancel(item.id)}
                                                                         className="text-red-500 hover:text-red-700 px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-xs font-bold transition-colors flex items-center gap-1"
                                                                         title="항목 취소"
                                                                     >
@@ -693,8 +730,55 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                                                             )}
                                                         </div>
                                                     </div>
-                                                );
-                                            })}
+
+                                                    {/* 취소 사유 입력창 (취소 버튼 눌렀을 때 인라인 확장) */}
+                                                    {cancellingItemId === item.id && (
+                                                        <div className="bg-red-50/70 p-2.5 rounded-lg border border-red-200 text-xs space-y-2 animate-fadeIn mt-1">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="font-bold text-red-800">
+                                                                    '{item.item_name}' 취소 사유 입력 (필수)
+                                                                </span>
+                                                                <button 
+                                                                    onClick={() => setCancellingItemId(null)}
+                                                                    className="text-gray-400 hover:text-gray-600 text-xs"
+                                                                >
+                                                                    닫기
+                                                                </button>
+                                                            </div>
+                                                            <input 
+                                                                type="text"
+                                                                value={cancelReasonInput}
+                                                                onChange={e => setCancelReasonInput(e.target.value)}
+                                                                placeholder="취소 사유를 입력해 주세요 (예: 상주 요청으로 취소, 품목 변경)"
+                                                                className="w-full text-xs border border-red-200 rounded px-2.5 py-1.5 focus:ring-red-400 focus:border-red-400 bg-white"
+                                                                autoFocus
+                                                            />
+                                                            {!cancelReasonInput.trim() && (
+                                                                <p className="text-[11px] text-red-600">
+                                                                    * 취소 사유를 입력해야 취소할 수 있습니다.
+                                                                </p>
+                                                            )}
+                                                            <div className="flex justify-end gap-1.5 pt-1">
+                                                                <button
+                                                                    onClick={() => setCancellingItemId(null)}
+                                                                    className="px-2.5 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50"
+                                                                >
+                                                                    취소 접기
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleConfirmCancelAdditionalItem(item.id)}
+                                                                    disabled={!cancelReasonInput.trim() || loadingItems}
+                                                                    className="px-3 py-1 text-xs font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:hover:bg-red-600 rounded transition-colors flex items-center gap-1 shadow-sm"
+                                                                >
+                                                                    {loadingItems ? <Loader2 className="w-3 h-3 animate-spin" /> : <Ban className="w-3 h-3" />}
+                                                                    취소 확정
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
                                             
                                             {/* 정산 요약 바 */}
                                             <div className="mt-3 pt-3 border-t border-emerald-200 bg-white rounded-lg p-3 space-y-1.5 text-xs">
@@ -724,7 +808,7 @@ export default function ProgressReportModal({ isOpen, onClose, caseItem, user })
                                         </p>
                                     )}
 
-                                    {caseItem.status === 'in_progress' && isMyCase && (
+                                    {canEditExtraSales && (
                                         <div className="mt-3">
                                             {isAddingItem ? (
                                                 <div className="bg-white p-3.5 rounded-lg border border-emerald-300 shadow-sm animate-fadeIn">

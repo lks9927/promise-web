@@ -14,6 +14,7 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef(null);
     const [extraSalesItems, setExtraSalesItems] = useState([]);
+    const [extraSalesLogs, setExtraSalesLogs] = useState([]);
 
     useEffect(() => {
         if (!caseItem?.id) return;
@@ -31,7 +32,34 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
                 // safe fallback
             }
         };
+
+        const fetchExtraSalesLogs = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('additional_income_item_logs')
+                    .select(`
+                        id,
+                        item_id,
+                        action,
+                        old_row,
+                        new_row,
+                        reason,
+                        changed_at,
+                        profiles:actor_id ( id, name, role )
+                    `)
+                    .eq('case_id', caseItem.id)
+                    .order('changed_at', { ascending: false });
+                if (!error && data) {
+                    setExtraSalesLogs(data);
+                }
+            } catch {
+                // additional_income_item_logs 미생성 DB 대비 조용히 숨김
+                setExtraSalesLogs([]);
+            }
+        };
+
         fetchExtraSales();
+        fetchExtraSalesLogs();
     }, [caseItem?.id]);
 
     useEffect(() => {
@@ -331,6 +359,78 @@ export default function CaseDetailModal({ caseItem, partners, onClose, isReadonl
                                     <span className="text-base font-black text-indigo-600">
                                         ₩{extraSalesItems.filter(i => !i.is_cancelled).reduce((sum, item) => sum + ((item.unit_price || 0) * (item.quantity || 1)), 0).toLocaleString()}
                                     </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 추가 매출 변경 기록 (읽기 전용, 테이블 없거나 이력 없으면 조용히 숨김) */}
+                    {extraSalesLogs.length > 0 && (
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <span className="w-1.5 h-6 bg-slate-500 rounded-full inline-block"></span>
+                                    추가 매출 변경 기록
+                                </h3>
+                                <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
+                                    총 {extraSalesLogs.length}건의 기록
+                                </span>
+                            </div>
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-2.5 text-xs">
+                                <div className="divide-y divide-gray-200">
+                                    {extraSalesLogs.map((log) => {
+                                        const actionBadge = {
+                                            'create': { label: '등록', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+                                            'cancel': { label: '취소', cls: 'bg-red-100 text-red-700 border-red-200' },
+                                            'restore': { label: '되살림', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+                                            'update': { label: '수정', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+                                        }[log.action] || { label: log.action, cls: 'bg-gray-100 text-gray-700 border-gray-200' };
+
+                                        const itemName = log.new_row?.item_name || log.old_row?.item_name || '품목';
+                                        const oldPrice = log.old_row ? ((log.old_row.unit_price || 0) * (log.old_row.quantity || 1)) : null;
+                                        const newPrice = log.new_row ? ((log.new_row.unit_price || 0) * (log.new_row.quantity || 1)) : null;
+
+                                        return (
+                                            <div key={log.id} className="py-2.5 space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${actionBadge.cls}`}>
+                                                            {actionBadge.label}
+                                                        </span>
+                                                        <span className="font-bold text-gray-800 text-xs">
+                                                            {itemName}
+                                                        </span>
+                                                        <span className="text-[11px] text-gray-500">
+                                                            by {log.profiles?.name || '담당자'}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-[10px] text-gray-400 font-mono">
+                                                        {new Date(log.changed_at).toLocaleString()}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-600 pl-1 text-[11px]">
+                                                    {log.action === 'create' && newPrice != null && (
+                                                        <span>등록 금액: <strong>₩{newPrice.toLocaleString()}</strong> ({log.new_row.quantity || 1}개)</span>
+                                                    )}
+                                                    {log.action === 'cancel' && oldPrice != null && (
+                                                        <span>취소된 금액: <strong className="text-red-600">₩{oldPrice.toLocaleString()}</strong> ({log.old_row.quantity || 1}개)</span>
+                                                    )}
+                                                    {log.action === 'restore' && newPrice != null && (
+                                                        <span>되살린 금액: <strong className="text-emerald-600">₩{newPrice.toLocaleString()}</strong> ({log.new_row.quantity || 1}개)</span>
+                                                    )}
+                                                    {log.action === 'update' && oldPrice != null && newPrice != null && (
+                                                        <span>금액 변경: ₩{oldPrice.toLocaleString()} → <strong>₩{newPrice.toLocaleString()}</strong></span>
+                                                    )}
+                                                    {log.reason && (
+                                                        <span className="text-red-700 bg-red-50/70 px-1.5 py-0.5 rounded border border-red-100">
+                                                            사유: {log.reason}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>

@@ -1389,7 +1389,8 @@ function CaseCard({ item, packages, isFlowerOrderRequired, onUpdate, onOrderFlow
                                             <span>장례 종료 및 본사 정산 입금 안내</span>
                                         </div>
                                         <p className="text-gray-600 leading-relaxed">
-                                            아래 금액을 확인 후 본사 계좌로 총 입금액을 일괄 입금해 주시면, 관리자 확인 후 정산이 완료됩니다.
+                                            아래 금액을 확인 후 본사 계좌로 총 입금액을 일괄 입금해 주시면, 관리자 확인 후 정산이 완료됩니다.<br />
+                                            <span className="text-emerald-700 font-medium">* 본사 입금 확인 전까지 추가 매출을 계속 등록·취소할 수 있으며, 변경 시 총 입금액이 자동으로 재계산됩니다.</span>
                                         </p>
                                         <div className="bg-white rounded-lg p-3 border border-emerald-100 space-y-1.5 shadow-inner">
                                             <div className="flex justify-between items-center text-gray-700">

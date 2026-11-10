@@ -1002,6 +1002,20 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
     col_rec record;
     s_before_count integer; s_after_count integer;
     base_remit integer; extra_fee integer; tot_deposit integer; transfer_count integer; overflow_blocked boolean := false;
+    log_item1 uuid; log_item2 uuid;
+    n_logs bigint;
+    log1 record; log2 record; log3 record;
+    restore_rec record;
+    ts_item1 uuid;
+    matrix_c uuid; matrix_i uuid;
+    matrix_cnt integer := 0; m_ok boolean := true;
+    err_hq boolean := false; err_comp boolean := false; err_canc boolean := false;
+    err_pend boolean := false; err_paid boolean := false;
+    err_no_reason boolean := false; err_blank_reason boolean := false;
+    log_read_lead1 bigint; log_read_lead2 bigint; log_read_deal bigint;
+    log_read_cust1 bigint; log_read_adm bigint;
+    log_insert_blocked boolean := false; log_update_blocked boolean := false; log_delete_blocked boolean := false;
+    log_fk_partners_cnt integer;
   BEGIN
     SELECT id INTO lead1 FROM public.profiles WHERE role='leader' ORDER BY id LIMIT 1;
     SELECT id INTO lead2 FROM public.profiles WHERE role='leader' AND id IS DISTINCT FROM lead1 ORDER BY id LIMIT 1;
@@ -1034,8 +1048,8 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
       INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
       VALUES(c_basic, '제단 꽃장식 추가', 20000, 3, lead1) RETURNING id INTO item2_id;
 
-      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by, is_cancelled)
-      VALUES(c_basic, '취소될 항목', 50000, 1, lead1, true) RETURNING id INTO item3_id;
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by, is_cancelled, cancel_reason)
+      VALUES(c_basic, '취소될 항목', 50000, 1, lead1, true, '초기 취소 사유') RETURNING id INTO item3_id;
 
       -- Verify case total: 30000 + 60000 = 90000 (cancelled excluded)
       SELECT additional_income_total INTO got_tot FROM public.funeral_cases WHERE id=c_basic;
@@ -1079,7 +1093,7 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
       END IF;
 
       -- Cancel item 1 and item 2 -> total becomes 0
-      UPDATE public.additional_income_items SET is_cancelled = true WHERE id IN (item1_id, item2_id);
+      UPDATE public.additional_income_items SET is_cancelled = true, cancel_reason = '테스트 일괄 취소' WHERE id IN (item1_id, item2_id);
       SELECT additional_income_total INTO got_tot FROM public.funeral_cases WHERE id=c_basic;
       SELECT count(*) INTO got_cnt FROM public.settlements WHERE case_id=c_basic AND type='extra_sales_fee';
       IF got_tot <> 0 OR got_cnt <> 0 THEN
@@ -1093,7 +1107,7 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
         ok := false; why := why || ' uncancel_cnt=' || got_cnt;
       END IF;
 
-      -- 3. Locking checks:
+      -- 3. Locking, Cancellation reasons, Item logs, and Settling tests:
       -- a) Hard delete forbidden
       BEGIN
         DELETE FROM public.additional_income_items WHERE id=item1_id;
@@ -1102,41 +1116,242 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
       END;
       IF NOT hard_delete_err THEN ok := false; why := why || ' hard_delete_not_blocked'; END IF;
 
-      -- b) Not in_progress
+      -- b) Invalid case status (e.g. consulting) -> blocked
       INSERT INTO public.funeral_cases(customer_id, team_leader_id, status, location, package_name)
       VALUES(cust1, lead1, 'consulting', 'P15 lock test', '기본형') RETURNING id INTO c_lock;
       BEGIN
         INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity)
         VALUES(c_lock, '시도 항목', 10000, 1);
       EXCEPTION WHEN OTHERS THEN
-        not_in_prog_err := (position('in_progress' in SQLERRM) > 0);
+        not_in_prog_err := (SQLERRM = '본사 입금 확인 이후에는 추가 매출을 수정할 수 없습니다.');
       END;
       IF NOT not_in_prog_err THEN ok := false; why := why || ' non_in_prog_not_blocked'; END IF;
 
-      -- c) Case transitioned to team_settling -> extra_sales_fee transitions to awaiting_payment
-      UPDATE public.funeral_cases SET status='team_settling' WHERE id=c_basic;
-      SELECT status INTO s_row.status FROM public.settlements WHERE case_id=c_basic AND type='extra_sales_fee';
-      IF s_row.status IS DISTINCT FROM 'awaiting_payment' THEN
-        ok := false; why := why || ' settling_status=' || coalesce(s_row.status,'null');
+      -- c) Registration -> Cancel reason tests (null/blank blocked, reason allowed) -> Re-registration & log check
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+      VALUES(c_basic, '이력시험품목1', 20000, 2, lead1) RETURNING id INTO log_item1;
+
+      -- Cancellation without reason -> must fail
+      BEGIN
+        UPDATE public.additional_income_items SET is_cancelled = true, cancel_reason = NULL WHERE id = log_item1;
+      EXCEPTION WHEN OTHERS THEN
+        err_no_reason := (SQLERRM = '취소 사유를 입력해 주세요.');
+      END;
+      IF NOT err_no_reason THEN ok := false; why := why || ' cancel_no_reason_not_blocked'; END IF;
+
+      -- Cancellation with blank reason -> must fail
+      BEGIN
+        UPDATE public.additional_income_items SET is_cancelled = true, cancel_reason = '    ' WHERE id = log_item1;
+      EXCEPTION WHEN OTHERS THEN
+        err_blank_reason := (SQLERRM = '취소 사유를 입력해 주세요.');
+      END;
+      IF NOT err_blank_reason THEN ok := false; why := why || ' cancel_blank_reason_not_blocked'; END IF;
+
+      -- Cancellation with valid reason -> must succeed
+      UPDATE public.additional_income_items
+      SET is_cancelled = true, cancel_reason = '상주 단순변심 취소'
+      WHERE id = log_item1;
+
+      -- Re-registration
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+      VALUES(c_basic, '이력시험품목2', 15000, 3, lead1) RETURNING id INTO log_item2;
+
+      -- Verify logs for log_item1 & log_item2
+      SELECT count(*) INTO n_logs FROM public.additional_income_item_logs WHERE item_id = log_item1;
+      IF n_logs <> 2 THEN ok := false; why := why || ' log_item1_count=' || n_logs; END IF;
+
+      SELECT * INTO log1 FROM public.additional_income_item_logs WHERE item_id = log_item1 ORDER BY changed_at ASC LIMIT 1;
+      SELECT * INTO log2 FROM public.additional_income_item_logs WHERE item_id = log_item1 ORDER BY changed_at DESC LIMIT 1;
+
+      IF log1.action <> 'create' OR (log1.new_row->>'unit_price')::int <> 20000
+         OR (log1.new_row->>'quantity')::int <> 2 OR (log1.new_row->>'is_cancelled')::boolean <> false
+         OR log1.actor_id <> lead1 OR log1.old_row IS NOT NULL THEN
+        ok := false; why := why || ' log1_create_mismatch';
       END IF;
 
-      -- d) Now attempt update on item -> blocked by non-draft settlement check
-      -- d1) while the case is team_settling the in_progress rule blocks edits
+      IF log2.action <> 'cancel' OR (log2.old_row->>'is_cancelled')::boolean <> false
+         OR (log2.new_row->>'is_cancelled')::boolean <> true OR log2.reason <> '상주 단순변심 취소'
+         OR log2.actor_id <> lead1 THEN
+        ok := false; why := why || ' log2_cancel_mismatch';
+      END IF;
+
+      SELECT * INTO log3 FROM public.additional_income_item_logs WHERE item_id = log_item2 ORDER BY changed_at ASC LIMIT 1;
+      IF log3.action <> 'create' OR (log3.new_row->>'unit_price')::int <> 15000
+         OR (log3.new_row->>'quantity')::int <> 3 OR log3.actor_id <> lead1 THEN
+        ok := false; why := why || ' log3_create_mismatch';
+      END IF;
+
+      -- d) Restore item and verify columns cleared & log recorded
+      UPDATE public.additional_income_items SET is_cancelled = false WHERE id = log_item1;
+      SELECT cancel_reason, cancelled_by, cancelled_at INTO restore_rec
+      FROM public.additional_income_items WHERE id = log_item1;
+
+      IF restore_rec.cancel_reason IS NOT NULL OR restore_rec.cancelled_by IS NOT NULL OR restore_rec.cancelled_at IS NOT NULL THEN
+        ok := false; why := why || ' restore_columns_not_cleared';
+      END IF;
+
+      SELECT * INTO log3 FROM public.additional_income_item_logs WHERE item_id = log_item1 ORDER BY changed_at DESC LIMIT 1;
+      IF log3.action <> 'restore' OR (log3.old_row->>'is_cancelled')::boolean <> true
+         OR (log3.new_row->>'is_cancelled')::boolean <> false OR log3.actor_id <> lead1 THEN
+        ok := false; why := why || ' restore_log_mismatch';
+      END IF;
+
+      -- e) Transition c_basic to team_settling -> fee transitions to awaiting_payment
+      UPDATE public.funeral_cases SET status = 'team_settling' WHERE id = c_basic;
+      SELECT status INTO s_row.status FROM public.settlements WHERE case_id = c_basic AND type = 'extra_sales_fee';
+      IF s_row.status IS DISTINCT FROM 'awaiting_payment' THEN
+        ok := false; why := why || ' settling_initial_status=' || coalesce(s_row.status,'null');
+      END IF;
+
+      -- Insert item during team_settling -> must be allowed, and fee updated while retaining awaiting_payment
+      INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+      VALUES(c_basic, '종료후 추가품목', 50000, 2, lead1) RETURNING id INTO ts_item1;
+
+      -- Total active in c_basic:
+      -- item1_id: 10000 * 1 = 10000
+      -- log_item1: 20000 * 2 = 40000
+      -- log_item2: 15000 * 3 = 45000
+      -- ts_item1: 50000 * 2 = 100000
+      -- Total = 195000
+      -- fee = ROUND(195000 * 37 / 100) = 72150
+      -- base = ROUND(72150 / 1.1) = 65591
+      -- tax = 72150 - 65591 = 6559
+      SELECT * INTO s_row FROM public.settlements WHERE case_id = c_basic AND type = 'extra_sales_fee';
+      IF s_row.amount <> 72150 OR s_row.base_amount <> 65591 OR s_row.tax_amount <> 6559
+         OR s_row.status <> 'awaiting_payment' THEN
+        ok := false; why := why || format(' ts_insert_calc(amt=%s,base=%s,tax=%s,status=%s)', s_row.amount, s_row.base_amount, s_row.tax_amount, s_row.status);
+      END IF;
+
+      -- Cancel ts_item1 during team_settling -> must be allowed, and fee recalculated
+      UPDATE public.additional_income_items
+      SET is_cancelled = true, cancel_reason = '종료후 취소 사유'
+      WHERE id = ts_item1;
+
+      -- Total after cancelling ts_item1: 195000 - 100000 = 95000
+      -- fee = ROUND(95000 * 37 / 100) = 35150
+      -- base = ROUND(35150 / 1.1) = 31955
+      -- tax = 35150 - 31955 = 3195
+      SELECT * INTO s_row FROM public.settlements WHERE case_id = c_basic AND type = 'extra_sales_fee';
+      IF s_row.amount <> 35150 OR s_row.base_amount <> 31955 OR s_row.tax_amount <> 3195
+         OR s_row.status <> 'awaiting_payment' THEN
+        ok := false; why := why || format(' ts_cancel_calc(amt=%s,base=%s,tax=%s,status=%s)', s_row.amount, s_row.base_amount, s_row.tax_amount, s_row.status);
+      END IF;
+
+      -- f) Matrix test: case status x settlement status (at least 8 combinations)
+      INSERT INTO public.funeral_cases(customer_id, team_leader_id, status, location, package_name)
+      VALUES(cust1, lead1, 'in_progress', 'P15 matrix test', '기본형') RETURNING id INTO matrix_c;
+
+      -- 1) in_progress + draft -> INSERT allowed
       BEGIN
-        UPDATE public.additional_income_items SET unit_price=99999 WHERE id=item1_id;
-      EXCEPTION WHEN OTHERS THEN
-        non_draft_err := (position('in_progress' in SQLERRM) > 0);
-      END;
-      IF NOT non_draft_err THEN ok := false; why := why || ' settling_not_blocked'; END IF;
-      -- d2) even if the case is forced back to in_progress, the non-draft settlement row still blocks edits
-      non_draft_err := false;
-      UPDATE public.funeral_cases SET status='in_progress' WHERE id=c_basic;
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'M1', 10000, 1, lead1) RETURNING id INTO matrix_i;
+        matrix_cnt := matrix_cnt + 1;
+      EXCEPTION WHEN OTHERS THEN m_ok := false; why := why || ' m1_fail'; END;
+
+      -- 2) in_progress + draft -> UPDATE(cancel) allowed
       BEGIN
-        UPDATE public.additional_income_items SET unit_price=99999 WHERE id=item1_id;
+        UPDATE public.additional_income_items SET is_cancelled = true, cancel_reason = 'M2 취소' WHERE id = matrix_i;
+        matrix_cnt := matrix_cnt + 1;
+      EXCEPTION WHEN OTHERS THEN m_ok := false; why := why || ' m2_fail'; END;
+
+      -- 3) in_progress + awaiting_payment -> UPDATE allowed
+      UPDATE public.settlements SET status = 'awaiting_payment' WHERE case_id = matrix_c AND type = 'extra_sales_fee';
+      BEGIN
+        UPDATE public.additional_income_items SET is_cancelled = false WHERE id = matrix_i;
+        matrix_cnt := matrix_cnt + 1;
+      EXCEPTION WHEN OTHERS THEN m_ok := false; why := why || ' m3_fail'; END;
+
+      -- 4) in_progress + paid -> INSERT denied ("이미 입금 처리 중이라 수정할 수 없습니다.")
+      UPDATE public.settlements SET status = 'paid' WHERE case_id = matrix_c AND type = 'extra_sales_fee';
+      err_paid := false;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'M4', 10000, 1, lead1);
       EXCEPTION WHEN OTHERS THEN
-        non_draft_err := (position('정산이 확정되어' in SQLERRM) > 0);
+        err_paid := (SQLERRM = '이미 입금 처리 중이라 수정할 수 없습니다.');
       END;
-      IF NOT non_draft_err THEN ok := false; why := why || ' non_draft_not_blocked'; END IF;
+      IF err_paid THEN matrix_cnt := matrix_cnt + 1; ELSE m_ok := false; why := why || ' m4_fail'; END IF;
+
+      -- 5) team_settling + draft -> INSERT allowed
+      UPDATE public.funeral_cases SET status = 'team_settling' WHERE id = matrix_c;
+      UPDATE public.settlements SET status = 'draft' WHERE case_id = matrix_c AND type = 'extra_sales_fee';
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'M5', 10000, 1, lead1) RETURNING id INTO matrix_i;
+        matrix_cnt := matrix_cnt + 1;
+      EXCEPTION WHEN OTHERS THEN m_ok := false; why := why || ' m5_fail'; END;
+
+      -- 6) team_settling + awaiting_payment -> INSERT allowed
+      UPDATE public.settlements SET status = 'awaiting_payment' WHERE case_id = matrix_c AND type = 'extra_sales_fee';
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'M6', 10000, 1, lead1) RETURNING id INTO matrix_i;
+        matrix_cnt := matrix_cnt + 1;
+      EXCEPTION WHEN OTHERS THEN m_ok := false; why := why || ' m6_fail'; END;
+
+      -- 7) team_settling + awaiting_payment -> UPDATE(cancel) allowed
+      BEGIN
+        UPDATE public.additional_income_items SET is_cancelled = true, cancel_reason = 'M7 취소' WHERE id = matrix_i;
+        matrix_cnt := matrix_cnt + 1;
+      EXCEPTION WHEN OTHERS THEN m_ok := false; why := why || ' m7_fail'; END;
+
+      -- 8) team_settling + paid -> UPDATE(cancel) denied ("이미 입금 처리 중이라 수정할 수 없습니다.")
+      UPDATE public.settlements SET status = 'paid' WHERE case_id = matrix_c AND type = 'extra_sales_fee';
+      err_paid := false;
+      BEGIN
+        UPDATE public.additional_income_items SET is_cancelled = false WHERE id = matrix_i;
+      EXCEPTION WHEN OTHERS THEN
+        err_paid := (SQLERRM = '이미 입금 처리 중이라 수정할 수 없습니다.');
+      END;
+      IF err_paid THEN matrix_cnt := matrix_cnt + 1; ELSE m_ok := false; why := why || ' m8_fail'; END IF;
+
+      -- 9) team_settling + pending -> INSERT denied ("이미 입금 처리 중이라 수정할 수 없습니다.")
+      UPDATE public.settlements SET status = 'pending' WHERE case_id = matrix_c AND type = 'extra_sales_fee';
+      err_pend := false;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'M9', 10000, 1, lead1);
+      EXCEPTION WHEN OTHERS THEN
+        err_pend := (SQLERRM = '이미 입금 처리 중이라 수정할 수 없습니다.');
+      END;
+      IF err_pend THEN matrix_cnt := matrix_cnt + 1; ELSE m_ok := false; why := why || ' m9_fail'; END IF;
+
+      IF matrix_cnt < 8 OR NOT m_ok THEN
+        ok := false; why := why || ' matrix_cnt=' || matrix_cnt;
+      END IF;
+
+      -- g) hq_check, completed, cancelled cases must reject insert/update with exact error message
+      UPDATE public.settlements SET status = 'draft' WHERE case_id = matrix_c;
+
+      -- hq_check
+      UPDATE public.funeral_cases SET status = 'hq_check' WHERE id = matrix_c;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'HQ_TEST', 10000, 1, lead1);
+      EXCEPTION WHEN OTHERS THEN
+        err_hq := (SQLERRM = '본사 입금 확인 이후에는 추가 매출을 수정할 수 없습니다.');
+      END;
+      IF NOT err_hq THEN ok := false; why := why || ' hq_check_not_blocked'; END IF;
+
+      -- completed
+      UPDATE public.funeral_cases SET status = 'completed' WHERE id = matrix_c;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'COMP_TEST', 10000, 1, lead1);
+      EXCEPTION WHEN OTHERS THEN
+        err_comp := (SQLERRM = '본사 입금 확인 이후에는 추가 매출을 수정할 수 없습니다.');
+      END;
+      IF NOT err_comp THEN ok := false; why := why || ' completed_not_blocked'; END IF;
+
+      -- cancelled
+      UPDATE public.funeral_cases SET status = 'cancelled' WHERE id = matrix_c;
+      BEGIN
+        INSERT INTO public.additional_income_items(case_id, item_name, unit_price, quantity, created_by)
+        VALUES(matrix_c, 'CANC_TEST', 10000, 1, lead1);
+      EXCEPTION WHEN OTHERS THEN
+        err_canc := (SQLERRM = '본사 입금 확인 이후에는 추가 매출을 수정할 수 없습니다.');
+      END;
+      IF NOT err_canc THEN ok := false; why := why || ' cancelled_not_blocked'; END IF;
 
       -- 4. Role-based RLS tests on c_adv
       -- lead1 (own case): can select
@@ -1216,6 +1431,89 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
           role_lead1_cnt, role_lead2_cnt, role_deal_cnt, role_cust1_cnt, role_cust2_cnt, role_adm_cnt);
       END IF;
 
+      -- 4-2. Log table permissions & FK check
+      -- adm1 (admin): can read logs
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',adm1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', adm1::text, true);
+      SELECT count(*) INTO log_read_adm FROM public.additional_income_item_logs WHERE case_id = c_basic;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- lead1 (assigned leader): can read logs
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',lead1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', lead1::text, true);
+      SELECT count(*) INTO log_read_lead1 FROM public.additional_income_item_logs WHERE case_id = c_basic;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- lead2 (other leader): 0 rows
+      IF lead2 IS NOT NULL THEN
+        SET LOCAL ROLE authenticated;
+        PERFORM set_config('request.jwt.claims', json_build_object('sub',lead2::text,'role','authenticated')::text, true);
+        PERFORM set_config('request.jwt.claim.sub', lead2::text, true);
+        SELECT count(*) INTO log_read_lead2 FROM public.additional_income_item_logs WHERE case_id = c_basic;
+        RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+      ELSE
+        log_read_lead2 := 0;
+      END IF;
+
+      -- deal1: 0 rows
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',deal1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', deal1::text, true);
+      SELECT count(*) INTO log_read_deal FROM public.additional_income_item_logs WHERE case_id = c_basic;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- cust1: 0 rows
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',cust1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', cust1::text, true);
+      SELECT count(*) INTO log_read_cust1 FROM public.additional_income_item_logs WHERE case_id = c_basic;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      -- Direct write attempts on additional_income_item_logs -> must fail
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config('request.jwt.claims', json_build_object('sub',lead1::text,'role','authenticated')::text, true);
+      PERFORM set_config('request.jwt.claim.sub', lead1::text, true);
+
+      BEGIN
+        INSERT INTO public.additional_income_item_logs(item_id, case_id, action, reason)
+        VALUES(log_item1, c_basic, 'create', '직접삽입시도');
+      EXCEPTION WHEN OTHERS THEN
+        log_insert_blocked := true;
+      END;
+
+      BEGIN
+        UPDATE public.additional_income_item_logs SET reason = '직접수정시도' WHERE case_id = c_basic;
+      EXCEPTION WHEN OTHERS THEN
+        log_update_blocked := true;
+      END;
+
+      BEGIN
+        DELETE FROM public.additional_income_item_logs WHERE case_id = c_basic;
+      EXCEPTION WHEN OTHERS THEN
+        log_delete_blocked := true;
+      END;
+      RESET ROLE; PERFORM set_config('request.jwt.claims','',true); PERFORM set_config('request.jwt.claim.sub','',true);
+
+      IF log_read_adm = 0 OR log_read_lead1 = 0 OR log_read_lead2 <> 0 OR log_read_deal <> 0 OR log_read_cust1 <> 0
+         OR NOT log_insert_blocked OR NOT log_update_blocked OR NOT log_delete_blocked THEN
+        ok := false;
+        why := why || format(' log_perms(adm=%s,lead1=%s,lead2=%s,deal=%s,cust=%s,ins_b=%s,up_b=%s,del_b=%s)',
+          log_read_adm, log_read_lead1, log_read_lead2, log_read_deal, log_read_cust1, log_insert_blocked, log_update_blocked, log_delete_blocked);
+      END IF;
+
+      -- Check FK of additional_income_item_logs does not reference partners
+      SELECT count(*) INTO log_fk_partners_cnt
+      FROM pg_constraint
+      WHERE conrelid = 'public.additional_income_item_logs'::regclass
+        AND contype = 'f'
+        AND confrelid = 'public.partners'::regclass;
+
+      IF log_fk_partners_cnt <> 0 THEN
+        ok := false; why := why || ' log_fk_references_partners=' || log_fk_partners_cnt;
+      END IF;
+
       -- 5. Existing settlements invariant on c_adv
       SELECT count(*) INTO s_after_count FROM public.settlements WHERE case_id=c_adv AND type != 'extra_sales_fee';
       IF s_before_count <> s_after_count THEN
@@ -1278,7 +1576,7 @@ IF v_apply_28 AND v_customer IS NOT NULL THEN
       IF NOT overflow_blocked THEN ok := false; why := why || ' integer_range_guard'; END IF;
 
       IF ok THEN
-        v_result := v_result || E'\n[PASS] P15 rate 37/41 exact calc, item lifecycle upsert/delete, lock & exceptions, RLS role isolation, existing settlements invariant, customer summary sanitized, storage bucket & policies, deposit sum, leader transfer exact row, integer range guard';
+        v_result := v_result || E'\n[PASS] P15 rate 37/41 exact calc, item lifecycle & logs & cancel reason, team_settling allowed & awaiting_payment kept, status matrix, lock & exceptions, RLS role isolation, existing settlements invariant, customer summary sanitized, storage bucket & policies, deposit sum, leader transfer exact row, integer range guard';
       ELSE
         v_result := v_result || E'\n[FAIL] P15: ' || why;
       END IF;
