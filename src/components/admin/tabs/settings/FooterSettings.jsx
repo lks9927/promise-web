@@ -6,7 +6,7 @@ import { supabase } from '../../../../lib/supabase';
 export function FooterSettings({ config, onUpdate }) {
     const { showToast } = useNotification();
     const [footerData, setFooterData] = useState({
-        phone: config.footer_phone || '1588-0000',
+        phone: config.footer_phone || '031-514-1338',
         hours: config.footer_hours || '24시간 연중무휴',
         email: config.footer_email || 'help@promise10.com',
         company_name: config.footer_company_name || '',
@@ -18,7 +18,7 @@ export function FooterSettings({ config, onUpdate }) {
 
     useEffect(() => {
         setFooterData({
-            phone: config.footer_phone || '1588-0000',
+            phone: config.footer_phone || '031-514-1338',
             hours: config.footer_hours || '24시간 연중무휴',
             email: config.footer_email || 'help@promise10.com',
             company_name: config.footer_company_name || '',
@@ -54,7 +54,7 @@ export function FooterSettings({ config, onUpdate }) {
                 <div className="grid md:grid-cols-2 gap-4">
                     <div className="flex items-center gap-4">
                         <label className="w-24 font-bold text-sm text-gray-700">상호명</label>
-                        <input type="text" placeholder="(주)십년의약속" className="flex-1 px-4 py-2 border rounded-lg" value={footerData.company_name} onChange={e => setFooterData({...footerData, company_name: e.target.value})} />
+                        <input type="text" placeholder="누어텍" className="flex-1 px-4 py-2 border rounded-lg" value={footerData.company_name} onChange={e => setFooterData({...footerData, company_name: e.target.value})} />
                     </div>
                     <div className="flex items-center gap-4">
                         <label className="w-24 font-bold text-sm text-gray-700">대표자명</label>

@@ -11,6 +11,10 @@ import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import { formatPhoneNumber } from '../utils/formatters';
 import { RegionSelect } from '../components/common/RegionSelect';
 
+// 대표전화·회사명은 화면 표기를 코드에서 고정한다 (운영 DB 푸터 값과 무관하게 일관되게 표시)
+const REP_PHONE = '031-514-1338';
+const COMPANY_NAME = '누어텍';
+
 export default function Home() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({ name: '', phone: '', location: '', packageName: '', couponCode: '', regionId: null });
@@ -18,10 +22,10 @@ export default function Home() {
     const [suggestions, setSuggestions] = useState([]);
     const [packages, setPackages] = useState([]);
     const [footerInfo, setFooterInfo] = useState({
-        phone: '1588-0000',
+        phone: REP_PHONE,
         hours: '24시간 연중무휴',
         email: 'help@promise10.com',
-        company_name: '',
+        company_name: COMPANY_NAME,
         ceo_name: '',
         business_number: '',
         address: ''
@@ -78,12 +82,12 @@ export default function Home() {
 
             if (submitError) throw submitError;
 
-            alert('긴급 접수가 완료되었습니다.\n마스터가 곧 연락드리겠습니다.');
+            alert('긴급 접수가 완료되었습니다.\n팀장이 곧 연락드리겠습니다.');
             setIsModalOpen(false);
             setFormData({ name: '', phone: '', location: '', packageName: packages.length > 0 ? packages[0].value : '', couponCode: '', regionId: null });
         } catch (error) {
             console.error(error);
-            alert('접수 중 오류가 발생했습니다. 대표번호로 연락주세요.');
+            alert('접수 중 오류가 발생했습니다.\n대표번호 ' + REP_PHONE + '로 전화 주세요.');
         } finally {
             setLoading(false);
         }
@@ -113,12 +117,10 @@ export default function Home() {
                 'footer_company_name', 'footer_ceo_name', 'footer_business_number', 'footer_address', 'footer_mail_order'
             ]);
             if (data && data.length > 0) {
-                const info = { phone: '1588-0000', hours: '24시간 연중무휴', email: 'help@promise10.com', company_name: '', ceo_name: '', business_number: '', address: '', mail_order: '' };
+                const info = { phone: REP_PHONE, hours: '24시간 연중무휴', email: 'help@promise10.com', company_name: COMPANY_NAME, ceo_name: '', business_number: '', address: '', mail_order: '' };
                 data.forEach(item => {
-                    if (item.key === 'footer_phone') info.phone = item.value;
                     if (item.key === 'footer_hours') info.hours = item.value;
                     if (item.key === 'footer_email') info.email = item.value;
-                    if (item.key === 'footer_company_name') info.company_name = item.value;
                     if (item.key === 'footer_ceo_name') info.ceo_name = item.value;
                     if (item.key === 'footer_business_number') info.business_number = item.value;
                     if (item.key === 'footer_address') info.address = item.value;
@@ -260,14 +262,16 @@ export default function Home() {
                         <div className="inline-block px-4 py-1.5 rounded-full bg-[#EAE5D9] text-[#8E806A] font-bold text-sm mb-6 tracking-wide">
                             <span className="mr-2">🌿</span> 국가 공인 장례지도사 실명제
                         </div>
-                        <h1 className="text-4xl md:text-6xl font-serif font-bold text-[#433831] leading-tight mb-8">
-                            슬픔을 덜어드리는<br />
-                            <span className="text-[#A69076]">따뜻한 약속</span>입니다.
+                        <h1 className="text-3xl sm:text-4xl md:text-6xl font-serif font-bold text-[#433831] leading-tight mb-8 break-keep">
+                            절차 없이,<br />
+                            <span className="text-[#A69076]">바로 곁에</span> 서겠습니다
                         </h1>
-                        <p className="text-lg md:text-xl text-[#7A7267] leading-relaxed mb-10 max-w-lg mx-auto lg:mx-0">
-                            예고 없이 찾아온 이별 앞에서도<br className="hidden md:block" />
-                            가족분들이 온전히 추모에만 집중하실 수 있도록<br className="hidden md:block" />
-                            10년 경력의 마스터가 처음부터 끝까지 곁을 지킵니다.
+                        <p className="text-lg md:text-xl text-[#7A7267] leading-relaxed mb-3 max-w-lg mx-auto lg:mx-0">
+                            이름과 연락처만 남기시면<br className="hidden md:block" />
+                            장례지도사 팀장이 직접 전화드립니다.
+                        </p>
+                        <p className="text-sm text-[#A69986] mb-10 max-w-lg mx-auto lg:mx-0">
+                            가입 없이, 필요할 때만 이용하는 후불 장례
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
                             <button
@@ -275,11 +279,11 @@ export default function Home() {
                                 className="bg-[#8E806A] hover:bg-[#7A6C56] text-white px-8 py-4 rounded-xl font-bold text-lg shadow-xl shadow-[#8E806A]/20 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1"
                             >
                                 <Phone className="w-5 h-5" />
-                                긴급 장례 접수하기
+                                긴급 상담 요청
                             </button>
-                            <button className="bg-white hover:bg-[#FAF9F5] text-[#8E806A] border border-[#D4C5A9] px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors">
+                            <a href="#pricing" className="bg-white hover:bg-[#FAF9F5] text-[#8E806A] border border-[#D4C5A9] px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors">
                                 상품 안내 보기
-                            </button>
+                            </a>
                         </div>
                     </div>
                     {/* 히어로 이미지 — 3장 크로스페이드 슬라이드쇼 */}
@@ -355,9 +359,7 @@ export default function Home() {
                                 <span className="text-black/80 underline decoration-[#D4C5A9]/50 underline-offset-4">진심</span>을 더했습니다.
                             </h2>
                             <p className="text-[#6E6D74] leading-loose mb-6">
-                                기존 상조 회사의 복잡한 가입 절차와 불투명한 추가 비용에 지치셨나요?
-                                10년의 약속은 거품을 걷어내고, 오직 고인과 유가족만을 생각합니다.
-                                노잣돈, 수고비를 절대 요구하지 않는 <strong>100% 투명 정산제</strong>를 약속드립니다.
+                                중간 과정을 줄인 만큼, 부담도 줄었습니다.
                             </p>
                             <div className="flex gap-4">
                                 <div className="flex flex-col items-center p-4 bg-[#F9F7F2] rounded-xl min-w-[100px]">
@@ -365,8 +367,8 @@ export default function Home() {
                                     <span className="text-xs text-gray-500 mt-1">가입비/월 납입금</span>
                                 </div>
                                 <div className="flex flex-col items-center p-4 bg-[#F9F7F2] rounded-xl min-w-[100px]">
-                                    <span className="text-2xl font-bold text-[#8E806A]">100%</span>
-                                    <span className="text-xs text-gray-500 mt-1">현금영수증 발행</span>
+                                    <span className="text-lg font-bold text-[#8E806A] leading-8">현금영수증</span>
+                                    <span className="text-xs text-gray-500 mt-1">발행 가능</span>
                                 </div>
                             </div>
                         </div>
@@ -376,36 +378,82 @@ export default function Home() {
 
 
 
+
+            {/* 대표 소개 */}
+            <section id="about" className="py-24 bg-[#FDFBF7]">
+                <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12 md:gap-16 items-center">
+                    <div className="rounded-2xl overflow-hidden shadow-lg ring-1 ring-[#EAE5D9] bg-[#EAE5D9]">
+                        <img
+                            src="/flowers/flower_bouquet.webp"
+                            alt="흰 포장지에 감싼 꽃다발"
+                            loading="lazy"
+                            width="1200"
+                            height="675"
+                            className="w-full h-auto object-cover"
+                        />
+                    </div>
+                    <div className="relative rounded-2xl overflow-hidden bg-[#F5F0E6]">
+                        <img
+                            src="/flowers/flower_arrangement_2.webp"
+                            alt=""
+                            aria-hidden="true"
+                            loading="lazy"
+                            width="1200"
+                            height="670"
+                            className="absolute inset-0 w-full h-full object-cover opacity-60"
+                        />
+                        <div className="relative px-8 py-12 sm:px-12 sm:py-16 bg-white/60">
+                            <h3 className="text-[#8E806A] font-bold mb-4 tracking-widest text-sm uppercase">About</h3>
+                            <h2 className="text-3xl md:text-4xl font-serif font-bold text-[#433831] mb-6 leading-snug">
+                                곁에서 지켜본 사람이<br />연결합니다
+                            </h2>
+                            <p className="text-[#5D5C61] leading-loose mb-4 break-keep">
+                                입관식에 쓰이는 꽃을 다년간 납품하며 장례지도사 팀장님들과 현장에서 함께 일해 왔습니다.
+                            </p>
+                            <p className="text-sm text-[#7A7267] leading-relaxed mb-8 break-keep">
+                                필요한 구성은 가족이 직접 선택하시고, 결정을 서두르게 하지 않습니다.
+                            </p>
+                            <button
+                                onClick={() => setIsModalOpen(true)}
+                                className="bg-[#433831] hover:bg-[#322A25] text-[#FDFBF7] px-8 py-3.5 rounded-xl font-bold shadow-md transition-all"
+                            >
+                                긴급 상담 요청
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* Service Features (Soft Cards) */}
             <section className="py-24 bg-[#FDFBF7]">
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="text-center mb-16">
                         <h2 className="text-3xl font-serif font-bold text-[#433831] mb-4">지킬 수 있는 약속만 드립니다</h2>
-                        <p className="text-[#8E806A]">본사가 직접 검증한 3가지 원칙</p>
+                        <p className="text-[#8E806A]">지키는 3가지 원칙</p>
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-8">
                         <FeatureCard
                             icon={<Users className="w-10 h-10 text-[#8E806A]" />}
-                            title="전담 마스터 실명제"
-                            desc="하청업체의 아르바이트생이 아닙니다. 국가 공인 자격증을 보유한 베테랑 팀장이 실명을 걸고 책임집니다."
+                            title="전담 팀장 실명제"
+                            desc="국가 공인 자격을 갖춘 장례지도사 팀장이 실명으로 안내하고 끝까지 함께합니다."
                         />
                         <FeatureCard
                             icon={<Shield className="w-10 h-10 text-[#8E806A]" />}
                             title="투명한 정산 리포트"
-                            desc="장례 종료 후, 10원 단위까지 상세하게 기재된 정산 리포트를 제공합니다. 부당한 요구 시 100% 환불해드립니다."
+                            desc="장례 종료 후 항목별로 상세히 기재된 정산 내역을 제공합니다. 부당하다고 느껴지는 요구는 언제든 본사에 알려 주세요."
                         />
                         <FeatureCard
                             icon={<Clock className="w-10 h-10 text-[#8E806A]" />}
-                            title="24시간 전국 출동"
-                            desc="서울부터 제주까지, 임종 즉시 연락주시면 가장 가까운 곳에 있는 마스터가 1시간 이내에 도착합니다."
+                            title="24시간 전국 연결"
+                            desc="전국 어디서든 연락 주시면 가까운 지역의 팀장을 신속하게 연결해 드립니다."
                         />
                     </div>
                 </div>
             </section>
 
             {/* Pricing Section */}
-            <PricingSection packagesData={packages} />
+            <PricingSection packagesData={packages} onConsult={() => setIsModalOpen(true)} />
 
             {/* Rolling Ticker Section — 페이지 중간 */}
             <RollingTicker />
@@ -417,8 +465,8 @@ export default function Home() {
                         <h2 className="text-3xl font-serif font-bold text-[#433831]">복잡한 절차, 걱정하지 마세요</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <ProcessStep number="01" title="긴급 장례 접수" desc="24시간 언제든 전화 또는 웹으로 접수해주세요." />
-                        <ProcessStep number="02" title="마스터 출동" desc="1시간 내로 전담 팀장이 장례식장으로 이동합니다." />
+                        <ProcessStep number="01" title="긴급 장례 접수" desc="전화 또는 웹으로 이름과 연락처를 남겨 주세요." />
+                        <ProcessStep number="02" title="팀장 연결" desc="전담 팀장이 직접 전화드리고 장례식장으로 이동합니다." />
                         <ProcessStep number="03" title="장례 진행" desc="입관부터 발인까지 3일간 정성을 다해 모십니다." />
                         <ProcessStep number="04" title="투명한 정산" desc="모든 절차 종료 후 꼼꼼하게 정산 내역을 확인합니다." />
                     </div>
@@ -439,7 +487,7 @@ export default function Home() {
                         <div className="w-full md:w-auto">
                             <h4 className="font-bold text-[#433831] mb-6 text-left">고객 센터</h4>
                             <ul className="space-y-3 text-[#8E806A] text-sm text-left">
-                                <li className="flex items-center justify-start gap-2"><Phone className="w-4 h-4 opacity-70"/> <strong>대표전화:</strong> {footerInfo.phone}</li>
+                                <li className="flex items-center justify-start gap-2"><Phone className="w-4 h-4 opacity-70"/> <strong>대표전화:</strong> <a href={`tel:${footerInfo.phone.replace(/[^0-9]/g, '')}`} className="hover:text-[#433831] underline-offset-2 hover:underline">{footerInfo.phone}</a></li>
                                 <li className="flex items-center justify-start gap-2"><Clock className="w-4 h-4 opacity-70"/> <strong>운영시간:</strong> {footerInfo.hours}</li>
                                 <li className="flex items-center justify-start gap-2"><Mail className="w-4 h-4 opacity-70"/> <strong>이메일:</strong> {footerInfo.email}</li>
                             </ul>
@@ -645,15 +693,9 @@ function RollingTicker() {
         return () => clearInterval(interval);
     }, []);
 
-    // 실제 데이터가 없을 경우 샘플 데이터로 폴백 (랜딩 페이지 항상 표시)
-    const SAMPLE_CASES = [
-        { id: 's1', masked_name: '김*준', location: '서울아산병원 장례식장' },
-        { id: 's2', masked_name: '이*영', location: '삼성서울병원 장례식장' },
-        { id: 's3', masked_name: '박*', location: '부산대학교병원 장례식장' },
-        { id: 's4', masked_name: '최*준', location: '세브란스병원 장례식장' },
-        { id: 's5', masked_name: '정*희', location: '분당서울대병원 장례식장' },
-    ];
-    const displayCases = cases.length > 0 ? cases : SAMPLE_CASES;
+    // 실제 진행 건이 없으면 영역 전체를 숨긴다 (가짜 샘플 표시 금지)
+    const displayCases = cases;
+    if (displayCases.length === 0) return null;
 
     return (
         <div className="bg-[#433831] h-32 overflow-hidden relative flex flex-col justify-center">
@@ -687,7 +729,7 @@ function RollingTicker() {
     );
 }
 
-function PricingSection({ packagesData }) {
+function PricingSection({ packagesData, onConsult }) {
     // DB에서 불러온 패키지가 있으면 사용, 없으면 상세 폴백
     const displayPackages = (packagesData && packagesData.length > 0 && packagesData[0].items) 
         ? packagesData 
@@ -715,7 +757,7 @@ function PricingSection({ packagesData }) {
                 value: "고급형",
                 label: "고급형 (250만원)",
                 price: 2500000,
-                desc: "가장 많은 분들이 선택하는 3일장 표준 상품",
+                desc: "3일장 기준의 표준 구성 상품",
                 icon: "✨",
                 isPopular: true,
                 items: [
@@ -735,9 +777,9 @@ function PricingSection({ packagesData }) {
             },
             {
                 value: "프리미엄",
-                label: "최고급형(350만원)",
+                label: "프리미엄(350만원)",
                 price: 3500000,
-                desc: "부족함 없이 모든 것을 갖춘 프리미엄 상품",
+                desc: "폭넓게 갖춘 프리미엄 구성 상품",
                 icon: "👑",
                 items: [
                     { name: "장례기간동안 3일장 기준 캐어 " },
@@ -759,8 +801,8 @@ function PricingSection({ packagesData }) {
 
     const getPackageMeta = (value) => {
         if (value.includes('무빈소')) return { icon: "🕊️", desc: "빈소 없이 간소하게 가족끼리 보내드리는 상품" };
-        if (value.includes('고급')) return { icon: "✨", desc: "가장 많은 분들이 선택하는 3일장 표준 상품", isPopular: true };
-        if (value.includes('프리미엄')) return { icon: "👑", desc: "부족함 없이 모든 것을 갖춘 최고급 상품" };
+        if (value.includes('고급')) return { icon: "✨", desc: "3일장 기준의 표준 구성 상품", isPopular: true };
+        if (value.includes('프리미엄')) return { icon: "👑", desc: "폭넓게 갖춘 프리미엄 구성 상품" };
         return { icon: "📦", desc: "10년의 약속 정직한 장례 상품" };
     };
 
@@ -773,8 +815,8 @@ function PricingSection({ packagesData }) {
                     </div>
                     <h2 className="text-3xl md:text-4xl font-serif font-bold text-[#433831] mb-6">상품 구성 상세 안내</h2>
                     <p className="text-[#6E6D74] max-w-2xl mx-auto leading-relaxed">
-                        딜러 전용 앱에서 확인하시던 상세 상품 구성을 그대로 투명하게 공개합니다.<br className="hidden md:block" />
-                        기재된 항목 외 수고비, 노잣돈 등 불합리한 추가 청구가 절대 없습니다.
+                        상품 구성을 항목별로 있는 그대로 안내해 드립니다.<br className="hidden md:block" />
+                        기재된 항목 외 수고비, 노잣돈 등은 요구하지 않습니다.
                     </p>
                 </div>
 
@@ -785,7 +827,7 @@ function PricingSection({ packagesData }) {
                             <div key={idx} className={`relative flex flex-col p-6 sm:p-8 rounded-3xl border ${meta.isPopular ? 'border-[#8E806A] shadow-2xl shadow-[#8E806A]/15 scale-100 lg:scale-105 z-10 bg-white' : 'border-[#EAE5D9] shadow-sm bg-white'}`}>
                                 {meta.isPopular && (
                                     <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#433831] text-[#FDFBF7] px-4 py-1.5 rounded-full text-sm font-bold shadow-md whitespace-nowrap">
-                                        가장 많이 선택하는 상품
+                                        많이 찾는 상품
                                     </div>
                                 )}
                                 
@@ -814,11 +856,7 @@ function PricingSection({ packagesData }) {
                                 </div>
 
                                 <button
-                                    onClick={() => {
-                                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                                        const modalBtn = document.querySelector('button:contains("긴급 접수")');
-                                        if(modalBtn) modalBtn.click();
-                                    }}
+                                    onClick={onConsult}
                                     className={`w-full py-4 rounded-xl font-bold transition-all ${meta.isPopular ? 'bg-[#8E806A] hover:bg-[#7A6C56] text-white shadow-lg' : 'bg-[#F5F0E6] hover:bg-[#EAE5D9] text-[#433831]'}`}
                                 >
                                     이 상품으로 상담하기
