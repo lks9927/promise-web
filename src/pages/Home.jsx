@@ -294,13 +294,13 @@ export default function Home() {
                         </div>
                     </div>
                     {/* 히어로 이미지 — 3장 크로스페이드 슬라이드쇼 */}
-                    <div className="order-1 lg:order-2 relative mx-auto w-full max-w-[500px] aspect-[4/5] bg-gradient-to-br from-[#dcd3c2] to-[#b0a088] rounded-t-full rounded-b-[200px] overflow-hidden shadow-2xl ring-8 ring-white">
+                    <div className="order-1 lg:order-2 relative mx-auto w-full max-w-[620px] aspect-[4/3] bg-gradient-to-br from-[#dcd3c2] to-[#b0a088] rounded-[2rem] overflow-hidden shadow-2xl ring-8 ring-white">
                         {HERO_IMAGES.map((src, idx) => (
                             <img
                                 key={src}
                                 src={src}
                                 alt={HERO_ALTS[idx] || '연출 이미지'}
-                                className={`absolute inset-0 w-full h-full object-cover object-[48%_50%] transition-opacity duration-[1500ms] ease-in-out ${
+                                className={`absolute inset-0 w-full h-full object-cover object-[50%_50%] transition-opacity duration-[1500ms] ease-in-out ${
                                     idx === heroIndex ? 'opacity-100' : 'opacity-0'
                                 }`}
                             />
@@ -393,25 +393,16 @@ export default function Home() {
                 <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12 md:gap-16 items-center">
                     <div className="rounded-2xl overflow-hidden shadow-lg ring-1 ring-[#EAE5D9] bg-[#EAE5D9]">
                         <img
-                            src="/flowers/flower_bouquet.webp"
-                            alt="흰 포장지에 감싼 꽃다발"
+                            src="/flowers/ibgwan_flowers.webp"
+                            alt="입관식에 올리는 흰 꽃과 계절 꽃 장식"
                             loading="lazy"
-                            width="1200"
-                            height="675"
+                            width="1376"
+                            height="768"
                             className="w-full h-auto object-cover"
                         />
                     </div>
                     <div className="relative rounded-2xl overflow-hidden bg-[#F5F0E6]">
-                        <img
-                            src="/flowers/flower_arrangement_2.webp"
-                            alt=""
-                            aria-hidden="true"
-                            loading="lazy"
-                            width="1200"
-                            height="670"
-                            className="absolute inset-0 w-full h-full object-cover opacity-60"
-                        />
-                        <div className="relative px-8 py-12 sm:px-12 sm:py-16 bg-white/60">
+                        <div className="relative px-6 py-8 sm:px-10 sm:py-12">
                             <h3 className="text-[#8E806A] font-bold mb-4 tracking-widest text-sm uppercase">About</h3>
                             <h2 className="text-3xl md:text-4xl font-serif font-bold text-[#433831] mb-6 leading-snug">
                                 곁에서 지켜본 사람이<br />연결합니다
