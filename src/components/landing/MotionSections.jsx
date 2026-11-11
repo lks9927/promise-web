@@ -100,9 +100,9 @@ export function MotionStatement() {
 }
 
 const SCENES = [
-    { img: '/landing/story_widow.webp', alt: '홀로 남으신 어머니 곁에서 따뜻한 물을 건네는 장례지도사 (연출 이미지)', step: 'STEP 1 · 첫 연락', title: ['전화를 받는 순간부터', '팀장이 곁에 섭니다'], text: '접수 후 전담 팀장이 직접 전화드리고, 장례식장으로 바로 이동합니다.' },
-    { img: '/landing/story_remember.webp', alt: '고인을 기억하며 함께 시간을 보내는 가족 (연출 이미지)', step: 'STEP 2 · 3일 동안', title: ['입관부터 발인까지', '가족의 시간을 지킵니다'], text: '필요한 구성은 가족이 직접 선택하시고, 결정을 서두르게 하지 않습니다.' },
-    { img: '/landing/hero_balin.webp', alt: '영정 사진을 든 상주와 가족이 장례식장을 나서는 모습 (연출 이미지)', step: 'STEP 3 · 배웅', title: ['끝까지 함께하고', '투명하게 정산합니다'], text: '모든 절차 종료 후 항목별 정산 내역을 확인해 드립니다.' },
+    { img: '/landing/scene_tea.webp', alt: '햇살 드는 라운지에서 가족에게 따뜻한 차를 건네는 장례지도사 (연출 이미지)', step: 'STEP 1 · 첫 연락', title: ['연락을 남기시는 순간부터', '팀장이 곁에 섭니다'], text: '남겨 주신 연락처로 전담 팀장이 직접 연락드리고, 장례식장으로 이동합니다.' },
+    { img: '/landing/scene_walk.webp', alt: '장례식장을 나와 햇살 속을 함께 걷는 가족 (연출 이미지)', step: 'STEP 2 · 3일 동안', title: ['입관부터 발인까지', '가족의 시간을 지킵니다'], text: '필요한 구성은 가족이 직접 선택하시고, 결정을 서두르게 하지 않습니다.' },
+    { img: '/landing/scene_sky.webp', alt: '맑은 하늘을 함께 올려다보는 가족과 장례지도사 (연출 이미지)', step: 'STEP 3 · 배웅', title: ['끝까지 함께하고', '투명하게 정산합니다'], text: '모든 절차 종료 후 항목별 정산 내역을 확인해 드립니다.' },
 ];
 
 export function MotionScenes() {
