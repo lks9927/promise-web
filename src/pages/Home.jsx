@@ -35,8 +35,8 @@ export default function Home() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
 
     // 히어로 이미지 슬라이드쇼
-    const HERO_IMAGES = ['/landing/hero_balin.webp'];
-    const HERO_ALTS = ['영정 사진을 든 상주와 가족이 장례식장을 나서는 모습 (연출 이미지)'];
+    const HERO_IMAGES = ['/landing/story_memorial.webp'];
+    const HERO_ALTS = ['햇살 드는 추모공원에서 고인을 기억하는 가족 (연출 이미지)'];
     const [heroIndex, setHeroIndex] = useState(0);
     useEffect(() => {
         if (HERO_IMAGES.length < 2) return undefined;
@@ -45,11 +45,11 @@ export default function Home() {
     }, []);
 
     // 스토리 이미지 슬라이드쇼
-    const STORY_IMAGES = ['/landing/story_widow.webp', '/landing/story_remember.webp', '/landing/story_memorial.webp'];
+    const STORY_IMAGES = ['/landing/story_widow.webp', '/landing/story_remember.webp', '/landing/hero_balin.webp'];
     const STORY_ALTS = [
         '홀로 남으신 어머니 곁에서 따뜻한 물을 건네는 장례지도사 (연출 이미지)',
         '고인을 기억하며 함께 시간을 보내는 가족 (연출 이미지)',
-        '고인을 추모하는 장면 (연출 이미지)',
+        '영정 사진을 든 상주와 가족이 장례식장을 나서는 모습 (연출 이미지)',
     ];
     const [storyIndex, setStoryIndex] = useState(0);
     useEffect(() => {
@@ -300,7 +300,7 @@ export default function Home() {
                                 key={src}
                                 src={src}
                                 alt={HERO_ALTS[idx] || '연출 이미지'}
-                                className={`absolute inset-0 w-full h-full object-cover object-[42%_50%] transition-opacity duration-[1500ms] ease-in-out ${
+                                className={`absolute inset-0 w-full h-full object-cover object-[48%_50%] transition-opacity duration-[1500ms] ease-in-out ${
                                     idx === heroIndex ? 'opacity-100' : 'opacity-0'
                                 }`}
                             />
