@@ -58,7 +58,7 @@ export function MotionHero({ onConsult }) {
                 <h1><span>마음 쓰실 일은</span> <span>단 하나,</span><br /><span>보내드리는 일입니다</span></h1>
                 <p>복잡한 건 장례지도사 팀장이<br className="lm-brm" /> 곁에서 맡습니다.<br />이름과 연락처만 남겨 주세요.</p>
                 <div className="lm-cta">
-                    <button type="button" className="lm-btn p" onClick={onConsult}>상담 요청</button>
+                    <button type="button" className="lm-btn p" onClick={onConsult}>긴급 상담 요청</button>
                     <a className="lm-btn s" href="#flow">어떻게 곁에 서는지 보기</a>
                 </div>
             </div>
@@ -226,7 +226,7 @@ export function MotionClose({ onConsult }) {
             <Petals count={16} color="#D9C7A3" />
             <h2 className={`lm-rv${seen ? ' in' : ''}`}>지금 곁이 필요하시다면,<br />이름과 연락처만 남겨 주세요.</h2>
             <small>남겨 주시면 장례지도사 팀장이 확인 후 직접 연락드립니다.</small>
-            <button type="button" className="lm-btn p" onClick={onConsult}>상담 요청</button>
+            <button type="button" className="lm-btn p" onClick={onConsult}>긴급 상담 요청</button>
         </section>
     );
 }
