@@ -35,13 +35,13 @@ function Petals({ count = 22, color = '#fff' }) {
 }
 
 // 화면에 들어오면 in 클래스를 붙인다
-function useReveal() {
+function useReveal(threshold = 0.25) {
     const ref = useRef(null);
     const [seen, setSeen] = useState(false);
     useEffect(() => {
         const el = ref.current;
         if (!el) return undefined;
-        const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { setSeen(true); io.disconnect(); } }), { threshold: 0.25 });
+        const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { setSeen(true); io.disconnect(); } }), { threshold });
         io.observe(el);
         return () => io.disconnect();
     }, []);
@@ -166,14 +166,13 @@ export function MotionNums() {
 }
 
 export function MotionAbout() {
-    const [ref, seen] = useReveal();
-    const [ref2, seen2] = useReveal();
+    const [ref, seen] = useReveal(0.12);
     return (
-        <section id="about" className="lm lm-flower">
-            <div ref={ref} className={`lm-fimg${seen ? ' in' : ''}`}>
+        <section id="about" ref={ref} className="lm lm-flower">
+            <div className={`lm-fimg${seen ? ' in' : ''}`}>
                 <img src="/flowers/ibgwan_flowers.webp" alt="입관식에 올리는 흰 꽃과 계절 꽃 장식" loading="lazy" width="1376" height="768" />
             </div>
-            <div ref={ref2} className={`lm-rv${seen2 ? ' in' : ''}`}>
+            <div className={`lm-rv${seen ? ' in' : ''}`}>
                 <small style={{ letterSpacing: '.3em', color: 'var(--lm-gold)' }}>ABOUT</small>
                 <h2>곁에서 지켜본 사람이<br />연결합니다</h2>
                 <p>입관식에 쓰이는 꽃을 다년간 납품하며 장례지도사 팀장님들과 현장에서 함께 일해 왔습니다.</p>
