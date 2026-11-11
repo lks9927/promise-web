@@ -1,0 +1,234 @@
+import React, { useEffect, useRef, useState } from 'react';
+import './landing-motion.css';
+
+const reduced = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// 꽃잎 캔버스 (아주 느리게)
+function Petals({ count = 22, color = '#fff' }) {
+    const ref = useRef(null);
+    useEffect(() => {
+        const c = ref.current;
+        if (!c || reduced()) return undefined;
+        const x = c.getContext('2d');
+        let W = 0, H = 0, raf = 0;
+        const resize = () => { W = c.width = c.offsetWidth; H = c.height = c.offsetHeight; };
+        resize();
+        window.addEventListener('resize', resize);
+        const P = Array.from({ length: count }, () => ({
+            x: Math.random() * W, y: Math.random() * H, r: 3 + Math.random() * 5,
+            s: 0.25 + Math.random() * 0.5, d: Math.random() * 6, a: 0.25 + Math.random() * 0.35,
+        }));
+        const frame = () => {
+            x.clearRect(0, 0, W, H);
+            P.forEach(p => {
+                p.y += p.s; p.d += 0.01; p.x += Math.sin(p.d) * 0.5;
+                if (p.y > H + 10) { p.y = -10; p.x = Math.random() * W; }
+                x.save(); x.translate(p.x, p.y); x.rotate(p.d); x.globalAlpha = p.a; x.fillStyle = color;
+                x.beginPath(); x.ellipse(0, 0, p.r, p.r * 1.7, 0, 0, 7); x.fill(); x.restore();
+            });
+            raf = requestAnimationFrame(frame);
+        };
+        frame();
+        return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+    }, [count, color]);
+    return <canvas ref={ref} className="lm-petals" aria-hidden="true" />;
+}
+
+// 화면에 들어오면 in 클래스를 붙인다
+function useReveal() {
+    const ref = useRef(null);
+    const [seen, setSeen] = useState(false);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return undefined;
+        const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { setSeen(true); io.disconnect(); } }), { threshold: 0.25 });
+        io.observe(el);
+        return () => io.disconnect();
+    }, []);
+    return [ref, seen];
+}
+
+export function MotionHero({ onConsult }) {
+    return (
+        <section className="lm lm-hero">
+            <div className="bg" />
+            <Petals />
+            <div className="txt">
+                <div className="lm-eyebrow">국가 공인 · 장례지도사 실명제</div>
+                <h1><span>절차 없이,</span> <span>바로 곁에</span> <span>서겠습니다</span></h1>
+                <p>이름과 연락처만 남기시면<br />장례지도사 팀장이 직접 전화드립니다.</p>
+                <div className="lm-cta">
+                    <button type="button" className="lm-btn p" onClick={onConsult}>긴급 상담 요청</button>
+                    <a className="lm-btn s" href="#flow">어떻게 곁에 서는지 보기</a>
+                </div>
+            </div>
+            <div className="lm-scroll"><i />SCROLL</div>
+            <span className="lm-chip">연출 이미지</span>
+        </section>
+    );
+}
+
+export function MotionStatement() {
+    const ref = useRef(null);
+    const [p, setP] = useState(reduced() ? 1 : 0);
+    useEffect(() => {
+        if (reduced()) return undefined;
+        const upd = () => {
+            const r = ref.current.getBoundingClientRect();
+            setP(Math.min(1, Math.max(0, (window.innerHeight * 0.85 - r.top) / (window.innerHeight * 0.6))));
+        };
+        upd();
+        window.addEventListener('scroll', upd, { passive: true });
+        return () => window.removeEventListener('scroll', upd);
+    }, []);
+    const lines = ['가장 슬픈 날, 낯선 절차까지', '혼자 감당하지 않으셔도 됩니다.', '필요한 만큼만, 천천히, 곁에서 안내합니다.'];
+    const words = lines.map(l => l.split(' '));
+    const total = words.flat().length;
+    let k = 0;
+    return (
+        <section className="lm lm-state">
+            <h2 ref={ref}>
+                {words.map((ws, li) => (
+                    <React.Fragment key={li}>
+                        {ws.map(w => { const on = k++ / total < p; return <span key={k} className={`w${on ? ' on' : ''}`}>{w} </span>; })}
+                        {li < words.length - 1 && <br />}
+                    </React.Fragment>
+                ))}
+            </h2>
+        </section>
+    );
+}
+
+const SCENES = [
+    { img: '/landing/story_widow.webp', alt: '홀로 남으신 어머니 곁에서 따뜻한 물을 건네는 장례지도사 (연출 이미지)', step: 'STEP 1 · 첫 연락', title: ['전화를 받는 순간부터', '팀장이 곁에 섭니다'], text: '접수 후 전담 팀장이 직접 전화드리고, 장례식장으로 바로 이동합니다.' },
+    { img: '/landing/story_remember.webp', alt: '고인을 기억하며 함께 시간을 보내는 가족 (연출 이미지)', step: 'STEP 2 · 3일 동안', title: ['입관부터 발인까지', '가족의 시간을 지킵니다'], text: '필요한 구성은 가족이 직접 선택하시고, 결정을 서두르게 하지 않습니다.' },
+    { img: '/landing/hero_balin.webp', alt: '영정 사진을 든 상주와 가족이 장례식장을 나서는 모습 (연출 이미지)', step: 'STEP 3 · 배웅', title: ['끝까지 함께하고', '투명하게 정산합니다'], text: '모든 절차 종료 후 항목별 정산 내역을 확인해 드립니다.' },
+];
+
+export function MotionScenes() {
+    const box = useRef(null);
+    const [idx, setIdx] = useState(0);
+    useEffect(() => {
+        const upd = () => {
+            const r = box.current.getBoundingClientRect();
+            const t = -r.top / (r.height - window.innerHeight);
+            setIdx(Math.min(SCENES.length - 1, Math.max(0, Math.floor(t * SCENES.length))));
+        };
+        upd();
+        window.addEventListener('scroll', upd, { passive: true });
+        return () => window.removeEventListener('scroll', upd);
+    }, []);
+    return (
+        <section id="flow" ref={box} className="lm lm-scenes">
+            <div className="lm-sticky">
+                {SCENES.map((s, i) => (
+                    <div key={s.img} className={`lm-sc${i === idx ? ' on' : ''}`}>
+                        <img src={s.img} alt={s.alt} loading="lazy" />
+                        <div className="lm-cap">
+                            <small>{s.step}</small>
+                            <h3>{s.title[0]}<br />{s.title[1]}</h3>
+                            <p>{s.text}</p>
+                        </div>
+                    </div>
+                ))}
+                <div className="lm-prog">{SCENES.map((s, i) => <i key={s.img} className={i === idx ? 'on' : ''} />)}</div>
+                <span className="lm-chip" style={{ top: 84, bottom: 'auto' }}>연출 이미지</span>
+            </div>
+        </section>
+    );
+}
+
+function CountUp({ to, label }) {
+    const [ref, seen] = useReveal();
+    const [n, setN] = useState(0);
+    useEffect(() => {
+        if (!seen) return undefined;
+        if (reduced() || to === 0) { setN(to); return undefined; }
+        let v = 0;
+        const t = setInterval(() => { v += 1; setN(Math.min(v, to)); if (v >= to) clearInterval(t); }, 50);
+        return () => clearInterval(t);
+    }, [seen, to]);
+    return (
+        <div ref={ref} className={`lm-rv${seen ? ' in' : ''}`}>
+            <b>{n}</b><span>{label}</span>
+        </div>
+    );
+}
+
+export function MotionNums() {
+    return (
+        <section className="lm lm-nums">
+            <CountUp to={0} label="원 · 가입비 / 월 납입금" />
+            <CountUp to={24} label="시간 · 전국 연결" />
+            <CountUp to={1} label="명의 전담 팀장 · 실명제" />
+        </section>
+    );
+}
+
+export function MotionAbout() {
+    const [ref, seen] = useReveal();
+    const [ref2, seen2] = useReveal();
+    return (
+        <section id="about" className="lm lm-flower">
+            <div ref={ref} className={`lm-fimg${seen ? ' in' : ''}`}>
+                <img src="/flowers/ibgwan_flowers.webp" alt="입관식에 올리는 흰 꽃과 계절 꽃 장식" loading="lazy" width="1376" height="768" />
+            </div>
+            <div ref={ref2} className={`lm-rv${seen2 ? ' in' : ''}`}>
+                <small style={{ letterSpacing: '.3em', color: 'var(--lm-gold)' }}>ABOUT</small>
+                <h2>곁에서 지켜본 사람이<br />연결합니다</h2>
+                <p>입관식에 쓰이는 꽃을 다년간 납품하며 장례지도사 팀장님들과 현장에서 함께 일해 왔습니다.</p>
+                <p>가격보다는 진심을 더했습니다. 중간 과정을 줄인 만큼, 부담도 줄었습니다.</p>
+            </div>
+        </section>
+    );
+}
+
+const STEPS = [
+    ['긴급 장례 접수', '전화 또는 웹으로 이름과 연락처를 남겨 주세요.'],
+    ['팀장 연결', '전담 팀장이 직접 전화드리고 장례식장으로 이동합니다.'],
+    ['장례 진행', '입관부터 발인까지 3일간 정성을 다해 모십니다.'],
+    ['투명한 정산', '모든 절차 종료 후 꼼꼼하게 정산 내역을 확인합니다.'],
+];
+
+export function MotionProcess() {
+    const tr = useRef(null);
+    const [p, setP] = useState(reduced() ? 1 : 0);
+    const [h, setH] = useState(0);
+    useEffect(() => {
+        const upd = () => {
+            const r = tr.current.getBoundingClientRect();
+            const v = Math.min(1, Math.max(0, (window.innerHeight * 0.7 - r.top) / r.height));
+            setP(reduced() ? 1 : v);
+            setH(Math.max(0, v * (r.height - 12)));
+        };
+        upd();
+        window.addEventListener('scroll', upd, { passive: true });
+        return () => window.removeEventListener('scroll', upd);
+    }, []);
+    return (
+        <section id="process" className="lm lm-proc">
+            <h2>복잡한 절차, 걱정하지 마세요</h2>
+            <div ref={tr} className="lm-track">
+                <div className="lm-fill" style={{ height: h }} />
+                {STEPS.map(([t, d], i) => (
+                    <div key={t} className={`lm-st${i / STEPS.length <= p + 0.02 ? ' on' : ''}`} data-n={i + 1}>
+                        <h4>{t}</h4><p>{d}</p>
+                    </div>
+                ))}
+            </div>
+        </section>
+    );
+}
+
+export function MotionClose({ phone, onConsult }) {
+    const [ref, seen] = useReveal();
+    return (
+        <section ref={ref} className="lm lm-close">
+            <Petals count={16} color="#D9C7A3" />
+            <h2 className={`lm-rv${seen ? ' in' : ''}`}>지금 곁이 필요하시면,<br />전화 한 통이면 됩니다.</h2>
+            <a className={`tel lm-rv${seen ? ' in' : ''}`} href={`tel:${phone.replace(/[^0-9]/g, '')}`}>{phone}</a>
+            <small>24시간 전국 연결 · 가입 없이 필요할 때만 이용하는 후불 장례</small>
+            <button type="button" className="lm-btn p" onClick={onConsult}>긴급 상담 요청</button>
+        </section>
+    );
+}

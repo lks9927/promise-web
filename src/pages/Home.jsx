@@ -10,6 +10,7 @@ import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import { formatPhoneNumber } from '../utils/formatters';
 import { RegionSelect } from '../components/common/RegionSelect';
+import { MotionHero, MotionStatement, MotionScenes, MotionNums, MotionAbout, MotionProcess, MotionClose } from '../components/landing/MotionSections';
 
 // 대표전화·회사명은 화면 표기를 코드에서 고정한다 (운영 DB 푸터 값과 무관하게 일관되게 표시)
 const REP_PHONE = '031-514-1338';
@@ -34,28 +35,6 @@ export default function Home() {
     const [user, setUser] = useState(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
 
-    // 히어로 이미지 슬라이드쇼
-    const HERO_IMAGES = ['/landing/story_memorial.webp'];
-    const HERO_ALTS = ['햇살 드는 추모공원에서 고인을 기억하는 가족 (연출 이미지)'];
-    const [heroIndex, setHeroIndex] = useState(0);
-    useEffect(() => {
-        if (HERO_IMAGES.length < 2) return undefined;
-        const t = setInterval(() => setHeroIndex(p => (p + 1) % HERO_IMAGES.length), 4000);
-        return () => clearInterval(t);
-    }, []);
-
-    // 스토리 이미지 슬라이드쇼
-    const STORY_IMAGES = ['/landing/story_widow.webp', '/landing/story_remember.webp', '/landing/hero_balin.webp'];
-    const STORY_ALTS = [
-        '홀로 남으신 어머니 곁에서 따뜻한 물을 건네는 장례지도사 (연출 이미지)',
-        '고인을 기억하며 함께 시간을 보내는 가족 (연출 이미지)',
-        '영정 사진을 든 상주와 가족이 장례식장을 나서는 모습 (연출 이미지)',
-    ];
-    const [storyIndex, setStoryIndex] = useState(0);
-    useEffect(() => {
-        const t = setInterval(() => setStoryIndex(p => (p + 1) % STORY_IMAGES.length), 5000);
-        return () => clearInterval(t);
-    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -165,7 +144,7 @@ export default function Home() {
 
                     {/* Desktop Menu */}
                     <div className="hidden md:flex gap-8 items-center">
-                        <a href="#story" className="text-[#8E806A] hover:text-[#433831] font-medium transition-colors">브랜드 스토리</a>
+                        <a href="#flow" className="text-[#8E806A] hover:text-[#433831] font-medium transition-colors">브랜드 스토리</a>
                         <a href="#process" className="text-[#8E806A] hover:text-[#433831] font-medium transition-colors">진행 절차</a>
 
                         {/* Login Status Indicator */}
@@ -208,7 +187,7 @@ export default function Home() {
                 {isMobileMenuOpen && (
                     <div className="md:hidden absolute top-20 left-0 w-full bg-[#FDFBF7] border-b border-[#EAE5D9] shadow-lg flex flex-col p-6 gap-4 animate-in slide-in-from-top-2">
                         <a
-                            href="#story"
+                            href="#flow"
                             onClick={() => setIsMobileMenuOpen(false)}
                             className="text-[#8E806A] hover:text-[#433831] font-medium p-2"
                         >
@@ -262,167 +241,11 @@ export default function Home() {
                 )}
             </nav>
 
-            {/* Hero Section (Emotional & Warm) */}
-            <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 overflow-hidden">
-                <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
-                    <div className="relative z-10 order-2 lg:order-1 text-center lg:text-left">
-                        <div className="inline-block px-4 py-1.5 rounded-full bg-[#EAE5D9] text-[#8E806A] font-bold text-sm mb-6 tracking-wide">
-                            <span className="mr-2">🌿</span> 국가 공인 장례지도사 실명제
-                        </div>
-                        <h1 className="text-3xl sm:text-4xl md:text-6xl font-serif font-bold text-[#433831] leading-tight mb-8 break-keep">
-                            절차 없이,<br />
-                            <span className="text-[#A69076]">바로 곁에</span> 서겠습니다
-                        </h1>
-                        <p className="text-lg md:text-xl text-[#7A7267] leading-relaxed mb-3 max-w-lg mx-auto lg:mx-0">
-                            이름과 연락처만 남기시면{' '}<br className="hidden md:block" />
-                            장례지도사 팀장이 직접 전화드립니다.
-                        </p>
-                        <p className="text-sm text-[#A69986] mb-10 max-w-lg mx-auto lg:mx-0">
-                            가입 없이, 필요할 때만 이용하는 후불 장례
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                            <button
-                                onClick={() => setIsModalOpen(true)}
-                                className="bg-[#8E806A] hover:bg-[#7A6C56] text-white px-8 py-4 rounded-xl font-bold text-lg shadow-xl shadow-[#8E806A]/20 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1"
-                            >
-                                <Phone className="w-5 h-5" />
-                                긴급 상담 요청
-                            </button>
-                            <a href="#pricing" className="bg-white hover:bg-[#FAF9F5] text-[#8E806A] border border-[#D4C5A9] px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors">
-                                상품 안내 보기
-                            </a>
-                        </div>
-                    </div>
-                    {/* 히어로 이미지 — 3장 크로스페이드 슬라이드쇼 */}
-                    <div className="order-1 lg:order-2 relative mx-auto w-full max-w-[620px] aspect-[4/3] bg-gradient-to-br from-[#dcd3c2] to-[#b0a088] rounded-[2rem] overflow-hidden shadow-2xl ring-8 ring-white">
-                        {HERO_IMAGES.map((src, idx) => (
-                            <img
-                                key={src}
-                                src={src}
-                                alt={HERO_ALTS[idx] || '연출 이미지'}
-                                className={`absolute inset-0 w-full h-full object-cover object-[50%_50%] transition-opacity duration-[1500ms] ease-in-out ${
-                                    idx === heroIndex ? 'opacity-100' : 'opacity-0'
-                                }`}
-                            />
-                        ))}
-                        {/* 디밍 오버레이 */}
-                        <div className="absolute inset-0 bg-gradient-to-b from-[#EAE5D9]/20 via-transparent to-[#C9BCAB]/50 pointer-events-none z-10"></div>
-                        {/* 슬라이드 인디케이터 */}
-                        <span className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 text-[11px] leading-none text-white bg-black/40 px-2 py-1 rounded-full whitespace-nowrap">연출 이미지</span>
-                        {HERO_IMAGES.length > 1 && <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
-                            {HERO_IMAGES.map((_, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => setHeroIndex(idx)}
-                                    className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-                                        idx === heroIndex ? 'bg-white w-4' : 'bg-white/50'
-                                    }`}
-                                />
-                            ))}
-                        </div>}
-                        {/* Decorative Circle */}
-                        <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-[#FDFBF7] rounded-full opacity-30 blur-2xl z-0"></div>
-                    </div>
-                </div>
-
-                {/* Abstract Background Elements */}
-                <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#F5F0E6] rounded-full blur-3xl opacity-60 -z-10 translate-x-1/2 -translate-y-1/4"></div>
-            </section>
-
-            {/* Story Section (Zig-zag) */}
-            <section id="story" className="py-24 bg-white relative">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="grid md:grid-cols-2 gap-16 items-center mb-24">
-                        {/* 스토리 이미지 — 3장 크로스페이드 슬라이드쇼 */}
-                        <div className="relative rounded-2xl overflow-hidden aspect-video shadow-lg order-2 md:order-1 bg-[#EAE5D9]">
-                            {STORY_IMAGES.map((src, idx) => (
-                                <img
-                                    key={src}
-                                    src={src}
-                                    alt={STORY_ALTS[idx] || '연출 이미지'}
-                                    className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-[1500ms] ease-in-out ${
-                                        idx === storyIndex ? 'opacity-100' : 'opacity-0'
-                                    }`}
-                                />
-                            ))}
-                            {/* 디밍 오버레이 */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-[#433831]/40 to-transparent pointer-events-none z-10"></div>
-                            <span className="absolute top-3 right-3 z-20 text-[11px] leading-none text-white bg-black/40 px-2 py-1 rounded-full">연출 이미지</span>
-                            {/* 슬라이드 인디케이터 */}
-                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
-                                {STORY_IMAGES.map((_, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => setStoryIndex(idx)}
-                                        className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-                                            idx === storyIndex ? 'bg-white w-4' : 'bg-white/50'
-                                        }`}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                        <div className="order-1 md:order-2">
-                            <h3 className="text-[#8E806A] font-bold mb-4 tracking-widest text-sm uppercase">Sincerity</h3>
-                            <h2 className="text-3xl md:text-4xl font-serif font-bold text-[#433831] mb-6 leading-snug">
-                                가격보다는<br />
-                                <span className="text-black/80 underline decoration-[#D4C5A9]/50 underline-offset-4">진심</span>을 더했습니다.
-                            </h2>
-                            <p className="text-[#6E6D74] leading-loose mb-6">
-                                중간 과정을 줄인 만큼, 부담도 줄었습니다.
-                            </p>
-                            <div className="flex gap-4">
-                                <div className="flex flex-col items-center p-4 bg-[#F9F7F2] rounded-xl min-w-[100px]">
-                                    <span className="text-2xl font-bold text-[#8E806A]">0원</span>
-                                    <span className="text-xs text-gray-500 mt-1">가입비/월 납입금</span>
-                                </div>
-                                <div className="flex flex-col items-center p-4 bg-[#F9F7F2] rounded-xl min-w-[100px]">
-                                    <span className="text-lg font-bold text-[#8E806A] leading-8">현금영수증</span>
-                                    <span className="text-xs text-gray-500 mt-1">발행 가능</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-
-
-
-            {/* 대표 소개 */}
-            <section id="about" className="py-24 bg-[#FDFBF7]">
-                <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12 md:gap-16 items-center">
-                    <div className="rounded-2xl overflow-hidden shadow-lg ring-1 ring-[#EAE5D9] bg-[#EAE5D9]">
-                        <img
-                            src="/flowers/ibgwan_flowers.webp"
-                            alt="입관식에 올리는 흰 꽃과 계절 꽃 장식"
-                            loading="lazy"
-                            width="1376"
-                            height="768"
-                            className="w-full h-auto object-cover"
-                        />
-                    </div>
-                    <div className="relative rounded-2xl overflow-hidden bg-[#F5F0E6]">
-                        <div className="relative px-6 py-8 sm:px-10 sm:py-12">
-                            <h3 className="text-[#8E806A] font-bold mb-4 tracking-widest text-sm uppercase">About</h3>
-                            <h2 className="text-3xl md:text-4xl font-serif font-bold text-[#433831] mb-6 leading-snug">
-                                곁에서 지켜본 사람이<br />연결합니다
-                            </h2>
-                            <p className="text-[#5D5C61] leading-loose mb-4 break-keep">
-                                입관식에 쓰이는 꽃을 다년간 납품하며 장례지도사 팀장님들과 현장에서 함께 일해 왔습니다.
-                            </p>
-                            <p className="text-sm text-[#7A7267] leading-relaxed mb-8 break-keep">
-                                필요한 구성은 가족이 직접 선택하시고, 결정을 서두르게 하지 않습니다.
-                            </p>
-                            <button
-                                onClick={() => setIsModalOpen(true)}
-                                className="bg-[#433831] hover:bg-[#322A25] text-[#FDFBF7] px-8 py-3.5 rounded-xl font-bold shadow-md transition-all"
-                            >
-                                긴급 상담 요청
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </section>
+            <MotionHero onConsult={() => setIsModalOpen(true)} />
+            <MotionStatement />
+            <MotionScenes />
+            <MotionNums />
+            <MotionAbout />
 
             {/* Service Features (Soft Cards) */}
             <section className="py-24 bg-[#FDFBF7]">
@@ -458,20 +281,8 @@ export default function Home() {
             {/* Rolling Ticker Section — 페이지 중간 */}
             <RollingTicker />
 
-            {/* Process Section */}
-            <section id="process" className="py-24 bg-white">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="text-center mb-16">
-                        <h2 className="text-3xl font-serif font-bold text-[#433831]">복잡한 절차, 걱정하지 마세요</h2>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <ProcessStep number="01" title="긴급 장례 접수" desc="전화 또는 웹으로 이름과 연락처를 남겨 주세요." />
-                        <ProcessStep number="02" title="팀장 연결" desc="전담 팀장이 직접 전화드리고 장례식장으로 이동합니다." />
-                        <ProcessStep number="03" title="장례 진행" desc="입관부터 발인까지 3일간 정성을 다해 모십니다." />
-                        <ProcessStep number="04" title="투명한 정산" desc="모든 절차 종료 후 꼼꼼하게 정산 내역을 확인합니다." />
-                    </div>
-                </div>
-            </section>
+            <MotionProcess />
+            <MotionClose phone={footerInfo.phone} onConsult={() => setIsModalOpen(true)} />
 
         {/* Footer */}
             <footer className="bg-[#EAE5D9]/50 pt-16 pb-8 border-t border-[#D4C5A9]/30">
