@@ -268,8 +268,8 @@ export default function Home() {
                         />
                         <FeatureCard
                             icon={<Clock className="w-10 h-10 text-[#8E806A]" />}
-                            title="24시간 전국 연결"
-                            desc="전국 어디서든 연락 주시면 가까운 지역의 팀장을 신속하게 연결해 드립니다."
+                            title="24시간 접수 (수도권)"
+                            desc="서울·경기·인천 어디서든 접수해 주시면 가까운 지역의 팀장을 바로 연결해 드립니다."
                         />
                     </div>
                 </div>

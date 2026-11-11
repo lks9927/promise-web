@@ -159,7 +159,7 @@ export function MotionNums() {
     return (
         <section className="lm lm-nums">
             <CountUp to={0} label="원 · 가입비 / 월 납입금" />
-            <CountUp to={24} label="시간 · 전국 연결" />
+            <CountUp to={24} label="시간 · 서울·경기·인천 접수" />
             <CountUp to={1} label="명의 전담 팀장 · 실명제" />
         </section>
     );
