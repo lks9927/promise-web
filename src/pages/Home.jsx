@@ -10,7 +10,7 @@ import { matchHangul } from '../lib/hangul';
 import { FUNERAL_HOMES_FULL } from '../data/funeralHomes';
 import { formatPhoneNumber } from '../utils/formatters';
 import { RegionSelect } from '../components/common/RegionSelect';
-import { MotionHero, MotionStatement, MotionScenes, MotionNums, MotionAbout, MotionProcess, MotionClose } from '../components/landing/MotionSections';
+import { MotionHero, MotionStatement, MotionScenes, MotionNums, MotionAbout, MotionProcess, MotionClose, PackageIcon } from '../components/landing/MotionSections';
 
 // 대표전화·회사명은 화면 표기를 코드에서 고정한다 (운영 DB 푸터 값과 무관하게 일관되게 표시)
 const REP_PHONE = '031-514-1338';
@@ -610,57 +610,60 @@ function PricingSection({ packagesData, onConsult }) {
             }
         ];
 
-    const getPackageMeta = (value) => {
-        if (value.includes('무빈소')) return { icon: "🕊️", desc: "빈소 없이 간소하게 가족끼리 보내드리는 상품" };
-        if (value.includes('고급')) return { icon: "✨", desc: "3일장 기준의 표준 구성 상품", isPopular: true };
-        if (value.includes('프리미엄')) return { icon: "👑", desc: "폭넓게 갖춘 프리미엄 구성 상품" };
-        return { icon: "📦", desc: "10년의 약속 정직한 장례 상품" };
+    const getPackageMeta = (pkg) => {
+        const key = `${pkg.value || ''} ${pkg.label || ''}`;
+        if (key.includes('프리미엄') || key.includes('최고급')) return { icon: 'lotus', desc: '폭넓게 갖춘 프리미엄 구성 상품', featured: true, rank: 1 };
+        if (key.includes('무빈소')) return { icon: 'sprout', desc: '빈소 없이 간소하게 가족끼리 보내드리는 상품', rank: 2 };
+        if (key.includes('고급')) return { icon: 'bloom', desc: '3일장 기준의 표준 구성 상품', rank: 0 };
+        return { icon: 'bloom', desc: '10년의 약속 정직한 장례 상품', rank: 3 };
     };
 
+    // 가운데에 최고급형이 오도록 정렬 (모바일은 최고급형이 맨 위)
+    const ordered = displayPackages
+        .map(pkg => ({ pkg, meta: getPackageMeta(pkg) }))
+        .sort((a, b) => a.meta.rank - b.meta.rank);
+
     return (
-        <section id="pricing" className="py-24 bg-[#FDFBF7] border-t border-[#EAE5D9]/50">
+        <section id="pricing" className="lm py-24 lg:py-32 bg-[#FDFBF7] border-t border-[#EAE5D9]/50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
-                <div className="text-center mb-16">
-                    <div className="inline-block px-4 py-1.5 rounded-full bg-[#EAE5D9] text-[#8E806A] font-bold text-sm mb-4 tracking-wide">
+                <div className="text-center mb-16 lg:mb-20">
+                    <div className="inline-block px-5 py-2 rounded-full bg-[#EAE5D9] text-[#8E806A] font-bold text-base mb-5 tracking-wide">
                         투명한 가격 정책
                     </div>
-                    <h2 className="text-3xl md:text-4xl font-serif font-bold text-[#433831] mb-6">상품 구성 상세 안내</h2>
-                    <p className="text-[#6E6D74] max-w-2xl mx-auto leading-relaxed">
+                    <h2 className="text-4xl md:text-5xl font-serif font-bold text-[#433831] mb-6">상품 구성 상세 안내</h2>
+                    <p className="text-lg md:text-xl text-[#6E6D74] max-w-2xl mx-auto leading-relaxed">
                         상품 구성을 항목별로 있는 그대로 안내해 드립니다.<br className="hidden md:block" />
                         기재된 항목 외 수고비, 노잣돈 등은 요구하지 않습니다.
                     </p>
                 </div>
 
-                <div className="grid lg:grid-cols-3 gap-8 items-start">
-                    {displayPackages.map((pkg, idx) => {
-                        const meta = getPackageMeta(pkg.value);
+                <div className="grid lg:grid-cols-3 gap-8 lg:gap-6 items-stretch">
+                    {ordered.map(({ pkg, meta }, idx) => {
+                        const f = meta.featured;
+                        // 데스크톱 배치: 고급형(왼쪽) · 최고급형(가운데) · 무빈소(오른쪽)
+                        const pos = f ? 'lg:order-2 order-1' : meta.rank === 0 ? 'lg:order-1 order-2' : 'lg:order-3 order-3';
                         return (
-                            <div key={idx} className={`relative flex flex-col p-6 sm:p-8 rounded-3xl border ${meta.isPopular ? 'border-[#8E806A] shadow-2xl shadow-[#8E806A]/15 scale-100 lg:scale-105 z-10 bg-white' : 'border-[#EAE5D9] shadow-sm bg-white'}`}>
-                                {meta.isPopular && (
-                                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#433831] text-[#FDFBF7] px-4 py-1.5 rounded-full text-sm font-bold shadow-md whitespace-nowrap">
-                                        많이 찾는 상품
-                                    </div>
-                                )}
-                                
-                                <div className="text-4xl mb-4">{meta.icon}</div>
-                                <h3 className="text-2xl font-serif font-bold text-[#433831] mb-2">{pkg.label.split('(')[0].trim()}</h3>
-                                <p className="text-[#8E806A] text-sm mb-6 h-10">{meta.desc}</p>
-                                
-                                <div className="mb-6 pb-6 border-b border-[#EAE5D9]/50">
-                                    <span className="text-3xl font-black text-[#433831]">{(pkg.price / 10000).toLocaleString()}</span>
-                                    <span className="text-[#6E6D74] font-medium ml-1">만원</span>
+                            <div key={idx} className={`pk-card relative flex flex-col rounded-3xl ${pos} ${f ? 'pk-featured p-8 sm:p-10 lg:-my-8 lg:py-14' : 'p-7 sm:p-9 border border-[#EAE5D9] shadow-sm bg-white'}`}>
+                                {f && <div className="pk-badge">가장 폭넓은 구성</div>}
+                                <PackageIcon kind={meta.icon} featured={f} />
+                                <h3 className={`font-serif font-bold mb-3 ${f ? 'text-4xl text-[#FDFBF7]' : 'text-3xl text-[#433831]'}`}>{pkg.label.split('(')[0].trim()}</h3>
+                                <p className={`text-lg mb-7 ${f ? 'text-[#E6D2AE]' : 'text-[#8E806A]'}`}>{meta.desc}</p>
+
+                                <div className={`mb-7 pb-7 border-b ${f ? 'border-white/15' : 'border-[#EAE5D9]/60'}`}>
+                                    <span className={`font-black tracking-tight ${f ? 'text-7xl text-[#FDFBF7]' : 'text-6xl text-[#433831]'}`}>{(pkg.price / 10000).toLocaleString()}</span>
+                                    <span className={`text-2xl font-bold ml-2 ${f ? 'text-[#E6D2AE]' : 'text-[#6E6D74]'}`}>만원</span>
                                 </div>
 
-                                <div className="flex-1 mb-8">
-                                    <div className="font-bold text-[#433831] mb-4 flex items-center gap-2">
-                                        <ShieldCheck className="w-5 h-5 text-[#8E806A]" /> 
+                                <div className="flex-1 mb-9">
+                                    <div className={`font-bold text-xl mb-5 flex items-center gap-2 ${f ? 'text-[#FDFBF7]' : 'text-[#433831]'}`}>
+                                        <ShieldCheck className={`w-6 h-6 ${f ? 'text-[#E6D2AE]' : 'text-[#8E806A]'}`} />
                                         제공 내역 상세
                                     </div>
-                                    <ul className="space-y-3 bg-[#FDFBF7] p-5 rounded-2xl border border-[#EAE5D9]/30 h-[420px] overflow-y-auto custom-scrollbar">
+                                    <ul className={`space-y-3.5 p-6 rounded-2xl ${f ? 'bg-white/[0.07] border border-white/10' : 'bg-[#FDFBF7] border border-[#EAE5D9]/40'}`}>
                                         {pkg.items && pkg.items.map((item, i) => (
-                                            <li key={i} className="flex items-start gap-2 text-sm text-[#5D5C61] leading-snug">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-[#D4C5A9] shrink-0 mt-1.5"></div>
-                                                <span className="break-keep">{item.name || item}</span>
+                                            <li key={i} className={`flex items-start gap-3 text-[17px] leading-snug ${f ? 'text-[#F3ECE0]' : 'text-[#5D5C61]'}`}>
+                                                <div className={`w-2 h-2 rounded-full shrink-0 mt-2 ${f ? 'bg-[#E6D2AE]' : 'bg-[#D4C5A9]'}`}></div>
+                                                <span className="break-keep">{(item.name || item).trim()}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -668,7 +671,7 @@ function PricingSection({ packagesData, onConsult }) {
 
                                 <button
                                     onClick={onConsult}
-                                    className={`w-full py-4 rounded-xl font-bold transition-all ${meta.isPopular ? 'bg-[#8E806A] hover:bg-[#7A6C56] text-white shadow-lg' : 'bg-[#F5F0E6] hover:bg-[#EAE5D9] text-[#433831]'}`}
+                                    className={`w-full py-5 rounded-2xl text-xl font-bold transition-all ${f ? 'bg-[#E6D2AE] hover:bg-[#F0DFBF] text-[#3E342C] shadow-xl' : 'bg-[#F5F0E6] hover:bg-[#EAE5D9] text-[#433831]'}`}
                                 >
                                     이 상품으로 상담하기
                                 </button>
@@ -677,11 +680,6 @@ function PricingSection({ packagesData, onConsult }) {
                     })}
                 </div>
             </div>
-            <style jsx>{`
-                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #D4C5A9; border-radius: 4px; }
-            `}</style>
         </section>
     );
 }

@@ -86,3 +86,19 @@
   .lm-eyebrow,.lm-hero h1 span,.lm-hero p,.lm-cta{opacity:1;transform:none;filter:none}
   .lm-fimg{clip-path:none}.lm-rv,.lm-st{opacity:1;transform:none}.lm-state .w{opacity:1}
 }
+
+/* 상품 카드 */
+.pk-icon{margin-bottom:18px;height:88px;display:flex;align-items:flex-end}
+.pk-draw{stroke-dasharray:1;stroke-dashoffset:1;animation:pk-draw 2.4s ease-out forwards}
+.pk-draw:nth-child(2){animation-delay:.15s}.pk-draw:nth-child(3){animation-delay:.3s}.pk-draw:nth-child(4){animation-delay:.45s}.pk-draw:nth-child(5){animation-delay:.6s}.pk-draw:nth-child(6){animation-delay:.75s}
+@keyframes pk-draw{to{stroke-dashoffset:0}}
+.pk-sway{transform-origin:40px 70px;animation:pk-sway 6s ease-in-out 2.6s infinite alternate}
+@keyframes pk-sway{from{transform:rotate(-2.5deg)}to{transform:rotate(2.5deg)}}
+.pk-card{transition:transform .5s,box-shadow .5s}
+.pk-card:hover{transform:translateY(-6px)}
+.pk-featured{background:linear-gradient(160deg,#4A3E35 0%,#3A3029 100%);border:1px solid #C9B28A;box-shadow:0 40px 80px -30px rgba(62,52,44,.65);overflow:visible}
+.pk-featured::before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(120% 60% at 50% 0%,rgba(230,210,174,.22),transparent 60%);pointer-events:none}
+.pk-featured::after{content:"";position:absolute;inset:-1px;border-radius:inherit;border:1px solid transparent;background:linear-gradient(110deg,transparent 30%,rgba(255,240,205,.55) 50%,transparent 70%) border-box;-webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;background-size:250% 100%;animation:pk-shine 5s linear infinite;pointer-events:none}
+@keyframes pk-shine{from{background-position:150% 0}to{background-position:-100% 0}}
+.pk-badge{position:absolute;top:-17px;left:50%;transform:translateX(-50%);background:#E6D2AE;color:#3E342C;padding:8px 20px;border-radius:99px;font-size:15px;font-weight:700;white-space:nowrap;box-shadow:0 10px 24px -10px rgba(0,0,0,.5);z-index:2}
+@media(prefers-reduced-motion:reduce){.pk-draw{stroke-dashoffset:0;animation:none}.pk-sway,.pk-featured::after{animation:none}}

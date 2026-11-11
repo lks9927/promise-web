@@ -232,3 +232,43 @@ export function MotionClose({ phone, onConsult }) {
         </section>
     );
 }
+
+// 상품 아이콘 — 이모지 대신 선으로 그린 꽃 (그려지듯 나타나고 천천히 흔들림)
+export function PackageIcon({ kind, featured }) {
+    const c = featured ? '#E6D2AE' : '#B39A74';
+    const common = { fill: 'none', stroke: c, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    return (
+        <div className={`pk-icon ${featured ? 'pk-icon-f' : ''}`} aria-hidden="true">
+            <svg viewBox="0 0 80 80" width={featured ? 84 : 68} height={featured ? 84 : 68}>
+                {kind === 'lotus' && (
+                    <g {...common} className="pk-sway">
+                        <path className="pk-draw" pathLength="1" d="M40 58 C28 54 22 42 26 28 C34 32 39 42 40 58Z" />
+                        <path className="pk-draw" pathLength="1" d="M40 58 C52 54 58 42 54 28 C46 32 41 42 40 58Z" />
+                        <path className="pk-draw" pathLength="1" d="M40 58 C32 48 32 30 40 16 C48 30 48 48 40 58Z" />
+                        <path className="pk-draw" pathLength="1" d="M40 58 C24 58 12 50 10 38 C22 36 34 44 40 58Z" />
+                        <path className="pk-draw" pathLength="1" d="M40 58 C56 58 68 50 70 38 C58 36 46 44 40 58Z" />
+                        <path className="pk-draw" pathLength="1" d="M24 66 C34 70 46 70 56 66" />
+                    </g>
+                )}
+                {kind === 'bloom' && (
+                    <g {...common} className="pk-sway">
+                        {[0, 72, 144, 216, 288].map(r => (
+                            <path key={r} className="pk-draw" pathLength="1" transform={`rotate(${r} 40 36)`} d="M40 36 C32 28 33 16 40 10 C47 16 48 28 40 36Z" />
+                        ))}
+                        <circle className="pk-draw" pathLength="1" cx="40" cy="36" r="3.5" />
+                        <path className="pk-draw" pathLength="1" d="M40 52 C40 60 40 66 40 72" />
+                        <path className="pk-draw" pathLength="1" d="M40 62 C46 58 52 58 56 60 C52 66 46 66 40 62Z" />
+                    </g>
+                )}
+                {kind === 'sprout' && (
+                    <g {...common} className="pk-sway">
+                        <path className="pk-draw" pathLength="1" d="M40 70 C40 58 40 48 40 40" />
+                        <path className="pk-draw" pathLength="1" d="M40 46 C30 46 22 40 20 30 C30 30 38 36 40 46Z" />
+                        <path className="pk-draw" pathLength="1" d="M40 40 C48 38 56 32 58 22 C48 22 41 28 40 40Z" />
+                        <path className="pk-draw" pathLength="1" d="M30 70 C36 72 44 72 50 70" />
+                    </g>
+                )}
+            </svg>
+        </div>
+    );
+}
