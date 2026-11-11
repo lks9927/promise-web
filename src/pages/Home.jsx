@@ -282,7 +282,7 @@ export default function Home() {
             <RollingTicker />
 
             <MotionProcess />
-            <MotionClose phone={footerInfo.phone} onConsult={() => setIsModalOpen(true)} />
+            <MotionClose onConsult={() => setIsModalOpen(true)} />
 
         {/* Footer */}
             <footer className="bg-[#EAE5D9]/50 pt-16 pb-8 border-t border-[#D4C5A9]/30">
