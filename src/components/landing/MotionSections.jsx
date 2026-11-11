@@ -55,8 +55,8 @@ export function MotionHero({ onConsult }) {
             <Petals />
             <div className="txt">
                 <div className="lm-eyebrow">국가 공인 · 장례지도사 실명제</div>
-                <h1><span>절차 없이,</span> <span>바로 곁에</span> <span>서겠습니다</span></h1>
-                <p>이름과 연락처만 남기시면<br />장례지도사 팀장이 직접 전화드립니다.</p>
+                <h1><span>마음 쓰실 일은</span> <span>단 하나,</span> <span>보내드리는 일입니다</span></h1>
+                <p>복잡한 건 장례지도사 팀장이 곁에서 맡습니다.<br />이름과 연락처만 남겨 주세요.</p>
                 <div className="lm-cta">
                     <button type="button" className="lm-btn p" onClick={onConsult}>긴급 상담 요청</button>
                     <a className="lm-btn s" href="#flow">어떻게 곁에 서는지 보기</a>
