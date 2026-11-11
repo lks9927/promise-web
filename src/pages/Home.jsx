@@ -35,15 +35,22 @@ export default function Home() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
 
     // 히어로 이미지 슬라이드쇼
-    const HERO_IMAGES = ['/hero_1.png', '/hero_2.png', '/hero_3.png'];
+    const HERO_IMAGES = ['/landing/hero_balin.webp'];
+    const HERO_ALTS = ['영정 사진을 든 상주와 가족이 장례식장을 나서는 모습 (연출 이미지)'];
     const [heroIndex, setHeroIndex] = useState(0);
     useEffect(() => {
+        if (HERO_IMAGES.length < 2) return undefined;
         const t = setInterval(() => setHeroIndex(p => (p + 1) % HERO_IMAGES.length), 4000);
         return () => clearInterval(t);
     }, []);
 
     // 스토리 이미지 슬라이드쇼
-    const STORY_IMAGES = ['/story_1.png', '/story_2.png', '/story_3.png'];
+    const STORY_IMAGES = ['/landing/story_widow.webp', '/landing/story_remember.webp', '/landing/story_memorial.webp'];
+    const STORY_ALTS = [
+        '홀로 남으신 어머니 곁에서 따뜻한 물을 건네는 장례지도사 (연출 이미지)',
+        '고인을 기억하며 함께 시간을 보내는 가족 (연출 이미지)',
+        '고인을 추모하는 장면 (연출 이미지)',
+    ];
     const [storyIndex, setStoryIndex] = useState(0);
     useEffect(() => {
         const t = setInterval(() => setStoryIndex(p => (p + 1) % STORY_IMAGES.length), 5000);
@@ -267,7 +274,7 @@ export default function Home() {
                             <span className="text-[#A69076]">바로 곁에</span> 서겠습니다
                         </h1>
                         <p className="text-lg md:text-xl text-[#7A7267] leading-relaxed mb-3 max-w-lg mx-auto lg:mx-0">
-                            이름과 연락처만 남기시면<br className="hidden md:block" />
+                            이름과 연락처만 남기시면{' '}<br className="hidden md:block" />
                             장례지도사 팀장이 직접 전화드립니다.
                         </p>
                         <p className="text-sm text-[#A69986] mb-10 max-w-lg mx-auto lg:mx-0">
@@ -292,16 +299,17 @@ export default function Home() {
                             <img
                                 key={src}
                                 src={src}
-                                alt={`따뜻한 위로의 이미지 ${idx + 1}`}
-                                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-[1500ms] ease-in-out ${
-                                    idx === heroIndex ? 'opacity-90' : 'opacity-0'
+                                alt={HERO_ALTS[idx] || '연출 이미지'}
+                                className={`absolute inset-0 w-full h-full object-cover object-[42%_50%] transition-opacity duration-[1500ms] ease-in-out ${
+                                    idx === heroIndex ? 'opacity-100' : 'opacity-0'
                                 }`}
                             />
                         ))}
                         {/* 디밍 오버레이 */}
                         <div className="absolute inset-0 bg-gradient-to-b from-[#EAE5D9]/20 via-transparent to-[#C9BCAB]/50 pointer-events-none z-10"></div>
                         {/* 슬라이드 인디케이터 */}
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
+                        <span className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 text-[11px] leading-none text-white bg-black/40 px-2 py-1 rounded-full whitespace-nowrap">연출 이미지</span>
+                        {HERO_IMAGES.length > 1 && <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
                             {HERO_IMAGES.map((_, idx) => (
                                 <button
                                     key={idx}
@@ -311,7 +319,7 @@ export default function Home() {
                                     }`}
                                 />
                             ))}
-                        </div>
+                        </div>}
                         {/* Decorative Circle */}
                         <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-[#FDFBF7] rounded-full opacity-30 blur-2xl z-0"></div>
                     </div>
@@ -331,7 +339,7 @@ export default function Home() {
                                 <img
                                     key={src}
                                     src={src}
-                                    alt={`위로의 장면 ${idx + 1}`}
+                                    alt={STORY_ALTS[idx] || '연출 이미지'}
                                     className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-[1500ms] ease-in-out ${
                                         idx === storyIndex ? 'opacity-100' : 'opacity-0'
                                     }`}
@@ -339,6 +347,7 @@ export default function Home() {
                             ))}
                             {/* 디밍 오버레이 */}
                             <div className="absolute inset-0 bg-gradient-to-t from-[#433831]/40 to-transparent pointer-events-none z-10"></div>
+                            <span className="absolute top-3 right-3 z-20 text-[11px] leading-none text-white bg-black/40 px-2 py-1 rounded-full">연출 이미지</span>
                             {/* 슬라이드 인디케이터 */}
                             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
                                 {STORY_IMAGES.map((_, idx) => (
