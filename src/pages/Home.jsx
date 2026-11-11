@@ -461,8 +461,8 @@ function FeatureCard({ icon, title, desc }) {
             <div className="w-16 h-16 rounded-2xl bg-[#FDFBF7] flex items-center justify-center mb-6">
                 {icon}
             </div>
-            <h3 className="text-xl font-serif font-bold text-[#433831] mb-3">{title}</h3>
-            <p className="text-[#6E6D74] leading-relaxed text-sm">{desc}</p>
+            <h3 className="text-2xl font-serif font-bold text-[#433831] mb-3">{title}</h3>
+            <p className="text-[#6E6D74] leading-relaxed text-lg">{desc}</p>
         </div>
     );
 }

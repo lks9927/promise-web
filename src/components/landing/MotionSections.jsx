@@ -56,7 +56,7 @@ export function MotionHero({ onConsult }) {
             <div className="txt">
                 <div className="lm-eyebrow">국가 공인 · 장례지도사 실명제</div>
                 <h1><span>마음 쓰실 일은</span> <span>단 하나,</span><br /><span>보내드리는 일입니다</span></h1>
-                <p>복잡한 건 장례지도사 팀장이 곁에서 맡습니다.<br />이름과 연락처만 남겨 주세요.</p>
+                <p>복잡한 건 장례지도사 팀장이<br className="lm-brm" /> 곁에서 맡습니다.<br />이름과 연락처만 남겨 주세요.</p>
                 <div className="lm-cta">
                     <button type="button" className="lm-btn p" onClick={onConsult}>긴급 상담 요청</button>
                     <a className="lm-btn s" href="#flow">어떻게 곁에 서는지 보기</a>
@@ -173,7 +173,7 @@ export function MotionAbout() {
                 <img src="/flowers/ibgwan_flowers.webp" alt="입관식에 올리는 흰 꽃과 계절 꽃 장식" loading="lazy" width="1376" height="768" />
             </div>
             <div className={`lm-rv${seen ? ' in' : ''}`}>
-                <small style={{ letterSpacing: '.3em', color: 'var(--lm-gold)' }}>ABOUT</small>
+                <small style={{ letterSpacing: '.3em', color: 'var(--lm-gold)', fontSize: 16 }}>ABOUT</small>
                 <h2>곁에서 지켜본 사람이<br />연결합니다</h2>
                 <p>입관식에 쓰이는 꽃을 다년간 납품하며 장례지도사 팀장님들과 현장에서 함께 일해 왔습니다.</p>
                 <p>가격보다는 진심을 더했습니다. 중간 과정을 줄인 만큼, 부담도 줄었습니다.</p>
